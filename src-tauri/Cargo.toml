@@ -25,6 +25,7 @@ serde_json = "1"
 dirs = "6.0.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2.3.2"
 
 # 生产包必须启用；否则会走 devUrl (localhost:1420) 导致 ERR_CONNECTION_REFUSED
 [features]

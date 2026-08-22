@@ -1,4 +1,6 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 const DAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
@@ -16,6 +18,8 @@ const MONTHS = [
   "NOV",
   "DEC",
 ];
+
+const PANEL_REFRESH_MS = 5 * 60 * 1000;
 
 type FenceItemDto = {
   id: string;
@@ -93,6 +97,32 @@ function escapeHtml(s: string) {
 }
 
 let githubProfileUrl = "";
+
+function formatSyncTime(at: number) {
+  const d = new Date(at);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function setSyncStatus(
+  id: string,
+  at: number,
+  ok: boolean,
+  cached: boolean,
+  error?: string | null
+) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const t = formatSyncTime(at);
+  if (!ok) {
+    el.textContent = `失败 ${t}`;
+    el.className = "sync-hint err";
+    el.title = error ?? "";
+    return;
+  }
+  el.textContent = cached ? `缓存 ${t}` : `同步 ${t}`;
+  el.className = cached ? "sync-hint cached" : "sync-hint";
+  el.title = cached && error ? error : "";
+}
 
 function openGithubProfile() {
   if (!githubProfileUrl) return;
@@ -186,11 +216,14 @@ function renderGithub(snap: GithubSnapshotDto) {
 }
 
 async function loadGithub() {
+  const at = Date.now();
   try {
     const snap = await invoke<GithubSnapshotDto>("github_snapshot");
     renderGithub(snap);
+    setSyncStatus("ghSync", at, true, snap.cached, snap.error);
   } catch (e) {
     console.error("github_snapshot", e);
+    setSyncStatus("ghSync", at, false, false, String(e));
     const bioEl = document.getElementById("ghBio");
     if (bioEl) bioEl.textContent = `GitHub 未接通：${String(e)}`;
   }
@@ -230,21 +263,20 @@ function renderMc(snap: MulticaSnapshotDto) {
   }
   const hint = document.getElementById("mcFootHint");
   if (hint) {
-    hint.textContent = snap.cached
-      ? snap.error
-        ? "缓存 · 拉取失败"
-        : "缓存"
-      : "本地实例";
+    // sync time set in loadMultica
     if (snap.error) hint.title = snap.error;
   }
 }
 
 async function loadMultica() {
+  const at = Date.now();
   try {
     const snap = await invoke<MulticaSnapshotDto>("multica_snapshot");
     renderMc(snap);
+    setSyncStatus("mcFootHint", at, true, snap.cached, snap.error);
   } catch (e) {
     console.error("multica_snapshot", e);
+    setSyncStatus("mcFootHint", at, false, false, String(e));
     const list = document.getElementById("mcList");
     if (list) {
       list.innerHTML = `<div class="mc-row"><span class="title">Multica 未接通：${escapeHtml(String(e))}</span></div>`;
@@ -326,6 +358,123 @@ let fencePointer: {
 } | null = null;
 let fenceSuppressClick = false;
 
+let fenceFilter = "";
+let allFences: FenceDto[] = [];
+
+function highlightLabel(label: string, q: string) {
+  if (!q) return escapeHtml(label);
+  const lower = label.toLowerCase();
+  const idx = lower.indexOf(q);
+  if (idx < 0) return escapeHtml(label);
+  const before = escapeHtml(label.slice(0, idx));
+  const mid = escapeHtml(label.slice(idx, idx + q.length));
+  const after = escapeHtml(label.slice(idx + q.length));
+  return `${before}<mark>${mid}</mark>${after}`;
+}
+
+function fenceAppButton(
+  item: FenceItemDto,
+  labelHtml: string,
+  extra = ""
+) {
+  const bg = iconUrl(item.icon, item.label);
+  const pathAttr = item.path.replace(/"/g, "&quot;");
+  const idAttr = item.id.replace(/"/g, "&quot;");
+  return `<button type="button" class="fence-app${extra}" data-id="${idAttr}" data-path="${pathAttr}" title="${escapeHtml(item.label)}">
+    <div class="face" style="${bg}"></div>
+    <span class="label">${labelHtml}</span>
+  </button>`;
+}
+
+function wireFenceLaunch(root: HTMLElement) {
+  root.querySelectorAll<HTMLButtonElement>(".fence-app, .fence-search-row").forEach((btn) => {
+    btn.onclick = (e) => {
+      if (fenceSuppressClick) {
+        fenceSuppressClick = false;
+        e.preventDefault();
+        return;
+      }
+      if (editing) return;
+      const path = btn.dataset.path;
+      if (!path) return;
+      void invoke("fence_launch", { path }).catch((err) => console.error(err));
+    };
+  });
+}
+
+function applyFenceFilter() {
+  const root = document.getElementById("fences");
+  const hitsEl = document.getElementById("fenceSearchResults");
+  const pane = document.querySelector(".pane-fences");
+  if (!root || !hitsEl) return;
+
+  const q = fenceFilter.trim().toLowerCase();
+  pane?.classList.toggle("is-searching", Boolean(q));
+
+  if (!q) {
+    hitsEl.hidden = true;
+    hitsEl.innerHTML = "";
+    root.hidden = false;
+    root.querySelectorAll<HTMLElement>(".fence").forEach((fence) => {
+      fence.hidden = false;
+      fence.querySelectorAll<HTMLElement>(".fence-app").forEach((app) => {
+        app.hidden = false;
+      });
+      const n = fence.querySelectorAll(".fence-app").length;
+      const em = fence.querySelector(".fence-title em");
+      if (em) em.textContent = String(n);
+    });
+    const total = allFences.reduce((n, f) => n + f.items.length, 0);
+    const countEl = document.getElementById("fenceCount");
+    if (countEl) countEl.textContent = `· ${total}`;
+    return;
+  }
+
+  type Hit = { item: FenceItemDto; fence: string };
+  const hits: Hit[] = [];
+  for (const f of allFences) {
+    for (const item of f.items) {
+      if (item.label.toLowerCase().includes(q)) {
+        hits.push({ item, fence: f.name });
+      }
+    }
+  }
+
+  root.hidden = true;
+  hitsEl.hidden = false;
+
+  const countEl = document.getElementById("fenceCount");
+  if (countEl) countEl.textContent = `· ${hits.length} 匹配`;
+
+  if (!hits.length) {
+    hitsEl.innerHTML = `<div class="fence-search-panel"><p class="fence-search-empty">无「${escapeHtml(fenceFilter.trim())}」</p></div>`;
+    return;
+  }
+
+  const query = escapeHtml(fenceFilter.trim());
+  hitsEl.innerHTML = `
+    <div class="fence-search-panel">
+      <div class="fence-search-meta"><span>${hits.length} 个结果</span><span class="fence-search-query">${query}</span></div>
+      <div class="fence-search-list">
+        ${hits
+          .map((h) => {
+            const bg = iconUrl(h.item.icon, h.item.label);
+            const pathAttr = h.item.path.replace(/"/g, "&quot;");
+            const idAttr = h.item.id.replace(/"/g, "&quot;");
+            return `<button type="button" class="fence-search-row" data-id="${idAttr}" data-path="${pathAttr}" title="${escapeHtml(h.item.label)}">
+              <div class="face" style="${bg}"></div>
+              <div class="fence-search-row-text">
+                <span class="label">${highlightLabel(h.item.label, q)}</span>
+                <span class="cat">${escapeHtml(h.fence)}</span>
+              </div>
+            </button>`;
+          })
+          .join("")}
+      </div>
+    </div>`;
+  wireFenceLaunch(hitsEl);
+}
+
 function collectFenceLayout(): FenceLayout[] {
   const root = document.getElementById("fences");
   if (!root) return [];
@@ -348,17 +497,7 @@ function persistFenceOrder() {
 }
 
 function refreshFenceCounts() {
-  const root = document.getElementById("fences");
-  if (!root) return;
-  let total = 0;
-  root.querySelectorAll<HTMLElement>(".fence").forEach((fence) => {
-    const n = fence.querySelectorAll(".fence-app").length;
-    total += n;
-    const em = fence.querySelector(".fence-title em");
-    if (em) em.textContent = String(n);
-  });
-  const countEl = document.getElementById("fenceCount");
-  if (countEl) countEl.textContent = `· ${total}`;
+  applyFenceFilter();
 }
 
 /** Nearest icon to insert before, or null to append. */
@@ -490,22 +629,11 @@ function wireFenceDnD(root: HTMLElement) {
     void invoke("set_cursor", { icon: "default" }).catch(() => {});
   };
 
-  root.querySelectorAll<HTMLButtonElement>(".fence-app").forEach((btn) => {
-    btn.onclick = (e) => {
-      if (fenceSuppressClick) {
-        fenceSuppressClick = false;
-        e.preventDefault();
-        return;
-      }
-      if (editing) return;
-      const path = btn.dataset.path;
-      if (!path) return;
-      void invoke("fence_launch", { path }).catch((err) => console.error(err));
-    };
-  });
+  wireFenceLaunch(root);
 }
 
 function renderFences(fences: FenceDto[]) {
+  allFences = fences;
   const root = document.getElementById("fences");
   if (!root) return;
   let total = 0;
@@ -513,15 +641,7 @@ function renderFences(fences: FenceDto[]) {
     .map((f) => {
       total += f.items.length;
       const apps = f.items
-        .map((item) => {
-          const bg = iconUrl(item.icon, item.label);
-          const pathAttr = item.path.replace(/"/g, "&quot;");
-          const idAttr = item.id.replace(/"/g, "&quot;");
-          return `<button type="button" class="fence-app" data-id="${idAttr}" data-path="${pathAttr}" title="${item.label}">
-          <div class="face" style="${bg}"></div>
-          <span class="label">${item.label}</span>
-        </button>`;
-        })
+        .map((item) => fenceAppButton(item, escapeHtml(item.label)))
         .join("");
       return `<div class="fence" data-name="${f.name}">
       <div class="fence-title">${f.name} <em>${f.items.length}</em></div>
@@ -534,6 +654,7 @@ function renderFences(fences: FenceDto[]) {
   if (countEl) countEl.textContent = `· ${total}`;
 
   wireFenceDnD(root);
+  applyFenceFilter();
 }
 
 async function loadFences() {
@@ -562,8 +683,52 @@ async function setEditing(on: boolean) {
   const board = document.getElementById("board");
   const btn = document.getElementById("editToggle");
   board?.classList.toggle("editing", on);
-  if (btn) btn.title = on ? "完成" : "编辑";
-  if (btn) btn.setAttribute("aria-label", on ? "完成" : "编辑");
+  const hint = on ? "完成 (Win+Shift+D)" : "编辑 (Win+Shift+D)";
+  if (btn) btn.title = hint;
+  if (btn) btn.setAttribute("aria-label", hint);
+  if (on && fenceFilter) {
+    fenceFilter = "";
+    const search = document.getElementById("fenceSearch") as HTMLInputElement | null;
+    if (search) search.value = "";
+    applyFenceFilter();
+  }
+}
+
+async function setTextInputActive(active: boolean) {
+  try {
+    await invoke("set_keyboard_input", { active });
+    if (active) {
+      await getCurrentWindow().setFocus();
+    }
+  } catch (e) {
+    console.warn("set_keyboard_input", e);
+  }
+}
+
+function isTextField(el: Element | null): el is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
+  return (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLSelectElement
+  );
+}
+
+function wireTextInputFocus() {
+  const onFocus = () => void setTextInputActive(true);
+  const onBlur = () => {
+    window.setTimeout(() => {
+      if (!isTextField(document.activeElement)) {
+        void setTextInputActive(false);
+      }
+    }, 0);
+  };
+  for (const id of ["fenceSearch", "todoTitle", "todoRule"]) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.addEventListener("focus", onFocus);
+    el.addEventListener("blur", onBlur);
+    el.addEventListener("pointerdown", (e) => e.stopPropagation());
+  }
 }
 
 function wireUi() {
@@ -602,6 +767,21 @@ function wireUi() {
     void invoke("fence_restore")
       .then(() => loadFences())
       .catch((e) => alert(String(e)));
+  });
+
+  document.getElementById("fenceSearch")?.addEventListener("input", (e) => {
+    fenceFilter = (e.target as HTMLInputElement).value;
+    applyFenceFilter();
+  });
+  const fenceSearch = document.getElementById("fenceSearch") as HTMLInputElement | null;
+  const syncFenceFilter = () => {
+    if (fenceSearch) fenceFilter = fenceSearch.value;
+    applyFenceFilter();
+  };
+  fenceSearch?.addEventListener("compositionend", syncFenceFilter);
+  fenceSearch?.addEventListener("pointerdown", (e) => {
+    e.stopPropagation();
+    void setTextInputActive(true);
   });
 
   const pop = document.getElementById("todoPop");
@@ -651,12 +831,14 @@ function wireUi() {
   });
 }
 
-const GITHUB_REFRESH_MS = 30 * 60 * 1000;
-
 window.addEventListener("DOMContentLoaded", () => {
   tick();
   setInterval(tick, 1000);
   wireUi();
+  wireTextInputFocus();
+  void listen("desk:toggle-edit", () => {
+    void setEditing(!editing);
+  });
   // Critical path first; network panels deferred to cut peak startup memory.
   void loadReminders();
   void loadFences();
@@ -664,6 +846,9 @@ window.addEventListener("DOMContentLoaded", () => {
   window.setTimeout(() => {
     void loadGithub();
     void loadMultica();
-    setInterval(() => void loadGithub(), GITHUB_REFRESH_MS);
+    setInterval(() => {
+      void loadGithub();
+      void loadMultica();
+    }, PANEL_REFRESH_MS);
   }, 800);
 });

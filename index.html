@@ -30,7 +30,7 @@
             <div class="streak">今年 <strong id="yearCount">—</strong></div>
           </div>
           <div class="wall gh-link" id="ghWall" title="打开 GitHub 主页">
-            <div class="wall-meta"><span>Contributions</span></div>
+            <div class="wall-meta"><span>Contributions</span><span class="sync-hint" id="ghSync">GitHub …</span></div>
             <div class="grid" id="grid"></div>
           </div>
         </div>
@@ -95,9 +95,10 @@
       </section>
 
       <section class="pane-fences">
-        <div class="fences-head">
-          <h2>全部图标 <span id="fenceCount" style="font-weight:400;opacity:.6"></span></h2>
-          <div class="head-actions">
+        <div class="fences-toolbar">
+          <div class="fences-head">
+            <h2>全部图标 <span id="fenceCount" style="font-weight:400;opacity:.6"></span></h2>
+            <div class="head-actions">
             <button type="button" class="icon-btn" id="autostartToggle" title="开机自启" aria-label="开机自启">
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M8 2.2v5.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
@@ -121,6 +122,16 @@
             </button>
           </div>
         </div>
+        <input
+          type="text"
+          class="fence-search"
+          id="fenceSearch"
+          placeholder="搜索图标…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        </div>
+        <div id="fenceSearchResults" class="fence-search-results" hidden></div>
         <div id="fences"></div>
       </section>
     </div>

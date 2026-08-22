@@ -7,8 +7,9 @@ mod win_zorder;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{Manager, PhysicalPosition, WindowEvent};
+use tauri::{Emitter, Manager, PhysicalPosition, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 fn sink_below_apps(window: &tauri::WebviewWindow) {
     #[cfg(windows)]
@@ -48,6 +49,21 @@ fn set_cursor(app: tauri::AppHandle, icon: String) -> Result<(), String> {
         _ => tauri::CursorIcon::Default,
     };
     window.set_cursor_icon(icon).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_keyboard_input(app: tauri::AppHandle, active: bool) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window missing".to_string())?;
+    #[cfg(windows)]
+    if let Ok(hwnd) = window.hwnd() {
+        win_zorder::set_keyboard_input_mode(hwnd.0 as isize, active);
+    }
+    if active {
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -96,8 +112,18 @@ pub fn run() {
             MacosLauncher::LaunchAgent,
             Some(vec![]),
         ))
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        let _ = app.emit("desk:toggle-edit", ());
+                    }
+                })
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             set_click_through,
+            set_keyboard_input,
             set_cursor,
             autostart_get,
             autostart_set,
@@ -177,6 +203,13 @@ pub fn run() {
                     let _ = mgr.enable();
                 }
             }
+
+            let shortcut =
+                Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyD);
+            if let Err(e) = app.global_shortcut().register(shortcut) {
+                eprintln!("global shortcut Win+Shift+D: {e}");
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())

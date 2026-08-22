@@ -16,7 +16,7 @@
         "label": "main",
         "title": "desk",
         "width": 780,
-        "height": 1000,
+        "height": 1030,
         "minWidth": 640,
         "minHeight": 800,
         "resizable": false,

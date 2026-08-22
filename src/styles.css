@@ -1,4 +1,8 @@
 :root {
+  --fence-row: 48px;
+  --fence-gap: 5px;
+  --fence-pad-y: 5px;
+
   --ink: #1a2332;
   --ink-soft: #3d4a5c;
   --mist-border: rgba(255, 255, 255, 0.4);
@@ -31,7 +35,6 @@ body {
   color: var(--ink);
   user-select: none;
   zoom: 1.28;
-  /* 禁止拖窗（无边框窗的 -webkit-app-region 拖动） */
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
@@ -68,27 +71,24 @@ body {
   background: rgba(255, 255, 255, 0.22);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   min-height: 0;
   overflow: hidden;
 }
 
 #fences {
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  justify-content: flex-start;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-width: none;
+  gap: 5px;
+  overflow: hidden;
 }
 
-#fences::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
+.fences-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .profile {
@@ -697,8 +697,167 @@ body {
   color: var(--accent);
 }
 
+.fence-search {
+  width: 100%;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(26, 35, 50, 0.12);
+  background: rgba(255, 255, 255, 0.55);
+  font-size: 10px;
+  font-family: inherit;
+  color: var(--ink);
+  flex-shrink: 0;
+  user-select: text;
+  -webkit-user-select: text;
+  pointer-events: auto;
+}
+.fence-search::placeholder {
+  color: #8b9cb3;
+}
+.fence-search:focus {
+  outline: none;
+  border-color: rgba(45, 106, 79, 0.45);
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.pane-fences.is-searching #fences {
+  display: none !important;
+}
+#fenceSearchResults[hidden] {
+  display: none !important;
+}
+.pane-fences.is-searching .fence-search {
+  border-color: rgba(45, 106, 79, 0.55);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 2px rgba(45, 106, 79, 0.1);
+}
+
+.fence-search-results {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.fence-search-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(45, 106, 79, 0.22);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+
+.fence-search-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.fence-search-query {
+  font-weight: 500;
+  color: #6b7a8c;
+  font-family: "Cascadia Mono", "Consolas", "Segoe UI Mono", monospace;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fence-search-empty {
+  font-size: 10px;
+  color: #6b7a8c;
+  text-align: center;
+  padding: 24px 8px;
+}
+
+.fence-search-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.fence-search-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.fence-search-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(26, 35, 50, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: var(--ink);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.fence-search-row:hover {
+  background: rgba(45, 106, 79, 0.08);
+  border-color: rgba(45, 106, 79, 0.28);
+}
+.fence-search-row:active {
+  transform: scale(0.99);
+}
+.fence-search-row .face {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 1px 3px rgba(26, 35, 50, 0.12);
+}
+.fence-search-row-text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fence-search-row .label {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fence-search-row .label mark {
+  background: rgba(45, 106, 79, 0.2);
+  color: var(--accent);
+  font-weight: 700;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+.fence-search-row .cat {
+  font-size: 8px;
+  color: #8b9cb3;
+  letter-spacing: 0.04em;
+}
+
 .fence {
-  /* 少则压缩；多则至少露出约 12 个（3×4），超出栏内滚 */
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
@@ -726,11 +885,11 @@ body {
   color: #6b7a8c;
 }
 .fence-grid {
-  /* 一行约 48px；3 行 × 4 列 = 12 个 */
-  --fence-row: 48px;
-  --fence-gap: 5px;
-  --fence-pad-y: 5px;
-  max-height: calc(var(--fence-row) * 3 + var(--fence-gap) * 2 + var(--fence-pad-y) * 2);
+  --fence-rows: 2;
+  max-height: calc(
+    var(--fence-row) * var(--fence-rows) + var(--fence-gap) * (var(--fence-rows) - 1) +
+      var(--fence-pad-y) * 2
+  );
   overflow-y: auto;
   overflow-x: hidden;
   display: grid;
@@ -738,15 +897,21 @@ body {
   gap: var(--fence-gap) 4px;
   padding: var(--fence-pad-y) 3px 4px;
   align-content: start;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(26, 35, 50, 0.25) transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.fence[data-name="游戏"] .fence-grid,
+.fence[data-name="工具"] .fence-grid {
+  --fence-rows: 3;
+}
+.fence[data-name="工作"] .fence-grid,
+.fence[data-name="系统"] .fence-grid {
+  --fence-rows: 1;
 }
 .fence-grid::-webkit-scrollbar {
-  width: 4px;
-}
-.fence-grid::-webkit-scrollbar-thumb {
-  background: rgba(26, 35, 50, 0.25);
-  border-radius: 4px;
+  width: 0;
+  height: 0;
+  display: none;
 }
 .fence-app {
   display: flex;

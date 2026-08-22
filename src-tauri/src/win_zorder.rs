@@ -4,6 +4,9 @@
 #![cfg(windows)]
 
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static KEYBOARD_INPUT: AtomicBool = AtomicBool::new(false);
 
 type BOOL = i32;
 type HWND = *mut c_void;
@@ -66,7 +69,33 @@ fn is_shell_chrome(hwnd: HWND) -> bool {
     )
 }
 
+fn set_noactivate_flag(hwnd: HWND, noactivate: bool) {
+    unsafe {
+        let ex = GetWindowLongW(hwnd, GWL_EXSTYLE);
+        if noactivate {
+            if ex & WS_EX_NOACTIVATE == 0 {
+                SetWindowLongW(hwnd, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE);
+            }
+        } else if ex & WS_EX_NOACTIVATE != 0 {
+            SetWindowLongW(hwnd, GWL_EXSTYLE, ex & !WS_EX_NOACTIVATE);
+        }
+    }
+}
+
+/// Allow keyboard/IME into WebView2 inputs (clears WS_EX_NOACTIVATE while active).
+pub fn set_keyboard_input_mode(hwnd: isize, active: bool) {
+    KEYBOARD_INPUT.store(active, Ordering::SeqCst);
+    if hwnd == 0 {
+        return;
+    }
+    set_noactivate_flag(hwnd as HWND, !active);
+}
+
 fn apply_noactivate(hwnd: HWND) {
+    if KEYBOARD_INPUT.load(Ordering::SeqCst) {
+        set_noactivate_flag(hwnd, false);
+        return;
+    }
     unsafe {
         let ex = GetWindowLongW(hwnd, GWL_EXSTYLE);
         if ex & WS_EX_NOACTIVATE == 0 {
@@ -113,7 +142,11 @@ unsafe extern "system" fn enum_noactivate(hwnd: HWND, lparam: isize) -> BOOL {
     let mut pid: DWORD = 0;
     GetWindowThreadProcessId(hwnd, &mut pid);
     if pid == target_pid {
-        apply_noactivate(hwnd);
+        if KEYBOARD_INPUT.load(Ordering::SeqCst) {
+            set_noactivate_flag(hwnd, false);
+        } else {
+            apply_noactivate(hwnd);
+        }
     }
     1
 }
