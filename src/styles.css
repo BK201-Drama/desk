@@ -97,6 +97,11 @@ body {
   align-items: center;
   margin-bottom: 8px;
 }
+.profile.gh-link,
+.wall.gh-link {
+  cursor: pointer;
+}
+
 .avatar {
   width: 28px;
   height: 28px;
@@ -196,9 +201,14 @@ body {
 .wall {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
 .wall-meta {
   margin-bottom: 4px;
+  align-self: stretch;
 }
 .wall-meta span {
   font-size: 8px;
@@ -214,8 +224,7 @@ body {
   grid-auto-columns: 5px;
   gap: 1.5px;
   width: fit-content;
-  max-width: 100%;
-  overflow: hidden;
+  flex-shrink: 0;
 }
 .cell {
   width: 5px;

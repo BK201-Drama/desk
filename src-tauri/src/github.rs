@@ -33,8 +33,11 @@ pub struct GithubSnapshotDto {
     pub avatar_url: String,
     pub streak: u32,
     pub year_total: u32,
-    /// Column-major weeks: each inner vec is 7 days Sun..Sat, level 0..=4
+    /// Weeks left→right (old→new, last column = this week). Each column: Sun..Sat top→bottom.
     pub weeks: Vec<Vec<u8>>,
+    /// Cache/schema version for contribution grid layout.
+    #[serde(default)]
+    pub contrib_layout: u32,
     pub pins: Vec<GithubPinDto>,
     pub langs: Vec<GithubLangDto>,
     pub cached: bool,
@@ -80,7 +83,11 @@ fn save_cache(snap: &GithubSnapshotDto) -> Result<(), String> {
 fn load_cache() -> Option<GithubSnapshotDto> {
     let p = cache_path().ok()?;
     let s = fs::read_to_string(p).ok()?;
-    serde_json::from_str(&s).ok()
+    let snap: GithubSnapshotDto = serde_json::from_str(&s).ok()?;
+    if snap.contrib_layout != CONTRIB_LAYOUT {
+        return None;
+    }
+    Some(snap)
 }
 
 fn resolve_token() -> Result<String, String> {
@@ -176,6 +183,65 @@ fn level_to_u8(level: &str) -> u8 {
     }
 }
 
+/// 0 = Sunday .. 6 = Saturday (matches GitHub week objects).
+fn weekday_sun0(y: i32, m: u32, d: u32) -> u32 {
+    const T: [i32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+    let mut y = y;
+    if m < 3 {
+        y -= 1;
+    }
+    (y + y / 4 - y / 100 + y / 400 + T[(m - 1) as usize] + d as i32).rem_euclid(7) as u32
+}
+
+/// Grid row for a date: 0 = Sunday (top) .. 6 = Saturday (bottom), same as GitHub.
+fn sunday_top_row(ymd: &str) -> Option<usize> {
+    let parts: Vec<_> = ymd.split('-').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let y: i32 = parts[0].parse().ok()?;
+    let m: u32 = parts[1].parse().ok()?;
+    let d: u32 = parts[2].parse().ok()?;
+    Some(weekday_sun0(y, m, d) as usize)
+}
+
+fn week_column_sunday_top(days: &[serde_json::Value]) -> Vec<u8> {
+    let mut col = vec![0u8; 7];
+    for day in days {
+        let date = day.get("date").and_then(|x| x.as_str()).unwrap_or("");
+        let Some(row) = sunday_top_row(date) else {
+            continue;
+        };
+        let level = level_to_u8(
+            day.get("contributionLevel")
+                .and_then(|x| x.as_str())
+                .unwrap_or("NONE"),
+        );
+        col[row] = level;
+    }
+    col
+}
+
+fn days_in_month(y: i32, m: u32) -> u32 {
+    match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
+                29
+            } else {
+                28
+            }
+        }
+        _ => 30,
+    }
+}
+
+/// Contribution wall columns shown in the UI (most recent weeks, oldest → newest).
+const DISPLAY_WEEKS: usize = 40;
+/// Bump when grid encoding changes (invalidates old github-cache.json).
+const CONTRIB_LAYOUT: u32 = 3;
+
 fn prev_day(ymd: &str) -> String {
     let parts: Vec<_> = ymd.split('-').collect();
     if parts.len() != 3 {
@@ -193,21 +259,6 @@ fn prev_day(ymd: &str) -> String {
         (y - 1, 12, 31)
     };
     format!("{ny:04}-{nm:02}-{nd:02}")
-}
-
-fn days_in_month(y: i32, m: u32) -> u32 {
-    match m {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 => {
-            if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
-                29
-            } else {
-                28
-            }
-        }
-        _ => 30,
-    }
 }
 
 /// Consecutive days with contributions, ending today (or yesterday if today is empty).
@@ -334,36 +385,29 @@ async fn fetch_snapshot(token: &str) -> Result<GithubSnapshotDto, String> {
     let mut weeks_raw: Vec<Vec<u8>> = Vec::new();
     if let Some(weeks) = cal.get("weeks").and_then(|x| x.as_array()) {
         for w in weeks {
-            let mut col = Vec::with_capacity(7);
-            if let Some(days) = w.get("contributionDays").and_then(|x| x.as_array()) {
-                for day in days {
-                    let count = day
-                        .get("contributionCount")
-                        .and_then(|x| x.as_u64())
-                        .unwrap_or(0) as u32;
-                    let level = level_to_u8(
-                        day.get("contributionLevel")
-                            .and_then(|x| x.as_str())
-                            .unwrap_or("NONE"),
-                    );
-                    let date = day
-                        .get("date")
-                        .and_then(|x| x.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    flat_days.push((date, count));
-                    col.push(level);
-                }
+            let days = w
+                .get("contributionDays")
+                .and_then(|x| x.as_array())
+                .map(|a| a.as_slice())
+                .unwrap_or(&[]);
+            for day in days {
+                let count = day
+                    .get("contributionCount")
+                    .and_then(|x| x.as_u64())
+                    .unwrap_or(0) as u32;
+                let date = day
+                    .get("date")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                flat_days.push((date, count));
             }
-            while col.len() < 7 {
-                col.push(0);
-            }
-            weeks_raw.push(col);
+            weeks_raw.push(week_column_sunday_top(days));
         }
     }
 
-    let weeks: Vec<Vec<u8>> = if weeks_raw.len() > 40 {
-        weeks_raw[weeks_raw.len() - 40..].to_vec()
+    let weeks = if weeks_raw.len() > DISPLAY_WEEKS {
+        weeks_raw[weeks_raw.len() - DISPLAY_WEEKS..].to_vec()
     } else {
         weeks_raw
     };
@@ -462,6 +506,7 @@ async fn fetch_snapshot(token: &str) -> Result<GithubSnapshotDto, String> {
         langs,
         cached: false,
         error: None,
+        contrib_layout: CONTRIB_LAYOUT,
     })
 }
 
@@ -509,5 +554,17 @@ pub async fn github_snapshot() -> Result<GithubSnapshotDto, String> {
                 Err(e)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sunday_top_row_matches_github() {
+        assert_eq!(sunday_top_row("2026-08-17"), Some(1)); // Mon
+        assert_eq!(sunday_top_row("2026-08-22"), Some(6)); // Sat
+        assert_eq!(sunday_top_row("2026-08-23"), Some(0)); // Sun
     }
 }

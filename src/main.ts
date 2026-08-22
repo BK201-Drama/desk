@@ -41,6 +41,7 @@ type GithubSnapshotDto = {
   streak: number;
   year_total: number;
   weeks: number[][];
+  contrib_layout?: number;
   pins: GithubPinDto[];
   langs: GithubLangDto[];
   cached: boolean;
@@ -91,7 +92,26 @@ function escapeHtml(s: string) {
     .replace(/"/g, "&quot;");
 }
 
+let githubProfileUrl = "";
+
+function openGithubProfile() {
+  if (!githubProfileUrl) return;
+  void openUrl(githubProfileUrl).catch(() => window.open(githubProfileUrl, "_blank"));
+}
+
 function renderGithub(snap: GithubSnapshotDto) {
+  githubProfileUrl = snap.login ? `https://github.com/${snap.login}` : "";
+  const profile = document.getElementById("ghProfile");
+  const wall = document.getElementById("ghWall");
+  if (profile) {
+    profile.classList.toggle("gh-link", Boolean(githubProfileUrl));
+    profile.title = githubProfileUrl ? "打开 GitHub 主页" : "";
+  }
+  if (wall) {
+    wall.classList.toggle("gh-link", Boolean(githubProfileUrl));
+    wall.title = githubProfileUrl ? "打开 GitHub 主页" : "";
+  }
+
   const nameEl = document.getElementById("ghName");
   const handleEl = document.getElementById("ghHandle");
   const bioEl = document.getElementById("ghBio");
@@ -472,18 +492,12 @@ function wireFenceDnD(root: HTMLElement) {
 
   root.querySelectorAll<HTMLButtonElement>(".fence-app").forEach((btn) => {
     btn.onclick = (e) => {
-      // 单击不启动；留给拖拽排序。拖拽后吞掉残余 click。
       if (fenceSuppressClick) {
         fenceSuppressClick = false;
         e.preventDefault();
-      }
-    };
-    btn.ondblclick = (e) => {
-      e.preventDefault();
-      if (fenceSuppressClick) {
-        fenceSuppressClick = false;
         return;
       }
+      if (editing) return;
       const path = btn.dataset.path;
       if (!path) return;
       void invoke("fence_launch", { path }).catch((err) => console.error(err));
@@ -612,6 +626,13 @@ function wireUi() {
       .catch((e) => alert(String(e)));
   });
 
+  document.getElementById("ghProfile")?.addEventListener("click", () => {
+    openGithubProfile();
+  });
+  document.getElementById("ghWall")?.addEventListener("click", () => {
+    openGithubProfile();
+  });
+
   document.getElementById("mcOpen")?.addEventListener("click", () => {
     void (async () => {
       try {
@@ -630,6 +651,8 @@ function wireUi() {
   });
 }
 
+const GITHUB_REFRESH_MS = 30 * 60 * 1000;
+
 window.addEventListener("DOMContentLoaded", () => {
   tick();
   setInterval(tick, 1000);
@@ -641,5 +664,6 @@ window.addEventListener("DOMContentLoaded", () => {
   window.setTimeout(() => {
     void loadGithub();
     void loadMultica();
+    setInterval(() => void loadGithub(), GITHUB_REFRESH_MS);
   }, 800);
 });
