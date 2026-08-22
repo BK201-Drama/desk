@@ -25,6 +25,13 @@ pub struct GithubLangDto {
     pub color: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ContribCellDto {
+    pub date: String,
+    pub count: u32,
+    pub level: u8,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GithubSnapshotDto {
     pub login: String,
@@ -35,6 +42,9 @@ pub struct GithubSnapshotDto {
     pub year_total: u32,
     /// Weeks left→right (old→new, last column = this week). Each column: Sun..Sat top→bottom.
     pub weeks: Vec<Vec<u8>>,
+    /// Flat grid cells in render order (column-major weeks × Sun..Sat rows).
+    #[serde(default)]
+    pub contrib_cells: Vec<ContribCellDto>,
     /// Cache/schema version for contribution grid layout.
     #[serde(default)]
     pub contrib_layout: u32,
@@ -206,18 +216,33 @@ fn sunday_top_row(ymd: &str) -> Option<usize> {
 }
 
 fn week_column_sunday_top(days: &[serde_json::Value]) -> Vec<u8> {
-    let mut col = vec![0u8; 7];
+    week_column_cells(days)
+        .into_iter()
+        .map(|c| c.level)
+        .collect()
+}
+
+fn week_column_cells(days: &[serde_json::Value]) -> Vec<ContribCellDto> {
+    let mut col = vec![ContribCellDto::default(); 7];
     for day in days {
         let date = day.get("date").and_then(|x| x.as_str()).unwrap_or("");
         let Some(row) = sunday_top_row(date) else {
             continue;
         };
+        let count = day
+            .get("contributionCount")
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0) as u32;
         let level = level_to_u8(
             day.get("contributionLevel")
                 .and_then(|x| x.as_str())
                 .unwrap_or("NONE"),
         );
-        col[row] = level;
+        col[row] = ContribCellDto {
+            date: date.to_string(),
+            count,
+            level,
+        };
     }
     col
 }
@@ -240,7 +265,7 @@ fn days_in_month(y: i32, m: u32) -> u32 {
 /// Contribution wall columns shown in the UI (most recent weeks, oldest → newest).
 const DISPLAY_WEEKS: usize = 40;
 /// Bump when grid encoding changes (invalidates old github-cache.json).
-const CONTRIB_LAYOUT: u32 = 3;
+const CONTRIB_LAYOUT: u32 = 4;
 
 fn prev_day(ymd: &str) -> String {
     let parts: Vec<_> = ymd.split('-').collect();
@@ -383,6 +408,7 @@ async fn fetch_snapshot(token: &str) -> Result<GithubSnapshotDto, String> {
 
     let mut flat_days: Vec<(String, u32)> = Vec::new();
     let mut weeks_raw: Vec<Vec<u8>> = Vec::new();
+    let mut cells_raw: Vec<Vec<ContribCellDto>> = Vec::new();
     if let Some(weeks) = cal.get("weeks").and_then(|x| x.as_array()) {
         for w in weeks {
             let days = w
@@ -402,15 +428,17 @@ async fn fetch_snapshot(token: &str) -> Result<GithubSnapshotDto, String> {
                     .to_string();
                 flat_days.push((date, count));
             }
+            cells_raw.push(week_column_cells(days));
             weeks_raw.push(week_column_sunday_top(days));
         }
     }
 
-    let weeks = if weeks_raw.len() > DISPLAY_WEEKS {
-        weeks_raw[weeks_raw.len() - DISPLAY_WEEKS..].to_vec()
-    } else {
-        weeks_raw
-    };
+    let slice_start = weeks_raw.len().saturating_sub(DISPLAY_WEEKS);
+    let weeks = weeks_raw[slice_start..].to_vec();
+    let contrib_cells: Vec<ContribCellDto> = cells_raw[slice_start..]
+        .iter()
+        .flat_map(|col| col.iter().cloned())
+        .collect();
 
     let streak = compute_streak(&flat_days);
 
@@ -502,6 +530,7 @@ async fn fetch_snapshot(token: &str) -> Result<GithubSnapshotDto, String> {
         streak,
         year_total,
         weeks,
+        contrib_cells,
         pins,
         langs,
         cached: false,

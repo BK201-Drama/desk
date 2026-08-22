@@ -20,6 +20,23 @@ const MONTHS = [
 ];
 
 const PANEL_REFRESH_MS = 5 * 60 * 1000;
+const RECENT_KEY = "desk-recent-v1";
+const RECENT_MAX = 4;
+
+/** label (lowercase) → extra search tokens */
+const SEARCH_ALIASES: Record<string, string[]> = {
+  英雄联盟: ["lol", "yxlm", "联盟", "league"],
+  "counter-strike 2": ["cs", "cs2", "反恐"],
+  穿越火线: ["cf"],
+  饥荒联机版: ["饥荒", "dst"],
+  terraria: ["泰拉"],
+  飞书: ["feishu", "lark"],
+  文献批量阅读助手: ["文献", "paper"],
+  此电脑: ["pc", "mycomputer", "计算机"],
+  回收站: ["recycle", "trash", "垃圾箱"],
+};
+
+type ContribCellDto = { date: string; count: number; level: number };
 
 type FenceItemDto = {
   id: string;
@@ -45,6 +62,7 @@ type GithubSnapshotDto = {
   streak: number;
   year_total: number;
   weeks: number[][];
+  contrib_cells?: ContribCellDto[];
   contrib_layout?: number;
   pins: GithubPinDto[];
   langs: GithubLangDto[];
@@ -97,6 +115,32 @@ function escapeHtml(s: string) {
 }
 
 let githubProfileUrl = "";
+let githubLogin = "";
+let multicaAppUrl = "";
+
+function formatContribTip(date: string, count: number) {
+  if (!date) return "";
+  const [y, m, d] = date.split("-").map(Number);
+  const local = new Date(y, (m || 1) - 1, d || 1);
+  const label = local.toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  if (!count) return `${label}：无贡献`;
+  return `${label}：${count} 次贡献`;
+}
+
+function openContribDay(date: string) {
+  if (!date || !githubLogin) return;
+  const url = `https://github.com/${githubLogin}?from=${date}&to=${date}`;
+  void openUrl(url).catch(() => window.open(url, "_blank"));
+}
+
+function multicaIssueUrl(id: string) {
+  if (!multicaAppUrl || !id) return "";
+  return `${multicaAppUrl.replace(/\/$/, "")}/issues/${id}`;
+}
 
 function formatSyncTime(at: number) {
   const d = new Date(at);
@@ -130,6 +174,7 @@ function openGithubProfile() {
 }
 
 function renderGithub(snap: GithubSnapshotDto) {
+  githubLogin = snap.login;
   githubProfileUrl = snap.login ? `https://github.com/${snap.login}` : "";
   const profile = document.getElementById("ghProfile");
   const wall = document.getElementById("ghWall");
@@ -171,12 +216,23 @@ function renderGithub(snap: GithubSnapshotDto) {
   const grid = document.getElementById("grid");
   if (grid) {
     grid.innerHTML = "";
+    const cells = snap.contrib_cells ?? [];
+    let i = 0;
     for (const week of snap.weeks) {
       for (let d = 0; d < 7; d++) {
-        const lv = week[d] ?? 0;
+        const meta = cells[i];
+        const lv = meta?.level ?? week[d] ?? 0;
         const cell = document.createElement("div");
-        cell.className = `cell l${lv}`;
+        cell.className = `cell l${lv}${meta?.date ? " has-day" : ""}`;
+        if (meta?.date) {
+          cell.title = formatContribTip(meta.date, meta.count);
+          cell.addEventListener("click", (e) => {
+            e.stopPropagation();
+            openContribDay(meta.date);
+          });
+        }
         grid.appendChild(cell);
+        i += 1;
       }
     }
   }
@@ -230,6 +286,7 @@ async function loadGithub() {
 }
 
 function renderMc(snap: MulticaSnapshotDto) {
+  multicaAppUrl = snap.app_url || "";
   const set = (id: string, n: number) => {
     const el = document.getElementById(id);
     if (el) el.textContent = String(n);
@@ -244,15 +301,24 @@ function renderMc(snap: MulticaSnapshotDto) {
       list.innerHTML = `<div class="mc-row"><span class="title" style="opacity:.55">暂无进行中的 issue</span></div>`;
     } else {
       list.innerHTML = snap.issues
-        .map(
-          (i) => `
-    <div class="mc-row">
+        .map((i) => {
+          const url = multicaIssueUrl(i.id);
+          const urlAttr = url ? ` data-url="${url.replace(/"/g, "&quot;")}"` : "";
+          return `
+    <div class="mc-row mc-link"${urlAttr} title="${url ? "打开 issue" : ""}">
       <span class="st ${escapeHtml(i.st)}">${escapeHtml(i.st)}</span>
       <span class="title">${escapeHtml(i.title)}</span>
       <span class="who">${escapeHtml(i.who)}</span>
-    </div>`
-        )
+    </div>`;
+        })
         .join("");
+      list.querySelectorAll<HTMLElement>(".mc-row.mc-link[data-url]").forEach((row) => {
+        row.addEventListener("click", () => {
+          const url = row.dataset.url;
+          if (!url) return;
+          void openUrl(url).catch(() => window.open(url, "_blank"));
+        });
+      });
     }
   }
 
@@ -360,6 +426,189 @@ let fenceSuppressClick = false;
 
 let fenceFilter = "";
 let allFences: FenceDto[] = [];
+let searchSelectedIndex = -1;
+
+function findItemById(id: string): FenceItemDto | null {
+  for (const f of allFences) {
+    const item = f.items.find((i) => i.id === id);
+    if (item) return item;
+  }
+  return null;
+}
+
+function loadRecentIds(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const ids = parsed
+      .filter((x): x is string => typeof x === "string" && !x.startsWith("sys-"))
+      .slice(0, RECENT_MAX);
+    return ids;
+  } catch {
+    return [];
+  }
+}
+
+function recordRecentLaunch(item: FenceItemDto) {
+  if (item.id.startsWith("sys-")) return;
+  const next = [item.id, ...loadRecentIds().filter((id) => id !== item.id)].slice(
+    0,
+    RECENT_MAX
+  );
+  localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  renderRecentBar();
+}
+
+function matchesFenceSearch(item: FenceItemDto, q: string): boolean {
+  const label = item.label.toLowerCase();
+  if (label.includes(q)) return true;
+  const base = item.path.split(/[/\\]/).pop()?.toLowerCase() ?? "";
+  if (base.includes(q)) return true;
+  const aliases = SEARCH_ALIASES[item.label] ?? SEARCH_ALIASES[label] ?? [];
+  if (aliases.some((a) => a.includes(q) || q.includes(a))) return true;
+  for (const tokens of Object.values(SEARCH_ALIASES)) {
+    if (tokens.includes(q) && tokens.some((t) => label.includes(t))) return true;
+  }
+  return false;
+}
+
+function focusFenceSearch() {
+  const el = document.getElementById("fenceSearch") as HTMLInputElement | null;
+  if (!el) return;
+  void setTextInputActive(true);
+  el.focus();
+  el.select();
+}
+
+function clearFenceSearch() {
+  fenceFilter = "";
+  searchSelectedIndex = -1;
+  const el = document.getElementById("fenceSearch") as HTMLInputElement | null;
+  if (el) el.value = "";
+  applyFenceFilter();
+}
+
+function updateSearchSelection(rows: HTMLElement[]) {
+  rows.forEach((row, idx) => {
+    row.classList.toggle("is-selected", idx === searchSelectedIndex);
+  });
+  const active = rows[searchSelectedIndex];
+  active?.scrollIntoView({ block: "nearest" });
+}
+
+function getQuickBarItems(): FenceItemDto[] {
+  return loadRecentIds()
+    .map((id) => findItemById(id))
+    .filter((item): item is FenceItemDto => item !== null && !item.id.startsWith("sys-"));
+}
+
+function hideRecentBar() {
+  const root = document.getElementById("fenceRecent");
+  if (!root) return;
+  root.hidden = true;
+  root.className = "";
+  root.innerHTML = "";
+}
+
+function renderRecentBar() {
+  const root = document.getElementById("fenceRecent");
+  if (!root) return;
+  if (fenceFilter.trim()) {
+    hideRecentBar();
+    return;
+  }
+  const items = getQuickBarItems();
+  if (!items.length) {
+    hideRecentBar();
+    return;
+  }
+  root.hidden = false;
+  root.className = "fence";
+  root.innerHTML = `
+    <div class="fence-title">最近 <em>${items.length}</em></div>
+    <div class="fence-grid">${items.map((item) => fenceAppButton(item, escapeHtml(item.label))).join("")}</div>`;
+  wireFenceLaunch(root);
+}
+
+function launchFenceItem(path: string, id?: string) {
+  if (editing) return;
+  if (id) {
+    const item = findItemById(id);
+    if (item) recordRecentLaunch(item);
+  }
+  void invoke("fence_launch", { path }).catch((err) => console.error(err));
+}
+
+function launchSelectedSearchRow() {
+  const rows = getSearchRows();
+  if (searchSelectedIndex < 0 || searchSelectedIndex >= rows.length) return;
+  const row = rows[searchSelectedIndex];
+  const path = row.dataset.path;
+  if (!path) return;
+  launchFenceItem(path, row.dataset.id);
+}
+
+function getSearchRows(): HTMLElement[] {
+  const list = document.querySelector("#fenceSearchResults .fence-search-list");
+  if (!list) return [];
+  return [...list.querySelectorAll<HTMLElement>(".fence-search-row")];
+}
+
+function wireGlobalKeys() {
+  document.addEventListener("keydown", (e) => {
+    const active = document.activeElement;
+    const inField = isTextField(active);
+    const inSearch = active?.id === "fenceSearch";
+    const mod = e.ctrlKey || e.metaKey;
+
+    if (mod && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      focusFenceSearch();
+      return;
+    }
+
+    if (e.key === "/" && !inField) {
+      e.preventDefault();
+      focusFenceSearch();
+      return;
+    }
+
+    if (e.key === "Escape") {
+      if (fenceFilter.trim() || inSearch) {
+        e.preventDefault();
+        clearFenceSearch();
+        if (inSearch) (active as HTMLInputElement).blur();
+      }
+      return;
+    }
+
+    if (!fenceFilter.trim()) return;
+
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      const rows = getSearchRows();
+      if (!rows.length) return;
+      e.preventDefault();
+      if (e.key === "ArrowDown") {
+        searchSelectedIndex =
+          searchSelectedIndex < 0 ? 0 : Math.min(searchSelectedIndex + 1, rows.length - 1);
+      } else {
+        searchSelectedIndex =
+          searchSelectedIndex < 0 ? rows.length - 1 : Math.max(searchSelectedIndex - 1, 0);
+      }
+      updateSearchSelection(rows);
+      return;
+    }
+
+    if (e.key === "Enter" && searchSelectedIndex >= 0 && (inSearch || !inField)) {
+      const rows = getSearchRows();
+      if (!rows.length) return;
+      e.preventDefault();
+      launchSelectedSearchRow();
+    }
+  });
+}
 
 function highlightLabel(label: string, q: string) {
   if (!q) return escapeHtml(label);
@@ -394,10 +643,9 @@ function wireFenceLaunch(root: HTMLElement) {
         e.preventDefault();
         return;
       }
-      if (editing) return;
       const path = btn.dataset.path;
       if (!path) return;
-      void invoke("fence_launch", { path }).catch((err) => console.error(err));
+      launchFenceItem(path, btn.dataset.id);
     };
   });
 }
@@ -427,6 +675,7 @@ function applyFenceFilter() {
     const total = allFences.reduce((n, f) => n + f.items.length, 0);
     const countEl = document.getElementById("fenceCount");
     if (countEl) countEl.textContent = `· ${total}`;
+    renderRecentBar();
     return;
   }
 
@@ -434,10 +683,15 @@ function applyFenceFilter() {
   const hits: Hit[] = [];
   for (const f of allFences) {
     for (const item of f.items) {
-      if (item.label.toLowerCase().includes(q)) {
+      if (matchesFenceSearch(item, q)) {
         hits.push({ item, fence: f.name });
       }
     }
+  }
+
+  const recentRoot = document.getElementById("fenceRecent");
+  if (recentRoot) {
+    recentRoot.hidden = true;
   }
 
   root.hidden = true;
@@ -447,21 +701,36 @@ function applyFenceFilter() {
   if (countEl) countEl.textContent = `· ${hits.length} 匹配`;
 
   if (!hits.length) {
-    hitsEl.innerHTML = `<div class="fence-search-panel"><p class="fence-search-empty">无「${escapeHtml(fenceFilter.trim())}」</p></div>`;
+    const query = escapeHtml(fenceFilter.trim());
+    hitsEl.innerHTML = `
+      <div class="fence-search-panel">
+        <div class="fence-search-empty-wrap">
+          <p class="fence-search-empty">无「${query}」</p>
+          <p class="fence-search-hint">试试英文名、拼音缩写或路径片段</p>
+          <button type="button" class="fence-search-clear" id="fenceSearchClear">清除搜索</button>
+        </div>
+      </div>`;
+    document.getElementById("fenceSearchClear")?.addEventListener("click", () => {
+      clearFenceSearch();
+      focusFenceSearch();
+    });
+    searchSelectedIndex = -1;
     return;
   }
 
+  searchSelectedIndex = 0;
   const query = escapeHtml(fenceFilter.trim());
   hitsEl.innerHTML = `
     <div class="fence-search-panel">
       <div class="fence-search-meta"><span>${hits.length} 个结果</span><span class="fence-search-query">${query}</span></div>
       <div class="fence-search-list">
         ${hits
-          .map((h) => {
+          .map((h, idx) => {
             const bg = iconUrl(h.item.icon, h.item.label);
             const pathAttr = h.item.path.replace(/"/g, "&quot;");
             const idAttr = h.item.id.replace(/"/g, "&quot;");
-            return `<button type="button" class="fence-search-row" data-id="${idAttr}" data-path="${pathAttr}" title="${escapeHtml(h.item.label)}">
+            const sel = idx === 0 ? " is-selected" : "";
+            return `<button type="button" class="fence-search-row${sel}" data-id="${idAttr}" data-path="${pathAttr}" title="${escapeHtml(h.item.label)}">
               <div class="face" style="${bg}"></div>
               <div class="fence-search-row-text">
                 <span class="label">${highlightLabel(h.item.label, q)}</span>
@@ -688,6 +957,7 @@ async function setEditing(on: boolean) {
   if (btn) btn.setAttribute("aria-label", hint);
   if (on && fenceFilter) {
     fenceFilter = "";
+    searchSelectedIndex = -1;
     const search = document.getElementById("fenceSearch") as HTMLInputElement | null;
     if (search) search.value = "";
     applyFenceFilter();
@@ -771,6 +1041,7 @@ function wireUi() {
 
   document.getElementById("fenceSearch")?.addEventListener("input", (e) => {
     fenceFilter = (e.target as HTMLInputElement).value;
+    searchSelectedIndex = -1;
     applyFenceFilter();
   });
   const fenceSearch = document.getElementById("fenceSearch") as HTMLInputElement | null;
@@ -832,10 +1103,12 @@ function wireUi() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  hideRecentBar();
   tick();
   setInterval(tick, 1000);
   wireUi();
   wireTextInputFocus();
+  wireGlobalKeys();
   void listen("desk:toggle-edit", () => {
     void setEditing(!editing);
   });
