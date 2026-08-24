@@ -1,6 +1,7 @@
 mod fence;
 mod github;
 mod multica;
+mod recent;
 mod remind;
 #[cfg(windows)]
 mod win_zorder;
@@ -149,6 +150,8 @@ pub fn run() {
             fence::fence_restore,
             fence::fence_status,
             fence::fence_save_order,
+            recent::recent_list,
+            recent::recent_push,
         ])
         .setup(|app| {
             let locked: Arc<Mutex<Option<(i32, i32)>>> = Arc::new(Mutex::new(None));
@@ -205,11 +208,11 @@ pub fn run() {
             }
 
             let mgr = app.autolaunch();
-            if !mgr.is_enabled().unwrap_or(false) {
-                let opted_out = autostart_off_flag().map(|p| p.exists()).unwrap_or(false);
-                if !opted_out {
-                    let _ = mgr.enable();
-                }
+            let opted_out = autostart_off_flag().map(|p| p.exists()).unwrap_or(false);
+            if !opted_out {
+                // Re-register on every launch so HKCU\Run tracks current_exe().
+                // Otherwise boot keeps starting an old release build while dev uses debug.
+                let _ = mgr.enable();
             }
 
             let shortcut =

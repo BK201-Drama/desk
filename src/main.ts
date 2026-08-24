@@ -20,8 +20,8 @@ const MONTHS = [
 ];
 
 const PANEL_REFRESH_MS = 5 * 60 * 1000;
-const RECENT_KEY = "desk-recent-v1";
 const RECENT_MAX = 4;
+const RECENT_LS_KEY = "desk-recent-v1";
 
 /** label (lowercase) → extra search tokens */
 const SEARCH_ALIASES: Record<string, string[]> = {
@@ -427,6 +427,7 @@ let fenceSuppressClick = false;
 let fenceFilter = "";
 let allFences: FenceDto[] = [];
 let searchSelectedIndex = -1;
+let recentIds: string[] = [];
 
 function findItemById(id: string): FenceItemDto | null {
   for (const f of allFences) {
@@ -437,28 +438,48 @@ function findItemById(id: string): FenceItemDto | null {
 }
 
 function loadRecentIds(): string[] {
+  return recentIds.slice(0, RECENT_MAX);
+}
+
+async function migrateRecentFromLocalStorage() {
   try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    if (!raw) return [];
+    if (recentIds.length) return;
+    const raw = localStorage.getItem(RECENT_LS_KEY);
+    if (!raw) return;
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    const ids = parsed
+    if (!Array.isArray(parsed)) return;
+    const legacy = parsed
       .filter((x): x is string => typeof x === "string" && !x.startsWith("sys-"))
       .slice(0, RECENT_MAX);
-    return ids;
+    localStorage.removeItem(RECENT_LS_KEY);
+    if (!legacy.length) return;
+    for (const id of [...legacy].reverse()) {
+      recentIds = await invoke<string[]>("recent_push", { id });
+    }
   } catch {
-    return [];
+    /* ignore */
+  }
+}
+
+async function loadRecentFromDisk() {
+  try {
+    recentIds = await invoke<string[]>("recent_list");
+    recentIds = recentIds.slice(0, RECENT_MAX);
+    await migrateRecentFromLocalStorage();
+  } catch (e) {
+    console.warn("recent_list", e);
+    recentIds = [];
   }
 }
 
 function recordRecentLaunch(item: FenceItemDto) {
   if (item.id.startsWith("sys-")) return;
-  const next = [item.id, ...loadRecentIds().filter((id) => id !== item.id)].slice(
-    0,
-    RECENT_MAX
-  );
-  localStorage.setItem(RECENT_KEY, JSON.stringify(next));
-  renderRecentBar();
+  void invoke<string[]>("recent_push", { id: item.id })
+    .then((ids) => {
+      recentIds = ids.slice(0, RECENT_MAX);
+      renderRecentBar();
+    })
+    .catch((e) => console.warn("recent_push", e));
 }
 
 function matchesFenceSearch(item: FenceItemDto, q: string): boolean {
@@ -927,6 +948,7 @@ function renderFences(fences: FenceDto[]) {
 }
 
 async function loadFences() {
+  await loadRecentFromDisk();
   try {
     const fences = await invoke<FenceDto[]>("fence_takeover");
     renderFences(fences);
