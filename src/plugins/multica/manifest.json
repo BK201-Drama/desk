@@ -1,0 +1,9 @@
+{
+  "id": "multica",
+  "name": "Multica",
+  "version": "0.1.0",
+  "slot": "left",
+  "entry": "./panel.ts",
+  "permissions": ["multica.read", "host.open", "host.log"],
+  "order": 20
+}

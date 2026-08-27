@@ -1,0 +1,9 @@
+{
+  "id": "ops-hud",
+  "name": "Ops HUD",
+  "version": "0.1.0",
+  "slot": "overlay",
+  "entry": "./panel.ts",
+  "permissions": ["host.plugins", "host.log"],
+  "order": 10
+}

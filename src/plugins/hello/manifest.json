@@ -1,0 +1,9 @@
+{
+  "id": "hello",
+  "name": "Hello",
+  "version": "0.1.0",
+  "slot": "left",
+  "entry": "./panel.ts",
+  "permissions": ["host.log"],
+  "order": 90
+}

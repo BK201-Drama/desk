@@ -1,0 +1,119 @@
+.cmdk-host,
+[data-plugin="cmdk"] {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+}
+
+[data-plugin="cmdk"].show {
+  pointer-events: auto;
+}
+
+[data-plugin="cmdk"] .cmdk-backdrop {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(14, 18, 24, 0.28);
+}
+
+[data-plugin="cmdk"].show .cmdk-backdrop {
+  display: block;
+}
+
+[data-plugin="cmdk"] .cmdk-panel {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  width: min(420px, 88%);
+  max-height: 58%;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid rgba(26, 35, 50, 0.16);
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+  backdrop-filter: blur(16px);
+}
+
+[data-plugin="cmdk"].show .cmdk-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.cmdk-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(26, 35, 50, 0.1);
+  font-family: "Cascadia Code", Consolas, monospace;
+}
+
+.cmdk-prompt {
+  color: #2d6a4f;
+  font-weight: 600;
+}
+
+.cmdk-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.cmdk-head kbd {
+  font-size: 10px;
+  opacity: 0.45;
+  border: 1px solid rgba(26, 35, 50, 0.15);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.cmdk-list {
+  overflow: auto;
+  padding: 6px;
+  min-height: 120px;
+}
+
+.cmdk-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--ink);
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+.cmdk-item:hover,
+.cmdk-item.is-selected {
+  background: rgba(45, 106, 79, 0.12);
+}
+
+.cmdk-title {
+  font-size: 13px;
+}
+
+.cmdk-meta {
+  font-size: 10px;
+  opacity: 0.55;
+  font-family: "Cascadia Code", Consolas, monospace;
+}
+
+.cmdk-empty {
+  padding: 20px;
+  text-align: center;
+  opacity: 0.5;
+  font-size: 12px;
+}

@@ -12,6 +12,31 @@ npm install
 npm run tauri dev
 ```
 
+## 插件（面板热插拔）
+
+看板左右栏与 overlay 由插件填充。契约见：
+
+- `opc-doc/products/009-desk/specs/2026-08-28-plugin-host.md`
+- 黑客感面板：`opc-doc/products/009-desk/specs/2026-08-28-hacker-panels.md`
+
+**User 插件目录：** `%LOCALAPPDATA%\desk\plugins\<id>\`
+
+```
+manifest.json
+panel.js      # ESM default export { mount, unmount? }
+panel.css     # 可选
+```
+
+启用列表：`%LOCALAPPDATA%\desk\plugins.json`（`disabled` 数组；默认禁用 `hello`）。
+
+首次启动会在 user 目录种一份 `hello` 示例。命令面板（`Ctrl+K`）可「启用插件 · Hello」或「重载全部插件」。
+
+> 插件等同本机代码，勿加载不可信目录。
+
+**快捷键：** `Ctrl+Shift+K` / `Win+Shift+K` 命令面板（desk 在桌面底层，普通 `Ctrl+K` 焦点不在板上时无效） · `/` 围栏搜索 · `Win+Shift+D` 编辑开关。也可点右上角菜单图标打开命令面板。
+
+默认布局是 **程序员**；切走后可用「布局 · 程序员」随时切回。详见 `opc-doc/products/009-desk/specs/2026-08-28-layout-presets.md`。
+
 ## 发布安装包（含开机自启）
 
 ```bash
@@ -52,5 +77,6 @@ WebView2 本身仍有底噪；要再压只能更晚加载远程图、或缩小�
 ## 文档
 
 - 规格：`opc-doc/products/009-desk/specs/2026-08-16-desk-design.md`
+- 插件契约：`opc-doc/products/009-desk/specs/2026-08-28-plugin-host.md`
 - 计划：`opc-doc/products/009-desk/plans/2026-08-16-desk-mvp.md`
 - 视觉参考：`novel/desk_widget_mock.html`

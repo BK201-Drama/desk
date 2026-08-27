@@ -1,6 +1,8 @@
 mod fence;
 mod github;
 mod multica;
+mod plugins;
+mod qqmusic;
 mod recent;
 mod remind;
 #[cfg(windows)]
@@ -123,9 +125,19 @@ pub fn run() {
         ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        let _ = app.emit("desk:toggle-edit", ());
+                .with_handler(|app, shortcut, event| {
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    // Match by key — we only register D (edit) and K (cmdk).
+                    match shortcut.key {
+                        Code::KeyD => {
+                            let _ = app.emit("desk:toggle-edit", ());
+                        }
+                        Code::KeyK => {
+                            let _ = app.emit("desk:open-cmdk", ());
+                        }
+                        _ => {}
                     }
                 })
                 .build(),
@@ -152,6 +164,21 @@ pub fn run() {
             fence::fence_save_order,
             recent::recent_list,
             recent::recent_push,
+            plugins::plugin_list_user,
+            plugins::plugin_get_config,
+            plugins::plugin_set_disabled,
+            plugins::plugin_list_presets,
+            plugins::plugin_apply_preset,
+            plugins::plugin_save_custom,
+            plugins::plugin_storage_get,
+            plugins::plugin_storage_set,
+            qqmusic::qqmusic_status,
+            qqmusic::qqmusic_now_playing,
+            qqmusic::qqmusic_ensure_running,
+            qqmusic::qqmusic_launch,
+            qqmusic::qqmusic_toggle,
+            qqmusic::qqmusic_next,
+            qqmusic::qqmusic_prev,
         ])
         .setup(|app| {
             let locked: Arc<Mutex<Option<(i32, i32)>>> = Arc::new(Mutex::new(None));
@@ -215,10 +242,22 @@ pub fn run() {
                 let _ = mgr.enable();
             }
 
-            let shortcut =
+            let edit_sc =
                 Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyD);
-            if let Err(e) = app.global_shortcut().register(shortcut) {
+            if let Err(e) = app.global_shortcut().register(edit_sc) {
                 eprintln!("global shortcut Win+Shift+D: {e}");
+            }
+            // Board sits under apps — in-page Ctrl+K never fires without focus.
+            // Global Ctrl+Shift+K (+ Win+Shift+K) always reaches desk.
+            let cmdk_sc =
+                Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyK);
+            if let Err(e) = app.global_shortcut().register(cmdk_sc) {
+                eprintln!("global shortcut Ctrl+Shift+K: {e}");
+            }
+            let cmdk_win =
+                Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyK);
+            if let Err(e) = app.global_shortcut().register(cmdk_win) {
+                eprintln!("global shortcut Win+Shift+K: {e}");
             }
 
             Ok(())

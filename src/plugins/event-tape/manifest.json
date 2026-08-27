@@ -1,0 +1,9 @@
+{
+  "id": "event-tape",
+  "name": "Event Tape",
+  "version": "0.1.0",
+  "slot": "overlay",
+  "entry": "./panel.ts",
+  "permissions": ["host.log"],
+  "order": 30
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fence",
+  "name": "Fences",
+  "version": "0.1.0",
+  "slot": "right",
+  "entry": "./panel.ts",
+  "permissions": [
+    "fence.read",
+    "fence.write",
+    "fence.launch",
+    "recent.read",
+    "recent.write",
+    "host.autostart",
+    "host.window",
+    "host.log"
+  ],
+  "order": 10
+}

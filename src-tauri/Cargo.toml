@@ -28,6 +28,20 @@ tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-single-instance = "2"
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+  "Media_Control",
+  "Foundation",
+  "Foundation_Collections",
+  "Storage_Streams",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_System_Diagnostics_ToolHelp",
+] }
+
 # 生产包必须启用；否则会走 devUrl (localhost:1420) 导致 ERR_CONNECTION_REFUSED
 [features]
 default = ["custom-protocol"]

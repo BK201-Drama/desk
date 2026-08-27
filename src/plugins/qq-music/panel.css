@@ -1,0 +1,111 @@
+.qqm-card {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(26, 35, 50, 0.1);
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.qqm-card.is-playing {
+  border-color: rgba(49, 194, 124, 0.35);
+}
+
+.qqm-art {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  background:
+    linear-gradient(145deg, rgba(49, 194, 124, 0.35), rgba(26, 35, 50, 0.12));
+  background-size: cover;
+  background-position: center;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset;
+}
+
+.qqm-art-fallback {
+  font-size: 18px;
+  color: rgba(26, 35, 50, 0.45);
+}
+
+.qqm-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qqm-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qqm-artist {
+  font-size: 10px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.9;
+}
+
+.qqm-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.qqm-ctrl {
+  width: 26px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid rgba(26, 35, 50, 0.1);
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.qqm-ctrl:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.qqm-play {
+  width: 32px;
+  background: #31c27c;
+  border-color: #31c27c;
+  color: #fff;
+  font-weight: 600;
+}
+
+.qqm-open {
+  margin-left: auto;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(26, 35, 50, 0.1);
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 10px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.qqm-open:hover,
+.qqm-ctrl:not(:disabled):hover {
+  filter: brightness(1.04);
+}

@@ -1,0 +1,17 @@
+{
+  "id": "cmdk",
+  "name": "Command Palette",
+  "version": "0.1.0",
+  "slot": "overlay",
+  "entry": "./panel.ts",
+  "permissions": [
+    "github.read",
+    "multica.read",
+    "fence.launch",
+    "host.plugins",
+    "host.open",
+    "host.window",
+    "host.log"
+  ],
+  "order": 20
+}

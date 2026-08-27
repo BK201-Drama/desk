@@ -1,0 +1,42 @@
+/* Single-line chip — does not cover the todo list */
+.ops-hud-host {
+  pointer-events: none;
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  z-index: 20;
+}
+
+.ops-hud {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  font-family: "Cascadia Code", Consolas, "Courier New", monospace;
+  font-size: 9px;
+  line-height: 1;
+  color: rgba(26, 35, 50, 0.55);
+  background: rgba(248, 250, 252, 0.42);
+  border: 1px solid rgba(26, 35, 50, 0.08);
+  border-radius: 4px;
+  padding: 3px 2px;
+  backdrop-filter: blur(6px);
+  opacity: 0.7;
+}
+
+.ops-hud .seg {
+  padding: 0 6px;
+  border-right: 1px solid rgba(26, 35, 50, 0.1);
+}
+
+.ops-hud .seg:last-child {
+  border-right: none;
+}
+
+.ops-hud .seg.on {
+  color: #2d6a4f;
+  font-weight: 600;
+}
+
+.ops-hud .rpc {
+  text-transform: lowercase;
+}
