@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { PluginsConfig, PresetInfo } from "./types";
 import type { BundledPlugin } from "./types";
-import { reloadPlugins } from "./registry";
+import { reconcilePlugins } from "./registry";
 import { emit } from "./events";
 
 export async function listPresets(): Promise<PresetInfo[]> {
@@ -14,7 +14,7 @@ export async function applyPreset(
 ): Promise<PluginsConfig> {
   const cfg = await invoke<PluginsConfig>("plugin_apply_preset", { id });
   emit("preset:applied", { id, disabled: cfg.disabled }, "host");
-  await reloadPlugins(bundled);
+  await reconcilePlugins(bundled);
   return cfg;
 }
 
@@ -23,7 +23,7 @@ export async function saveCustomPreset(
 ): Promise<PluginsConfig> {
   const cfg = await invoke<PluginsConfig>("plugin_save_custom");
   emit("preset:saved-custom", { disabled: cfg.disabled }, "host");
-  await reloadPlugins(bundled);
+  await reconcilePlugins(bundled);
   return cfg;
 }
 

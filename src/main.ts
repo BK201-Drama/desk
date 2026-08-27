@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { toggleEditing } from "./host/edit";
-import { loadAll, reloadPlugins } from "./host/registry";
+import { loadAll, reloadPlugins, setPluginEnabled } from "./host/registry";
 import { applyPreset, saveCustomPreset } from "./host/presets";
 import { emit } from "./host/events";
 import { bundledPlugins } from "./plugins";
@@ -9,11 +9,13 @@ import "./styles.css";
 (window as unknown as {
   __deskHost: {
     reloadPlugins: () => Promise<void>;
+    setPluginEnabled: (id: string, enabled: boolean) => Promise<void>;
     applyPreset: (id: string) => Promise<void>;
     saveCustom: () => Promise<void>;
   };
 }).__deskHost = {
   reloadPlugins: () => reloadPlugins(bundledPlugins),
+  setPluginEnabled: (id, enabled) => setPluginEnabled(id, enabled, bundledPlugins),
   applyPreset: async (id: string) => {
     await applyPreset(id, bundledPlugins);
   },

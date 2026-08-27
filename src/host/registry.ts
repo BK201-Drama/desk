@@ -18,6 +18,13 @@ export type MountedPlugin = {
   unsubs: Array<() => void>;
 };
 
+type DesiredPlugin = {
+  manifest: PluginManifest;
+  source: "bundled" | "user";
+  load: () => Promise<PluginModule>;
+  cssHref?: string | null;
+};
+
 const mounted = new Map<string, MountedPlugin>();
 
 function slotEl(slot: string): HTMLElement | null {
@@ -108,19 +115,25 @@ export function listMounted(): MountedPlugin[] {
   return [...mounted.values()];
 }
 
-export async function loadAll(bundled: BundledPlugin[]): Promise<void> {
-  let config: PluginsConfig = {
-    active_preset: "coder",
-    disabled: ["hello", "ops-hud", "event-tape"],
-  };
+async function readConfig(): Promise<PluginsConfig> {
   try {
-    config = await invoke<PluginsConfig>("plugin_get_config");
+    return await invoke<PluginsConfig>("plugin_get_config");
   } catch (e) {
     console.warn("plugin_get_config", e);
+    return {
+      active_preset: "coder",
+      disabled: ["hello", "ops-hud", "event-tape"],
+    };
   }
-  const disabled = new Set(config.disabled ?? []);
+}
 
-  // User plugins override bundled with same id
+async function collectDesired(
+  bundled: BundledPlugin[]
+): Promise<{ desired: Map<string, DesiredPlugin>; disabled: Set<string>; preset: string }> {
+  const config = await readConfig();
+  const disabled = new Set(config.disabled ?? []);
+  const desired = new Map<string, DesiredPlugin>();
+
   let users: UserPluginInfo[] = [];
   try {
     users = await invoke<UserPluginInfo[]>("plugin_list_user");
@@ -128,52 +141,73 @@ export async function loadAll(bundled: BundledPlugin[]): Promise<void> {
     console.warn("plugin_list_user", e);
   }
 
-  /** only skip bundled when a user plugin with same id actually mounted */
-  const mountedUserIds = new Set<string>();
-
   for (const u of users) {
     if (disabled.has(u.id)) {
       emit("plugin:skipped", { id: u.id, reason: "disabled" }, "host");
       continue;
     }
-    try {
-      if (u.css_path) {
-        await loadCss(convertFileSrc(u.css_path), u.id);
-      }
-      const url = convertFileSrc(u.entry_path);
-      const mod = (await import(/* @vite-ignore */ url)) as PluginModule & {
-        default?: PluginModule;
-      };
-      const panel = mod.default ?? mod;
-      await mountOne(u.manifest, panel, "user", null);
-      mountedUserIds.add(u.id);
-    } catch (e) {
-      console.error("user plugin load", u.id, e);
-      emit(
-        "plugin:error",
-        { id: u.id, phase: "import", error: String(e) },
-        "host"
-      );
-    }
+    const entryPath = u.entry_path;
+    const cssPath = u.css_path;
+    desired.set(u.id, {
+      manifest: u.manifest,
+      source: "user",
+      cssHref: cssPath ? convertFileSrc(cssPath) : null,
+      load: async () => {
+        const url = convertFileSrc(entryPath);
+        const mod = (await import(/* @vite-ignore */ url)) as PluginModule & {
+          default?: PluginModule;
+        };
+        return mod.default ?? mod;
+      },
+    });
   }
 
   const sorted = [...bundled].sort(
     (a, b) => (a.manifest.order ?? 100) - (b.manifest.order ?? 100)
   );
   for (const b of sorted) {
-    if (mountedUserIds.has(b.manifest.id)) continue;
+    if (desired.has(b.manifest.id)) continue;
     if (disabled.has(b.manifest.id)) {
       emit("plugin:skipped", { id: b.manifest.id, reason: "disabled" }, "host");
       continue;
     }
+    desired.set(b.manifest.id, {
+      manifest: b.manifest,
+      source: "bundled",
+      load: () => b.load(),
+    });
+  }
+
+  return {
+    desired,
+    disabled,
+    preset: config.active_preset ?? "coder",
+  };
+}
+
+/** 只挂载/卸载与配置不一致的插件，其它面板保持不动。 */
+export async function reconcilePlugins(bundled: BundledPlugin[]): Promise<void> {
+  const { desired, disabled, preset } = await collectDesired(bundled);
+
+  for (const id of [...mounted.keys()]) {
+    if (!desired.has(id)) {
+      await unmountOne(id);
+    }
+  }
+
+  const sorted = [...desired.values()].sort(
+    (a, b) => (a.manifest.order ?? 100) - (b.manifest.order ?? 100)
+  );
+  for (const spec of sorted) {
+    if (mounted.has(spec.manifest.id)) continue;
     try {
-      const mod = await b.load();
-      await mountOne(b.manifest, mod, "bundled");
+      const mod = await spec.load();
+      await mountOne(spec.manifest, mod, spec.source, spec.cssHref);
     } catch (e) {
-      console.error("bundled plugin load", b.manifest.id, e);
+      console.error("plugin load", spec.manifest.id, e);
       emit(
         "plugin:error",
-        { id: b.manifest.id, phase: "import", error: String(e) },
+        { id: spec.manifest.id, phase: "import", error: String(e) },
         "host"
       );
     }
@@ -184,19 +218,34 @@ export async function loadAll(bundled: BundledPlugin[]): Promise<void> {
     {
       mounted: [...mounted.keys()],
       disabled: [...disabled],
-      preset: config.active_preset ?? "coder",
+      preset,
     },
     "host"
   );
+}
+
+export async function loadAll(bundled: BundledPlugin[]): Promise<void> {
+  await reconcilePlugins(bundled);
 }
 
 export async function setPluginDisabled(id: string, disabled: boolean): Promise<void> {
   await invoke("plugin_set_disabled", { id, disabled });
 }
 
+/** 开关单个插件：只动这一个，不全量刷新。 */
+export async function setPluginEnabled(
+  id: string,
+  enabled: boolean,
+  bundled: BundledPlugin[]
+): Promise<void> {
+  await setPluginDisabled(id, !enabled);
+  await reconcilePlugins(bundled);
+}
+
+/** 显式重载：全部卸载再按配置装回（命令面板「重载插件」用）。 */
 export async function reloadPlugins(bundled: BundledPlugin[]): Promise<void> {
   for (const id of [...mounted.keys()]) {
     await unmountOne(id);
   }
-  await loadAll(bundled);
+  await reconcilePlugins(bundled);
 }

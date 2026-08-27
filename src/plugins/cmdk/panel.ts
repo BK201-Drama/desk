@@ -4,12 +4,12 @@ import type { HostCommand, HostContext, PluginModule, PresetInfo } from "../../h
 import { listCommands } from "../../host/api";
 import { escapeHtml } from "../../host/util";
 import { toggleEditing } from "../../host/edit";
-import { setPluginDisabled } from "../../host/registry";
 import { getConfig, listPresets } from "../../host/presets";
 import "./panel.css";
 
 type DeskHostBridge = {
   reloadPlugins?: () => Promise<void>;
+  setPluginEnabled?: (id: string, enabled: boolean) => Promise<void>;
   applyPreset?: (id: string) => Promise<void>;
   saveCustom?: () => Promise<void>;
 };
@@ -241,8 +241,10 @@ async function togglePlugin(id: string, nextOn: boolean) {
     if (nextOn) disabledIds.delete(id);
     else disabledIds.add(id);
     renderList();
-    await setPluginDisabled(id, !nextOn);
-    await bridge().reloadPlugins?.();
+    // 只挂载/卸载这一个，其它面板不重载
+    const enable = bridge().setPluginEnabled;
+    if (!enable) throw new Error("setPluginEnabled unavailable");
+    await enable(id, nextOn);
     await refreshMeta();
     renderList();
   } catch (e) {
