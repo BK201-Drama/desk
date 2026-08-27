@@ -136,6 +136,8 @@ mod smtc {
 
     fn save_thumbnail(
         session: &GlobalSystemMediaTransportControlsSession,
+        title: &str,
+        artist: &str,
     ) -> Option<String> {
         let props = session.TryGetMediaPropertiesAsync().ok()?.get().ok()?;
         let thumb_ref = props.Thumbnail().ok()?;
@@ -155,8 +157,8 @@ mod smtc {
         let mut bytes = vec![0u8; size as usize];
         reader.ReadBytes(&mut bytes).ok()?;
 
-        let path = artwork_cache_path()?;
-        if let Some(parent) = path.parent() {
+        let base = artwork_cache_path()?;
+        if let Some(parent) = base.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         let ext = if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
@@ -164,7 +166,12 @@ mod smtc {
         } else {
             "jpg"
         };
-        let out = path.with_extension(ext);
+        // 固定路径会让前端/WebView 缓存旧封面；按曲目身份分文件。
+        let mut hash: u64 = 5381;
+        for b in title.bytes().chain(artist.bytes()).chain(bytes.iter().take(64).copied()) {
+            hash = hash.wrapping_mul(33).wrapping_add(b as u64);
+        }
+        let out = base.with_file_name(format!("qqmusic-art-{hash:x}.{ext}"));
         std::fs::write(&out, &bytes).ok()?;
         Some(out.to_string_lossy().to_string())
     }
@@ -237,7 +244,7 @@ mod smtc {
             Err(_) => "unknown".into(),
         };
 
-        let artwork_path = save_thumbnail(&session);
+        let artwork_path = save_thumbnail(&session, &title, &artist);
 
         QqmusicNowPlaying {
             active: !title.is_empty() || status == "playing" || status == "paused",
