@@ -1,43 +1,42 @@
 # desk
 
-Windows 桌面看板（Tauri 2）· OPC 产品 `009-desk`
+Windows 桌面玻璃看板 —— 把常用信息与桌面图标收进一块常驻底栏。
 
-> desk 是 **本机 Win32 + WebView2** 透明窗，不是服务。不适合 Docker 跑（没有桌面 Shell / 围栏 / toast）。本地 Multica 才是 Docker/自托管；desk 只读它的 API。
+用 **Tauri 2 + WebView2** 做透明置底窗口：GitHub 贡献、本地 Multica 看板、待办、QQ 音乐卡片，以及接管后的桌面图标围栏。面板可热插拔，布局可一键切换。
+
+<p align="center">
+  <img src="docs/screenshots/01-board.png" alt="desk 主界面" width="480" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/04-fence.png" alt="桌面围栏" width="360" />
+  &nbsp;
+  <img src="docs/screenshots/02-cmdk.png" alt="命令面板" width="360" />
+</p>
+
+## 功能
+
+- **围栏**：把桌面图标收到 vault，分类展示、搜索、最近启动
+- **GitHub**：贡献热力、置顶仓库、语言占比（token 只存本机）
+- **Multica**：读本地看板摘要（需本机 Multica 在跑）
+- **待办**：轻量提醒列表
+- **QQ 音乐**：系统媒体会话 + 多媒体键播控；点封面拉前台
+- **布局预设**：程序员 / 极简 / 仅围栏 / 自定义
+- **命令面板**：全局快捷键打开；插件用 switch 开关
+
+## 环境
+
+- Windows 10/11 + WebView2
+- Node.js 18+、Rust（[Tauri 前置](https://v2.tauri.app/start/prerequisites/)）
 
 ## 开发
 
 ```bash
-cd opc-project/desk
 npm install
-npm run tauri dev
+npm run tauri:dev
 ```
 
-## 插件（面板热插拔）
-
-看板左右栏与 overlay 由插件填充。契约见：
-
-- `opc-doc/products/009-desk/specs/2026-08-28-plugin-host.md`
-- 黑客感面板：`opc-doc/products/009-desk/specs/2026-08-28-hacker-panels.md`
-
-**User 插件目录：** `%LOCALAPPDATA%\desk\plugins\<id>\`
-
-```
-manifest.json
-panel.js      # ESM default export { mount, unmount? }
-panel.css     # 可选
-```
-
-启用列表：`%LOCALAPPDATA%\desk\plugins.json`（`disabled` 数组；默认禁用 `hello`）。
-
-首次启动会在 user 目录种一份 `hello` 示例。命令面板（`Ctrl+K`）可「启用插件 · Hello」或「重载全部插件」。
-
-> 插件等同本机代码，勿加载不可信目录。
-
-**快捷键：** `Ctrl+Shift+K` / `Win+Shift+K` 命令面板（desk 在桌面底层，普通 `Ctrl+K` 焦点不在板上时无效） · `/` 围栏搜索 · `Win+Shift+D` 编辑开关。也可点右上角菜单图标打开命令面板。
-
-默认布局是 **程序员**；切走后可用「布局 · 程序员」随时切回。详见 `opc-doc/products/009-desk/specs/2026-08-28-layout-presets.md`。
-
-## 发布安装包（含开机自启）
+## 构建
 
 ```bash
 npm run tauri build
@@ -48,35 +47,53 @@ npm run tauri build
 - `src-tauri/target/release/desk.exe`
 - `src-tauri/target/release/bundle/nsis/` 或 `msi/`
 
-安装或直接跑 **release** 的 `desk.exe` 后，默认写入 Windows 登录自启。右上角 **自启开/关** 可切换；关掉会留下 `%LOCALAPPDATA%\desk\autostart-off`，避免下次又被打开。
+安装或运行 release 后可开开机自启；板内可随时关掉。
 
-> `tauri dev` 调试进程也可以注册自启，但不推荐：自启应指向 release 安装路径。先 `tauri build` / 安装，再开自启。
+## 快捷键
 
-## 内存 / 启动
+| 快捷键 | 作用 |
+|--------|------|
+| `Ctrl+Shift+K` / `Win+Shift+K` | 命令面板 |
+| `Win+Shift+D` | 编辑模式 |
+| `/` | 围栏内搜索图标 |
 
-已做：
+desk 置底时普通 `Ctrl+K` 常收不到，所以用带 `Shift` 的全局热键。
 
-- 去掉 Google Fonts 外链（改 Segoe / Cascadia）
-- 启动先围栏+待办，GitHub / Multica 延迟拉取
-- `withGlobalTauri: false`、任务栏隐藏
-- release：`lto` + `opt-level=s` + `strip`
+## 插件
 
-WebView2 本身仍有底噪；要再压只能更晚加载远程图、或缩小窗口。
+看板由插件填充左右栏与 overlay。
 
-## 围栏接管（桌面图标）
+**用户插件目录：** `%LOCALAPPDATA%\desk\plugins\<id>\`
 
-启动后会：
+```
+manifest.json
+panel.js      # ESM：export default { mount, unmount? }
+panel.css     # 可选
+```
 
-1. 清空**用户桌面 + 公共桌面**上的**全部**项目（文件、快捷方式、文件夹；仅留 desktop.ini）
-2. 移入 vault（`%LOCALAPPDATA%\desk\vault`），在围栏里展示
-3. 打开 `HideIcons`，隐藏回收站等系统桌面图标
-4. 单击围栏内图标启动；编辑态可拖排序
+启用列表：`%LOCALAPPDATA%\desk\plugins.json`。
 
-右上角 **还原**：全部移回并取消 HideIcons。
+> 插件等于本机代码，不要加载不可信目录。
 
-## 文档
+## 配置与隐私
 
-- 规格：`opc-doc/products/009-desk/specs/2026-08-16-desk-design.md`
-- 插件契约：`opc-doc/products/009-desk/specs/2026-08-28-plugin-host.md`
-- 计划：`opc-doc/products/009-desk/plans/2026-08-16-desk-mvp.md`
-- 视觉参考：`novel/desk_widget_mock.html`
+敏感信息**不会**进仓库，只落在本机：
+
+| 文件 | 用途 |
+|------|------|
+| `%LOCALAPPDATA%\desk\github.json` | GitHub token（也可 `gh auth` / 环境变量） |
+| `%LOCALAPPDATA%\desk\multica.json` | Multica API token |
+| `%LOCALAPPDATA%\desk\plugins.json` | 布局与禁用列表 |
+| `%LOCALAPPDATA%\desk\vault\` | 围栏接管的桌面文件 |
+| `%LOCALAPPDATA%\desk\reminders.json` | 待办 |
+
+围栏启动后会清空用户/公共桌面上的项目并移入 vault；右上角可**还原**。
+
+## 说明
+
+- desk 是本机桌面窗，不是服务，不适合 Docker 跑
+- Multica / GitHub 连不上时对应面板会降级提示，不影响围栏
+
+## License
+
+MIT
