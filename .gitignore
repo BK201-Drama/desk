@@ -26,5 +26,5 @@ dist-ssr
 # local capture helpers / temp shots
 docs/screenshots/_*.ps1
 docs/screenshots/_*.png
-docs/screenshots/00-*.png
 docs/screenshots/*-screen.png
+docs/screenshots/*-desktop-full.png

@@ -5,13 +5,13 @@ Windows 桌面玻璃看板 —— 把常用信息与桌面图标收进一块常�
 用 **Tauri 2 + WebView2** 做透明置底窗口：GitHub 贡献、本地 Multica 看板、待办、QQ 音乐卡片，以及接管后的桌面图标围栏。面板可热插拔，布局可一键切换。
 
 <p align="center">
-  <img src="docs/screenshots/01-board.png" alt="desk 主界面" width="480" />
+  <img src="docs/screenshots/00-desktop.png" alt="desk on desktop" width="720" />
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/04-fence.png" alt="桌面围栏" width="360" />
+  <img src="docs/screenshots/01-board.png" alt="desk board" width="320" />
   &nbsp;
-  <img src="docs/screenshots/02-cmdk.png" alt="命令面板" width="360" />
+  <img src="docs/screenshots/02-cmdk.png" alt="command palette" width="320" />
 </p>
 
 ## 功能
