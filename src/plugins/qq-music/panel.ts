@@ -22,46 +22,45 @@ let ctxRef: HostContext | null = null;
 let timer: number | null = null;
 let np: NowPlaying | null = null;
 let flash = "";
+let lastRenderKey = "";
+let artPathCached: string | null = null;
+let artBust = 0;
+let refreshing = false;
 
 function artUrl(path: string | null): string {
   if (!path || !ctxRef) return "";
+  if (path !== artPathCached) {
+    artPathCached = path;
+    artBust = Date.now();
+  }
   try {
-    // bust cache so art updates between tracks
-    return `${ctxRef.convertFileSrc(path)}?t=${Date.now()}`;
+    return `${ctxRef.convertFileSrc(path)}?t=${artBust}`;
   } catch {
     return "";
   }
 }
 
-function render() {
+function renderKey(d: NowPlaying | null, flashMsg: string): string {
+  if (!d) return `empty|${flashMsg}`;
+  return [
+    d.active ? 1 : 0,
+    d.status,
+    d.title,
+    d.artist,
+    d.album,
+    d.artwork_path ?? "",
+    d.hint,
+    flashMsg,
+  ].join("\u0001");
+}
+
+const ICON_PREV = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h2v12H6V6zm3.5 6 8.5 6V6l-8.5 6z"/></svg>`;
+const ICON_NEXT = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 6h2v12h-2V6zM6 18l8.5-6L6 6v12z"/></svg>`;
+const ICON_PLAY = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7L8 5z"/></svg>`;
+const ICON_PAUSE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z"/></svg>`;
+
+function bindControls() {
   if (!root) return;
-  const d = np;
-  const playing = d?.status === "playing";
-  const art = artUrl(d?.artwork_path ?? null);
-  const title = d?.active ? d.title || "未知曲目" : "未在播放";
-  const artist = d?.active
-    ? [d.artist, d.album].filter(Boolean).join(" · ") || "QQ 音乐"
-    : d?.hint || "连接 QQ 音乐中…";
-
-  root.innerHTML = `
-    <div class="qqm-card ${playing ? "is-playing" : ""}">
-      <div class="qqm-art" style="${art ? `background-image:url('${art}')` : ""}">
-        ${art ? "" : `<span class="qqm-art-fallback">♪</span>`}
-      </div>
-      <div class="qqm-meta">
-        <div class="qqm-title" title="${escapeAttr(title)}">${escapeHtml(title)}</div>
-        <div class="qqm-artist" title="${escapeAttr(flash || artist)}">${escapeHtml(flash || artist)}</div>
-        <div class="qqm-controls">
-          <button type="button" class="qqm-ctrl" id="qqmPrev" title="上一首">‹</button>
-          <button type="button" class="qqm-ctrl qqm-play" id="qqmToggle" title="播放/暂停">
-            ${playing ? "❚❚" : "▶"}
-          </button>
-          <button type="button" class="qqm-ctrl" id="qqmNext" title="下一首">›</button>
-          <button type="button" class="qqm-open" id="qqmLaunch" title="把 QQ 音乐拉到前台">前台</button>
-        </div>
-      </div>
-    </div>`;
-
   root.querySelector("#qqmToggle")?.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -84,6 +83,43 @@ function render() {
   });
 }
 
+function render(force = false) {
+  if (!root) return;
+  const key = renderKey(np, flash);
+  if (!force && key === lastRenderKey && root.querySelector(".qqm-card")) return;
+  lastRenderKey = key;
+
+  const d = np;
+  const playing = d?.status === "playing";
+  const art = artUrl(d?.artwork_path ?? null);
+  const title = d?.active ? d.title || "未知曲目" : "未在播放";
+  const artistLine = d?.active
+    ? d.artist || d.album || "QQ 音乐"
+    : d?.hint || "连接 QQ 音乐中…";
+  const artistTip = d?.active
+    ? [d.artist, d.album].filter(Boolean).join(" · ") || artistLine
+    : artistLine;
+
+  root.innerHTML = `
+    <div class="qqm-card ${playing ? "is-playing" : ""}">
+      <button type="button" class="qqm-art" id="qqmLaunch" title="打开 QQ 音乐前台"
+        style="${art ? `background-image:url('${art}')` : ""}">
+        ${art ? "" : `<span class="qqm-art-fallback">♪</span>`}
+      </button>
+      <div class="qqm-title" title="${escapeAttr(title)}">${escapeHtml(title)}</div>
+      <div class="qqm-artist" title="${escapeAttr(flash || artistTip)}">${escapeHtml(flash || artistLine)}</div>
+      <div class="qqm-transport" role="group" aria-label="播放控制">
+        <button type="button" class="qqm-ctrl" id="qqmPrev" title="上一首" aria-label="上一首">${ICON_PREV}</button>
+        <button type="button" class="qqm-ctrl qqm-play" id="qqmToggle" title="播放/暂停" aria-label="播放/暂停">
+          ${playing ? ICON_PAUSE : ICON_PLAY}
+        </button>
+        <button type="button" class="qqm-ctrl" id="qqmNext" title="下一首" aria-label="下一首">${ICON_NEXT}</button>
+      </div>
+    </div>`;
+
+  bindControls();
+}
+
 function escapeHtml(s: string) {
   return s
     .replace(/&/g, "&amp;")
@@ -98,17 +134,29 @@ function escapeAttr(s: string) {
 
 function setFlash(msg: string) {
   flash = msg;
-  render();
+  render(true);
   window.setTimeout(() => {
     flash = "";
-    render();
+    render(true);
   }, 1800);
 }
 
 async function refresh() {
-  if (!ctxRef) return;
+  if (!ctxRef || refreshing) return;
+  refreshing = true;
+  const prev = np;
   try {
-    np = await ctxRef.invoke<NowPlaying>("qqmusic_now_playing");
+    const next = await ctxRef.invoke<NowPlaying>("qqmusic_now_playing");
+    // SMTC 过渡态别刷掉播放图标，否则会来回闪
+    if (
+      (next.status === "changing" || next.status === "opened" || next.status === "unknown") &&
+      prev &&
+      (prev.status === "playing" || prev.status === "paused") &&
+      next.title === prev.title
+    ) {
+      next.status = prev.status;
+    }
+    np = next;
   } catch (e) {
     console.warn("qqmusic_now_playing", e);
     np = {
@@ -126,6 +174,8 @@ async function refresh() {
       install_path: null,
       hint: String(e),
     };
+  } finally {
+    refreshing = false;
   }
   if (!flash) render();
 }
@@ -154,16 +204,15 @@ async function act(kind: "toggle" | "next" | "prev") {
         ...np,
         status: np.status === "playing" ? "paused" : "playing",
       };
-      render();
+      render(true);
     }
-    window.setTimeout(() => void refresh(), 400);
+    window.setTimeout(() => void refresh(), 500);
   } catch (e) {
     console.warn(cmd, e);
     setFlash(String(e));
   }
 }
 
-/** 面板存在 = 保证 QQ 在后台；已在跑则 noop。 */
 async function ensureRunning() {
   if (!ctxRef) return;
   try {
@@ -173,7 +222,6 @@ async function ensureRunning() {
   }
 }
 
-/** 显式拉前台（不是「启动」）。 */
 async function launchForeground() {
   if (!ctxRef) return;
   try {
@@ -187,32 +235,33 @@ const panel: PluginModule = {
   async mount(el, ctx) {
     root = el;
     ctxRef = ctx;
-    el.innerHTML = `<div class="qqm-card"><div class="qqm-meta"><div class="qqm-artist">连接 QQ 音乐…</div></div></div>`;
+    lastRenderKey = "";
+    artPathCached = null;
+    el.innerHTML = `<div class="qqm-card"><div class="qqm-artist" style="grid-column:1/-1">连接 QQ 音乐…</div></div>`;
 
     ctx.registerCommand({
       id: "toggle",
-      title: "QQ 音乐 · 播放/暂停",
+      title: "播放/暂停",
       group: "媒体",
       run: () => act("toggle"),
     });
     ctx.registerCommand({
       id: "next",
-      title: "QQ 音乐 · 下一首",
+      title: "下一首",
       group: "媒体",
       run: () => act("next"),
     });
     ctx.registerCommand({
       id: "launch",
-      title: "QQ 音乐 · 拉到前台",
+      title: "QQ 音乐前台",
       group: "媒体",
       run: () => launchForeground(),
     });
 
-    // 有面板就后台自启，不必再点「打开」
     void ensureRunning();
     await refresh();
-    timer = window.setInterval(() => void refresh(), 2000);
-    // 刚拉起时 SMTC 可能还没就绪，稍后补一次
+    // 轮询只拉数据；内容没变不重绘，避免封面/按钮闪烁
+    timer = window.setInterval(() => void refresh(), 3000);
     window.setTimeout(() => void refresh(), 2500);
   },
   unmount() {
@@ -221,6 +270,8 @@ const panel: PluginModule = {
     root = null;
     ctxRef = null;
     np = null;
+    lastRenderKey = "";
+    artPathCached = null;
   },
 };
 

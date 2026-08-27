@@ -89,16 +89,38 @@
   text-align: left;
   border: none;
   background: transparent;
-  padding: 8px 10px;
+  padding: 7px 10px;
   border-radius: 6px;
   cursor: pointer;
   color: var(--ink);
   font-family: "Segoe UI", system-ui, sans-serif;
 }
 
+.cmdk-item-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .cmdk-item:hover,
 .cmdk-item.is-selected {
   background: rgba(45, 106, 79, 0.12);
+}
+
+.cmdk-section {
+  padding: 10px 10px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  opacity: 0.55;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+.cmdk-section:first-child {
+  padding-top: 4px;
 }
 
 .cmdk-title {
@@ -108,7 +130,39 @@
 .cmdk-meta {
   font-size: 10px;
   opacity: 0.55;
-  font-family: "Cascadia Code", Consolas, monospace;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  line-height: 1.35;
+}
+
+.cmdk-switch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgba(26, 35, 50, 0.18);
+  transition: background 140ms ease;
+  pointer-events: none;
+}
+
+.cmdk-switch.is-on {
+  background: var(--accent, #2d6a4f);
+}
+
+.cmdk-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 140ms ease;
+}
+
+.cmdk-switch.is-on .cmdk-switch-knob {
+  transform: translateX(14px);
 }
 
 .cmdk-empty {

@@ -1,111 +1,140 @@
 .qqm-card {
   display: grid;
-  grid-template-columns: 56px 1fr;
-  gap: 10px;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  grid-template-rows: 1fr 1fr;
+  column-gap: 8px;
+  row-gap: 2px;
   align-items: center;
-  margin-top: 8px;
-  padding: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  padding: 5px 6px;
   border-radius: 12px;
-  border: 1px solid rgba(26, 35, 50, 0.1);
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(26, 35, 50, 0.08);
+  transition: background 180ms ease, border-color 180ms ease;
 }
 
 .qqm-card.is-playing {
-  border-color: rgba(49, 194, 124, 0.35);
+  background: rgba(45, 106, 79, 0.08);
+  border-color: rgba(45, 106, 79, 0.2);
 }
 
 .qqm-art {
-  width: 56px;
-  height: 56px;
-  border-radius: 10px;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: 44px;
+  height: 44px;
+  border-radius: 9px;
+  border: none;
+  padding: 0;
   background:
-    linear-gradient(145deg, rgba(49, 194, 124, 0.35), rgba(26, 35, 50, 0.12));
+    linear-gradient(160deg, rgba(45, 106, 79, 0.2), rgba(26, 35, 50, 0.08));
   background-size: cover;
   background-position: center;
   display: grid;
   place-items: center;
   overflow: hidden;
-  flex-shrink: 0;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(26, 35, 50, 0.06);
+}
+
+.qqm-art:hover {
+  box-shadow: 0 0 0 1px rgba(45, 106, 79, 0.28);
 }
 
 .qqm-art-fallback {
-  font-size: 18px;
-  color: rgba(26, 35, 50, 0.45);
-}
-
-.qqm-meta {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  font-size: 14px;
+  color: rgba(45, 106, 79, 0.5);
+  pointer-events: none;
 }
 
 .qqm-title {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.15;
+  align-self: end;
 }
 
 .qqm-artist {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
   font-size: 10px;
   color: var(--ink-soft);
+  opacity: 0.75;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  opacity: 0.9;
+  line-height: 1.15;
+  align-self: start;
 }
 
-.qqm-controls {
-  display: flex;
+.qqm-transport {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 4px;
+  gap: 0;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(26, 35, 50, 0.06);
+  border: 1px solid rgba(26, 35, 50, 0.05);
 }
 
 .qqm-ctrl {
-  width: 26px;
+  width: 24px;
   height: 24px;
-  border-radius: 6px;
-  border: 1px solid rgba(26, 35, 50, 0.1);
-  background: rgba(255, 255, 255, 0.55);
-  color: var(--ink);
-  font-size: 11px;
-  line-height: 1;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
   cursor: pointer;
-  font-family: inherit;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  flex: 0 0 auto;
+  transition: background 120ms ease, color 120ms ease;
 }
 
-.qqm-ctrl:disabled {
-  opacity: 0.35;
-  cursor: default;
+.qqm-ctrl svg {
+  width: 11px;
+  height: 11px;
+  display: block;
+  fill: currentColor;
+}
+
+.qqm-ctrl:hover {
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--ink);
 }
 
 .qqm-play {
-  width: 32px;
-  background: #31c27c;
-  border-color: #31c27c;
+  width: 26px;
+  height: 26px;
+  background: var(--accent);
+  color: #f8fafc;
+  box-shadow: 0 2px 6px rgba(45, 106, 79, 0.25);
+}
+
+.qqm-play svg {
+  width: 10px;
+  height: 10px;
+}
+
+.qqm-play:hover {
+  background: #245a43;
   color: #fff;
-  font-weight: 600;
 }
 
-.qqm-open {
-  margin-left: auto;
-  height: 24px;
-  padding: 0 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(26, 35, 50, 0.1);
-  background: transparent;
-  color: var(--ink-soft);
-  font-size: 10px;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.qqm-open:hover,
-.qqm-ctrl:not(:disabled):hover {
-  filter: brightness(1.04);
+.qqm-card.is-playing .qqm-play {
+  background: #1b4332;
 }
