@@ -1,11 +1,13 @@
 import { listMounted } from "./registry";
-import type { PluginsConfig } from "./types";
+import type { LayoutScheme, PluginsConfig } from "./types";
+
+export const MAX_SCHEMES = 3;
 
 export const PRESET_LABEL: Record<string, string> = {
   coder: "程序员",
   minimal: "极简",
   fence: "仅围栏",
-  custom: "自定义",
+  scheme: "自定义方案",
 };
 
 const PLUGIN_SHORT: Record<string, string> = {
@@ -21,8 +23,37 @@ const PLUGIN_SHORT: Record<string, string> = {
   cmdk: "命令",
 };
 
+const ALL_KNOWN_PLUGINS = [
+  "github",
+  "multica",
+  "remind",
+  "fence",
+  "qq-music",
+  "clock",
+  "ops-hud",
+  "event-tape",
+  "hello",
+] as const;
+
 export function chipLabel(id: string): string {
   return PLUGIN_SHORT[id] ?? id;
+}
+
+export function idsFromSnapshot(disabled: string[], order: string[]): string[] {
+  const dis = new Set(disabled);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of order) {
+    if (id === "cmdk" || dis.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  for (const id of ALL_KNOWN_PLUGINS) {
+    if (dis.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
 }
 
 export function enabledIds(cfg: PluginsConfig): string[] {
@@ -44,61 +75,30 @@ export function enabledIds(cfg: PluginsConfig): string[] {
   return out;
 }
 
-export function schemeName(cfg: PluginsConfig): string {
-  const n = cfg.custom_name?.trim();
-  return n ? n : "我的方案";
+export function activeScheme(cfg: PluginsConfig): LayoutScheme | null {
+  const id = cfg.active_scheme_id;
+  if (!id) return null;
+  return (cfg.schemes ?? []).find((s) => s.id === id) ?? null;
 }
 
-export function hasCustomSaved(cfg: PluginsConfig): boolean {
-  return cfg.custom_disabled != null;
+export function schemeEnabledIds(scheme: LayoutScheme): string[] {
+  return idsFromSnapshot(scheme.disabled ?? [], scheme.order ?? []);
 }
 
-export function hasCustomDraft(cfg: PluginsConfig): boolean {
-  if (!hasCustomSaved(cfg)) {
-    return cfg.active_preset === "custom";
-  }
-  const d = cfg.custom_disabled ?? [];
-  const o = cfg.custom_order ?? [];
-  const curD = cfg.disabled ?? [];
-  const curO = cfg.order ?? [];
+function sameList(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+export function hasSchemeDraft(cfg: PluginsConfig): boolean {
+  if (cfg.active_preset !== "scheme") return false;
+  const scheme = activeScheme(cfg);
+  if (!scheme) return true;
   return (
-    curD.length !== d.length ||
-    curO.length !== o.length ||
-    curD.some((id, i) => id !== d[i]) ||
-    curO.some((id, i) => id !== o[i])
+    !sameList(cfg.disabled ?? [], scheme.disabled ?? []) ||
+    !sameList(cfg.order ?? [], scheme.order ?? [])
   );
 }
 
-const ALL_KNOWN_PLUGINS = [
-  "github",
-  "multica",
-  "remind",
-  "fence",
-  "qq-music",
-  "clock",
-  "ops-hud",
-  "event-tape",
-  "hello",
-] as const;
-
-export function idsFromSnapshot(disabled: string[], order: string[]): string[] {
-  const dis = new Set(disabled);
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const id of order) {
-    if (id === "cmdk" || dis.has(id) || seen.has(id)) continue;
-    seen.add(id);
-    out.push(id);
-  }
-  for (const id of ALL_KNOWN_PLUGINS) {
-    if (dis.has(id) || seen.has(id)) continue;
-    seen.add(id);
-    out.push(id);
-  }
-  return out;
-}
-
-export function savedEnabledIds(cfg: PluginsConfig): string[] {
-  if (!hasCustomSaved(cfg)) return [];
-  return idsFromSnapshot(cfg.custom_disabled ?? [], cfg.custom_order ?? []);
+export function isBuiltinPreset(preset: string): boolean {
+  return preset === "coder" || preset === "minimal" || preset === "fence";
 }

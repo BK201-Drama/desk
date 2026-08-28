@@ -35,22 +35,36 @@ pub struct PresetInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LayoutScheme {
+    pub id: String,
+    pub name: String,
+    pub disabled: Vec<String>,
+    #[serde(default)]
+    pub order: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginsConfig {
     #[serde(default = "default_preset")]
     pub active_preset: String,
+    #[serde(default)]
+    pub active_scheme_id: Option<String>,
     #[serde(default = "default_disabled")]
     pub disabled: Vec<String>,
-    /// Snapshot when user saves「自定义」or diverges via toggles
-    #[serde(default)]
-    pub custom_disabled: Option<Vec<String>>,
-    /// Display order of plugin ids (within each slot). Empty = manifest.order.
     #[serde(default)]
     pub order: Vec<String>,
     #[serde(default)]
+    pub schemes: Vec<LayoutScheme>,
+    /// legacy — migrated into `schemes`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_disabled: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_order: Option<Vec<String>>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_name: Option<String>,
 }
+
+const MAX_SCHEMES: usize = 3;
 
 fn default_preset() -> String {
     "coder".into()
@@ -96,34 +110,100 @@ fn fence_only_disabled() -> Vec<String> {
     ]
 }
 
-fn preset_disabled(id: &str, cfg: &PluginsConfig) -> Option<Vec<String>> {
+fn preset_disabled(id: &str, _cfg: &PluginsConfig) -> Option<Vec<String>> {
     match id {
         "coder" => Some(coder_disabled()),
         "minimal" => Some(minimal_disabled()),
         "fence" => Some(fence_only_disabled()),
-        "custom" => cfg.custom_disabled.clone(),
         _ => None,
     }
 }
 
-fn custom_scheme_name(cfg: &PluginsConfig) -> String {
-    cfg.custom_name
-        .clone()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "我的方案".into())
+fn new_scheme_id() -> String {
+    format!(
+        "s{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    )
 }
 
-fn has_custom_saved(cfg: &PluginsConfig) -> bool {
-    cfg.custom_disabled.is_some()
+fn default_scheme_name(count: usize) -> String {
+    format!("方案 {}", count + 1)
 }
 
-fn has_custom_draft(cfg: &PluginsConfig) -> bool {
-    match (&cfg.custom_disabled, &cfg.custom_order) {
-        (Some(d), Some(o)) => cfg.disabled != *d || cfg.order != *o,
-        (Some(d), None) => cfg.disabled != *d || !cfg.order.is_empty(),
-        (None, Some(o)) => !o.is_empty() || cfg.active_preset == "custom",
-        (None, None) => cfg.active_preset == "custom",
+fn find_scheme<'a>(cfg: &'a PluginsConfig, id: &str) -> Option<&'a LayoutScheme> {
+    cfg.schemes.iter().find(|s| s.id == id)
+}
+
+fn find_scheme_mut<'a>(cfg: &'a mut PluginsConfig, id: &str) -> Option<&'a mut LayoutScheme> {
+    cfg.schemes.iter_mut().find(|s| s.id == id)
+}
+
+fn active_scheme_snapshot(cfg: &PluginsConfig) -> Option<(Vec<String>, Vec<String>)> {
+    let id = cfg.active_scheme_id.as_ref()?;
+    let s = find_scheme(cfg, id)?;
+    Some((s.disabled.clone(), s.order.clone()))
+}
+
+fn has_scheme_draft(cfg: &PluginsConfig) -> bool {
+    if cfg.active_preset != "scheme" {
+        return false;
     }
+    match active_scheme_snapshot(cfg) {
+        Some((d, o)) => cfg.disabled != d || cfg.order != o,
+        None => true,
+    }
+}
+
+fn mark_scheme_draft(cfg: &mut PluginsConfig) {
+    if cfg.active_preset != "scheme" {
+        cfg.active_scheme_id = None;
+    }
+    cfg.active_preset = "scheme".into();
+}
+
+fn apply_coder_defaults(cfg: &mut PluginsConfig) {
+    cfg.active_preset = "coder".into();
+    cfg.active_scheme_id = None;
+    cfg.disabled = coder_disabled();
+    cfg.order.clear();
+}
+
+fn migrate_config(cfg: &mut PluginsConfig) {
+    if cfg.schemes.is_empty() {
+        if let Some(d) = cfg.custom_disabled.take() {
+            let name = cfg
+                .custom_name
+                .take()
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| "方案 1".into());
+            let order = cfg.custom_order.take().unwrap_or_default();
+            let id = new_scheme_id();
+            cfg.schemes.push(LayoutScheme {
+                id: id.clone(),
+                name,
+                disabled: d,
+                order,
+            });
+            if cfg.active_preset == "custom" {
+                cfg.active_preset = "scheme".into();
+                cfg.active_scheme_id = Some(id);
+            }
+        }
+    }
+    if cfg.active_preset == "custom" {
+        if let Some(id) = cfg.schemes.first().map(|s| s.id.clone()) {
+            cfg.active_preset = "scheme".into();
+            cfg.active_scheme_id = Some(id);
+        } else {
+            cfg.active_preset = "coder".into();
+        }
+    }
+    cfg.custom_disabled = None;
+    cfg.custom_order = None;
+    cfg.custom_name = None;
 }
 
 fn desk_root() -> Result<PathBuf, String> {
@@ -245,9 +325,11 @@ pub fn plugin_get_config() -> Result<PluginsConfig, String> {
     if !path.exists() {
         let cfg = PluginsConfig {
             active_preset: default_preset(),
+            active_scheme_id: None,
             disabled: default_disabled(),
-            custom_disabled: None,
             order: Vec::new(),
+            schemes: Vec::new(),
+            custom_disabled: None,
             custom_order: None,
             custom_name: None,
         };
@@ -256,11 +338,11 @@ pub fn plugin_get_config() -> Result<PluginsConfig, String> {
     }
     let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let mut cfg: PluginsConfig = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
-    // migrate old files missing active_preset
+    migrate_config(&mut cfg);
     if cfg.active_preset.is_empty() {
         cfg.active_preset = default_preset();
-        let _ = write_config(&cfg);
     }
+    let _ = write_config(&cfg);
     Ok(cfg)
 }
 
@@ -277,8 +359,7 @@ pub fn plugin_set_disabled(id: String, disabled: bool) -> Result<PluginsConfig, 
     } else {
         cfg.disabled.retain(|x| x != &id);
     }
-    // 改动进入草稿，不自动覆盖已保存方案
-    cfg.active_preset = "custom".into();
+    mark_scheme_draft(&mut cfg);
     write_config(&cfg)?;
     Ok(cfg)
 }
@@ -286,13 +367,12 @@ pub fn plugin_set_disabled(id: String, disabled: bool) -> Result<PluginsConfig, 
 #[tauri::command]
 pub fn plugin_set_order(order: Vec<String>) -> Result<PluginsConfig, String> {
     let mut cfg = plugin_get_config()?;
-    // de-dupe, drop empty
     let mut seen = std::collections::HashSet::new();
     cfg.order = order
         .into_iter()
         .filter(|id| !id.is_empty() && seen.insert(id.clone()))
         .collect();
-    cfg.active_preset = "custom".into();
+    mark_scheme_draft(&mut cfg);
     write_config(&cfg)?;
     Ok(cfg)
 }
@@ -320,15 +400,16 @@ pub fn plugin_list_presets() -> Result<Vec<PresetInfo>, String> {
             builtin: true,
         },
     ];
-    if has_custom_saved(&cfg) || has_custom_draft(&cfg) {
-        let desc = if has_custom_draft(&cfg) {
-            "当前有未保存改动".into()
+    for s in &cfg.schemes {
+        let desc = if cfg.active_scheme_id.as_deref() == Some(s.id.as_str()) && has_scheme_draft(&cfg)
+        {
+            "当前方案 · 有未保存改动".into()
         } else {
-            "已保存，可随时切回".into()
+            "已保存的自定义方案".into()
         };
         out.push(PresetInfo {
-            id: "custom".into(),
-            name: custom_scheme_name(&cfg),
+            id: format!("scheme:{}", s.id),
+            name: s.name.clone(),
             description: desc,
             builtin: false,
         });
@@ -338,18 +419,88 @@ pub fn plugin_list_presets() -> Result<Vec<PresetInfo>, String> {
 
 #[tauri::command]
 pub fn plugin_apply_preset(id: String) -> Result<PluginsConfig, String> {
+    if id.starts_with("scheme:") {
+        return plugin_apply_scheme(id.trim_start_matches("scheme:").into());
+    }
     let mut cfg = plugin_get_config()?;
     let disabled = preset_disabled(&id, &cfg).ok_or_else(|| format!("未知布局: {id}"))?;
-    if id == "custom" && cfg.custom_disabled.is_none() {
-        return Err("还没有保存的方案，调好插件后点「保存方案」".into());
-    }
     cfg.active_preset = id.clone();
+    cfg.active_scheme_id = None;
     cfg.disabled = disabled;
-    if id == "custom" {
-        cfg.order = cfg.custom_order.clone().unwrap_or_default();
-    } else {
-        // 内置布局回到 manifest 默认顺序
-        cfg.order.clear();
+    cfg.order.clear();
+    write_config(&cfg)?;
+    Ok(cfg)
+}
+
+#[tauri::command]
+pub fn plugin_apply_scheme(id: String) -> Result<PluginsConfig, String> {
+    let mut cfg = plugin_get_config()?;
+    let scheme = find_scheme(&cfg, &id)
+        .ok_or_else(|| format!("方案不存在: {id}"))?
+        .clone();
+    cfg.active_preset = "scheme".into();
+    cfg.active_scheme_id = Some(scheme.id);
+    cfg.disabled = scheme.disabled;
+    cfg.order = scheme.order;
+    write_config(&cfg)?;
+    Ok(cfg)
+}
+
+#[tauri::command]
+pub fn plugin_create_scheme(name: Option<String>) -> Result<PluginsConfig, String> {
+    let mut cfg = plugin_get_config()?;
+    if cfg.schemes.len() >= MAX_SCHEMES {
+        return Err(format!("最多保存 {MAX_SCHEMES} 个方案，请先删除一个"));
+    }
+    let label = name
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| default_scheme_name(cfg.schemes.len()));
+    let scheme = LayoutScheme {
+        id: new_scheme_id(),
+        name: label,
+        disabled: cfg.disabled.clone(),
+        order: cfg.order.clone(),
+    };
+    let id = scheme.id.clone();
+    cfg.schemes.push(scheme);
+    cfg.active_preset = "scheme".into();
+    cfg.active_scheme_id = Some(id);
+    write_config(&cfg)?;
+    Ok(cfg)
+}
+
+#[tauri::command]
+pub fn plugin_update_scheme(id: String, name: Option<String>) -> Result<PluginsConfig, String> {
+    let mut cfg = plugin_get_config()?;
+    let disabled = cfg.disabled.clone();
+    let order = cfg.order.clone();
+    let scheme = find_scheme_mut(&mut cfg, &id).ok_or_else(|| format!("方案不存在: {id}"))?;
+    scheme.disabled = disabled;
+    scheme.order = order;
+    if let Some(n) = name.filter(|s| !s.trim().is_empty()) {
+        scheme.name = n.trim().to_string();
+    }
+    cfg.active_preset = "scheme".into();
+    cfg.active_scheme_id = Some(id);
+    write_config(&cfg)?;
+    Ok(cfg)
+}
+
+#[tauri::command]
+pub fn plugin_delete_scheme(id: String) -> Result<PluginsConfig, String> {
+    let mut cfg = plugin_get_config()?;
+    let was_active = cfg.active_scheme_id.as_deref() == Some(id.as_str());
+    cfg.schemes.retain(|s| s.id != id);
+    if was_active {
+        if let Some(s) = cfg.schemes.first().cloned() {
+            cfg.active_preset = "scheme".into();
+            cfg.active_scheme_id = Some(s.id.clone());
+            cfg.disabled = s.disabled;
+            cfg.order = s.order;
+        } else {
+            apply_coder_defaults(&mut cfg);
+        }
     }
     write_config(&cfg)?;
     Ok(cfg)
@@ -357,32 +508,25 @@ pub fn plugin_apply_preset(id: String) -> Result<PluginsConfig, String> {
 
 #[tauri::command]
 pub fn plugin_save_custom(name: Option<String>) -> Result<PluginsConfig, String> {
-    let mut cfg = plugin_get_config()?;
-    cfg.custom_disabled = Some(cfg.disabled.clone());
-    cfg.custom_order = Some(cfg.order.clone());
-    if let Some(n) = name.filter(|s| !s.trim().is_empty()) {
-        cfg.custom_name = Some(n.trim().to_string());
+    let cfg = plugin_get_config()?;
+    if let Some(id) = cfg.active_scheme_id.clone() {
+        if find_scheme(&cfg, &id).is_some() {
+            return plugin_update_scheme(id, name);
+        }
     }
-    cfg.active_preset = "custom".into();
-    write_config(&cfg)?;
-    Ok(cfg)
+    plugin_create_scheme(name)
 }
 
 #[tauri::command]
 pub fn plugin_discard_custom_draft() -> Result<PluginsConfig, String> {
     let mut cfg = plugin_get_config()?;
-    if let Some(d) = cfg.custom_disabled.clone() {
+    if let Some((d, o)) = active_scheme_snapshot(&cfg) {
         cfg.disabled = d;
-        cfg.order = cfg.custom_order.clone().unwrap_or_default();
-        cfg.active_preset = "custom".into();
+        cfg.order = o;
         write_config(&cfg)?;
         return Ok(cfg);
     }
-    // 从未保存过：回到程序员默认
-    let disabled = coder_disabled();
-    cfg.active_preset = "coder".into();
-    cfg.disabled = disabled;
-    cfg.order.clear();
+    apply_coder_defaults(&mut cfg);
     write_config(&cfg)?;
     Ok(cfg)
 }

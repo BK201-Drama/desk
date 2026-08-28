@@ -6,13 +6,14 @@ import { escapeHtml } from "../../host/util";
 import { toggleEditing } from "../../host/edit";
 import { getConfig, listPresets } from "../../host/presets";
 import {
+  activeScheme,
   chipLabel,
   enabledIds,
-  hasCustomDraft,
-  hasCustomSaved,
+  hasSchemeDraft,
+  isBuiltinPreset,
+  MAX_SCHEMES,
   PRESET_LABEL,
-  savedEnabledIds,
-  schemeName,
+  schemeEnabledIds,
 } from "../../host/layout-util";
 import { showToast } from "../../host/toast";
 import type { PluginsConfig } from "../../host/types";
@@ -23,8 +24,11 @@ type DeskHostBridge = {
   setPluginEnabled?: (id: string, enabled: boolean) => Promise<void>;
   movePlugin?: (id: string, dir: -1 | 1) => Promise<void>;
   applyPreset?: (id: string) => Promise<void>;
-  saveCustom?: (name?: string) => Promise<void>;
-  discardCustom?: () => Promise<void>;
+  applyScheme?: (id: string) => Promise<void>;
+  createScheme?: (name?: string) => Promise<void>;
+  updateScheme?: (id: string, name?: string) => Promise<void>;
+  deleteScheme?: (id: string) => Promise<void>;
+  discardDraft?: () => Promise<void>;
 };
 
 const MAIN_PLUGINS = ["github", "multica", "remind", "fence", "qq-music", "clock"] as const;
@@ -239,33 +243,79 @@ function chipsHtml(ids: string[], emptyText: string) {
 }
 
 async function applyPresetId(id: string) {
-  await bridge().applyPreset?.(id);
+  if (id.startsWith("scheme:")) {
+    await bridge().applyScheme?.(id.slice("scheme:".length));
+  } else {
+    await bridge().applyPreset?.(id);
+  }
   await refreshMeta();
-  if (id === "custom") showToast(`已应用「${layoutCfg ? schemeName(layoutCfg) : "我的方案"}」`);
-  else showToast(`已切到${PRESET_LABEL[id] ?? id}`);
+  showToast(`已切到${PRESET_LABEL[id] ?? id.replace(/^scheme:/, "")}`);
   renderAll();
 }
 
-async function saveScheme() {
+async function applySchemeTab(id: string) {
+  await bridge().applyScheme?.(id);
+  await refreshMeta();
+  const name = layoutCfg?.schemes?.find((s) => s.id === id)?.name ?? "方案";
+  showToast(`已应用「${name}」`);
+  renderAll();
+}
+
+function schemeNameInputValue(): string {
+  const scheme = layoutCfg ? activeScheme(layoutCfg) : null;
+  return scheme?.name ?? "";
+}
+
+async function createNewScheme() {
+  const count = layoutCfg?.schemes?.length ?? 0;
+  if (count >= MAX_SCHEMES) {
+    alert(`最多 ${MAX_SCHEMES} 个方案，请先删除一个`);
+    return;
+  }
   const input = root?.querySelector<HTMLInputElement>(".cmdk-scheme-name");
   const name = input?.value.trim();
-  await bridge().saveCustom?.(name || undefined);
+  await bridge().createScheme?.(name || undefined);
   await refreshMeta();
-  showToast(`方案已保存${name ? `：${name}` : ""}`);
+  showToast(`已新建方案（${layoutCfg?.schemes?.length ?? 0}/${MAX_SCHEMES}）`);
+  renderAll();
+}
+
+async function saveActiveScheme() {
+  const input = root?.querySelector<HTMLInputElement>(".cmdk-scheme-name");
+  const name = input?.value.trim();
+  const id = layoutCfg?.active_scheme_id;
+  if (id) {
+    await bridge().updateScheme?.(id, name || undefined);
+    await refreshMeta();
+    showToast("方案已保存");
+  } else if ((layoutCfg?.schemes?.length ?? 0) < MAX_SCHEMES) {
+    await bridge().createScheme?.(name || undefined);
+    await refreshMeta();
+    showToast("方案已保存");
+  } else {
+    alert(`最多 ${MAX_SCHEMES} 个方案，请选中一个后保存，或先删除`);
+    return;
+  }
   renderAll();
 }
 
 async function discardScheme() {
-  const hadSaved = layoutCfg != null && hasCustomSaved(layoutCfg);
-  await bridge().discardCustom?.();
+  const hadScheme = layoutCfg?.active_scheme_id != null;
+  await bridge().discardDraft?.();
   await refreshMeta();
-  showToast(hadSaved ? "已恢复为上次保存的方案" : "已恢复为程序员布局");
+  showToast(hadScheme ? "已恢复为上次保存的版本" : "已恢复为程序员布局");
   renderAll();
 }
 
-async function applySavedScheme() {
-  if (!layoutCfg || !hasCustomSaved(layoutCfg)) return;
-  await applyPresetId("custom");
+async function deleteActiveScheme() {
+  const id = layoutCfg?.active_scheme_id;
+  if (!id) return;
+  const name = layoutCfg?.schemes?.find((s) => s.id === id)?.name ?? "方案";
+  if (!confirm(`删除方案「${name}」？`)) return;
+  await bridge().deleteScheme?.(id);
+  await refreshMeta();
+  showToast(`已删除「${name}」`);
+  renderAll();
 }
 
 function renderComposer() {
@@ -280,52 +330,60 @@ function renderComposer() {
     return;
   }
 
-  const saved = hasCustomSaved(layoutCfg);
-  const draft = hasCustomDraft(layoutCfg);
+  const schemes = layoutCfg.schemes ?? [];
+  const count = schemes.length;
+  const activeId = layoutCfg.active_scheme_id ?? null;
+  const draft = hasSchemeDraft(layoutCfg);
+  const onScheme = layoutCfg.active_preset === "scheme";
+  const current = activeScheme(layoutCfg);
   const currentBlocks = enabledIds(layoutCfg);
-  const savedBlocks = saved ? savedEnabledIds(layoutCfg) : [];
-  const name = schemeName(layoutCfg);
+  const canCreate = count < MAX_SCHEMES;
 
-  const status = draft
-    ? `<span class="cmdk-scheme-status is-draft">● 有未保存改动</span>`
-    : saved
-      ? `<span class="cmdk-scheme-status is-saved">✓ 已保存</span>`
-      : `<span class="cmdk-scheme-status">在下面开关插件，然后保存</span>`;
+  const tabs = schemes
+    .map((s) => {
+      const isActive = activeId === s.id && onScheme;
+      const dot = isActive && draft ? '<span class="cmdk-scheme-dot"></span>' : "";
+      return `<button type="button" class="cmdk-scheme-tab${isActive ? " is-active" : ""}" data-scheme-id="${escapeHtml(s.id)}">${dot}${escapeHtml(s.name)}</button>`;
+    })
+    .join("");
 
-  const pills = [
-    ...QUICK_PRESETS.map(
-      (p) =>
-        `<button type="button" class="cmdk-preset-pill${activePreset === p.id ? " is-active" : ""}" data-preset="${p.id}">${p.label}</button>`
-    ),
-    saved
-      ? `<button type="button" class="cmdk-preset-pill cmdk-preset-pill-custom${activePreset === "custom" && !draft ? " is-active" : ""}" data-preset="custom">${escapeHtml(name)}</button>`
-      : "",
-  ].join("");
+  const status = !onScheme
+    ? `<span class="cmdk-scheme-status">在下方改插件，再新建或保存到方案</span>`
+    : draft
+      ? `<span class="cmdk-scheme-status is-draft">● 有未保存改动</span>`
+      : `<span class="cmdk-scheme-status is-saved">✓ 已保存</span>`;
 
   const savedTrack =
-    saved && draft
+    current && draft
       ? `<div class="cmdk-scheme-saved">
-          <span class="cmdk-scheme-sublabel">已保存</span>
-          <div class="cmdk-composer-track is-dim">${chipsHtml(savedBlocks, "空")}</div>
+          <span class="cmdk-scheme-sublabel">已保存版本</span>
+          <div class="cmdk-composer-track is-dim">${chipsHtml(schemeEnabledIds(current), "空")}</div>
         </div>`
       : "";
+
+  const pills = QUICK_PRESETS.map(
+    (p) =>
+      `<button type="button" class="cmdk-preset-pill${isBuiltinPreset(activePreset) && activePreset === p.id ? " is-active" : ""}" data-preset="${p.id}">${p.label}</button>`
+  ).join("");
 
   composer.innerHTML = `
     <div class="cmdk-scheme-card">
       <div class="cmdk-scheme-head">
-        <span class="cmdk-composer-label">我的方案</span>
-        <input class="cmdk-scheme-name" type="text" value="${escapeHtml(name === "我的方案" ? "" : name)}" placeholder="给方案起个名（可选）" maxlength="24" />
+        <span class="cmdk-composer-label">我的方案 <span class="cmdk-scheme-count">${count}/${MAX_SCHEMES}</span></span>
+        <button type="button" class="cmdk-scheme-new${canCreate ? "" : " disabled"}" data-action="new"${canCreate ? "" : " disabled"}>+ 新建</button>
       </div>
+      <div class="cmdk-scheme-tabs">${tabs || `<span class="cmdk-scheme-empty">还没有方案，点「新建」</span>`}</div>
+      <input class="cmdk-scheme-name" type="text" value="${escapeHtml(schemeNameInputValue())}" placeholder="方案名称" maxlength="24" />
       <div class="cmdk-scheme-edit">
-        <span class="cmdk-scheme-sublabel">${draft || !saved ? "正在编辑" : "当前"}</span>
+        <span class="cmdk-scheme-sublabel">正在编辑</span>
         <div class="cmdk-composer-track">${chipsHtml(currentBlocks, "还没有面板，下面打开插件")}</div>
       </div>
       ${savedTrack}
       ${status}
       <div class="cmdk-scheme-actions">
-        <button type="button" class="cmdk-scheme-btn primary" data-action="save">保存方案</button>
-        <button type="button" class="cmdk-scheme-btn" data-action="apply"${saved ? "" : " disabled"}>应用已保存</button>
+        <button type="button" class="cmdk-scheme-btn primary" data-action="save"${onScheme || count < MAX_SCHEMES ? "" : " disabled"}>保存方案</button>
         <button type="button" class="cmdk-scheme-btn" data-action="discard"${draft ? "" : " disabled"}>放弃改动</button>
+        <button type="button" class="cmdk-scheme-btn danger" data-action="delete"${activeId ? "" : " disabled"}>删除</button>
       </div>
       <div class="cmdk-builtin-row">
         <span class="cmdk-builtin-label">内置</span>
@@ -339,17 +397,27 @@ function renderComposer() {
       void applyPresetId(btn.dataset.preset!);
     });
   });
+  composer.querySelectorAll<HTMLButtonElement>("[data-scheme-id]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void applySchemeTab(btn.dataset.schemeId!);
+    });
+  });
+  composer.querySelector<HTMLButtonElement>('[data-action="new"]')?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void createNewScheme();
+  });
   composer.querySelector<HTMLButtonElement>('[data-action="save"]')?.addEventListener("click", (e) => {
     e.stopPropagation();
-    void saveScheme();
-  });
-  composer.querySelector<HTMLButtonElement>('[data-action="apply"]')?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    void applySavedScheme();
+    void saveActiveScheme();
   });
   composer.querySelector<HTMLButtonElement>('[data-action="discard"]')?.addEventListener("click", (e) => {
     e.stopPropagation();
     void discardScheme();
+  });
+  composer.querySelector<HTMLButtonElement>('[data-action="delete"]')?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void deleteActiveScheme();
   });
   composer.querySelector<HTMLInputElement>(".cmdk-scheme-name")?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -358,7 +426,7 @@ function renderComposer() {
     e.stopPropagation();
     if (e.key === "Enter") {
       e.preventDefault();
-      void saveScheme();
+      void saveActiveScheme();
     }
   });
 }

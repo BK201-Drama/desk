@@ -104,9 +104,80 @@
   margin-bottom: 8px;
 }
 
+.cmdk-scheme-count {
+  opacity: 0.55;
+  font-weight: 500;
+}
+
+.cmdk-scheme-new {
+  border: 1px dashed rgba(45, 106, 79, 0.45);
+  background: rgba(45, 106, 79, 0.08);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cmdk-scheme-new:hover:not(.disabled):not(:disabled) {
+  background: rgba(45, 106, 79, 0.16);
+}
+
+.cmdk-scheme-new.disabled,
+.cmdk-scheme-new:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.cmdk-scheme-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.cmdk-scheme-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(26, 35, 50, 0.14);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmdk-scheme-tab.is-active {
+  border-color: rgba(45, 106, 79, 0.45);
+  background: rgba(45, 106, 79, 0.14);
+  color: var(--accent);
+}
+
+.cmdk-scheme-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #b45309;
+  flex-shrink: 0;
+}
+
+.cmdk-scheme-empty {
+  font-size: 10px;
+  color: var(--ink-soft);
+  opacity: 0.6;
+}
+
 .cmdk-scheme-name {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
+  margin-bottom: 8px;
   border: 1px solid rgba(26, 35, 50, 0.14);
   border-radius: 6px;
   padding: 4px 8px;
@@ -118,6 +189,16 @@
 
 .cmdk-scheme-name:focus {
   border-color: rgba(45, 106, 79, 0.45);
+}
+
+.cmdk-scheme-btn.danger {
+  color: #9b2226;
+  border-color: rgba(155, 34, 38, 0.25);
+}
+
+.cmdk-scheme-btn.danger:hover:not(:disabled) {
+  background: rgba(155, 34, 38, 0.08);
+  border-color: rgba(155, 34, 38, 0.35);
 }
 
 .cmdk-scheme-edit,

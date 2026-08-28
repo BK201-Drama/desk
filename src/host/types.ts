@@ -83,14 +83,19 @@ export type UserPluginInfo = {
   manifest: PluginManifest;
 };
 
+export type LayoutScheme = {
+  id: string;
+  name: string;
+  disabled: string[];
+  order: string[];
+};
+
 export type PluginsConfig = {
   active_preset: string;
+  active_scheme_id?: string | null;
   disabled: string[];
-  custom_disabled?: string[] | null;
-  /** 插件显示顺序；空则用各 manifest.order */
   order?: string[];
-  custom_order?: string[] | null;
-  custom_name?: string | null;
+  schemes?: LayoutScheme[];
 };
 
 export type PresetInfo = {
