@@ -171,6 +171,7 @@ pub fn run() {
             plugins::plugin_list_presets,
             plugins::plugin_apply_preset,
             plugins::plugin_save_custom,
+            plugins::plugin_discard_custom_draft,
             plugins::plugin_storage_get,
             plugins::plugin_storage_set,
             qqmusic::qqmusic_status,

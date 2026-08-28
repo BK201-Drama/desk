@@ -43,3 +43,62 @@ export function enabledIds(cfg: PluginsConfig): string[] {
   }
   return out;
 }
+
+export function schemeName(cfg: PluginsConfig): string {
+  const n = cfg.custom_name?.trim();
+  return n ? n : "我的方案";
+}
+
+export function hasCustomSaved(cfg: PluginsConfig): boolean {
+  return cfg.custom_disabled != null;
+}
+
+export function hasCustomDraft(cfg: PluginsConfig): boolean {
+  if (!hasCustomSaved(cfg)) {
+    return cfg.active_preset === "custom";
+  }
+  const d = cfg.custom_disabled ?? [];
+  const o = cfg.custom_order ?? [];
+  const curD = cfg.disabled ?? [];
+  const curO = cfg.order ?? [];
+  return (
+    curD.length !== d.length ||
+    curO.length !== o.length ||
+    curD.some((id, i) => id !== d[i]) ||
+    curO.some((id, i) => id !== o[i])
+  );
+}
+
+const ALL_KNOWN_PLUGINS = [
+  "github",
+  "multica",
+  "remind",
+  "fence",
+  "qq-music",
+  "clock",
+  "ops-hud",
+  "event-tape",
+  "hello",
+] as const;
+
+export function idsFromSnapshot(disabled: string[], order: string[]): string[] {
+  const dis = new Set(disabled);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of order) {
+    if (id === "cmdk" || dis.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  for (const id of ALL_KNOWN_PLUGINS) {
+    if (dis.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}
+
+export function savedEnabledIds(cfg: PluginsConfig): string[] {
+  if (!hasCustomSaved(cfg)) return [];
+  return idsFromSnapshot(cfg.custom_disabled ?? [], cfg.custom_order ?? []);
+}

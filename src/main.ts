@@ -6,7 +6,7 @@ import {
   reloadPlugins,
   setPluginEnabled,
 } from "./host/registry";
-import { applyPreset, saveCustomPreset } from "./host/presets";
+import { applyPreset, discardCustomDraft, saveCustomPreset } from "./host/presets";
 import { initReorderDrag } from "./host/reorder";
 import { emit } from "./host/events";
 import { bundledPlugins } from "./plugins";
@@ -18,7 +18,8 @@ import "./styles.css";
     setPluginEnabled: (id: string, enabled: boolean) => Promise<void>;
     movePlugin: (id: string, dir: -1 | 1) => Promise<void>;
     applyPreset: (id: string) => Promise<void>;
-    saveCustom: () => Promise<void>;
+    saveCustom: (name?: string) => Promise<void>;
+    discardCustom: () => Promise<void>;
   };
 }).__deskHost = {
   reloadPlugins: () => reloadPlugins(bundledPlugins),
@@ -29,8 +30,11 @@ import "./styles.css";
   applyPreset: async (id: string) => {
     await applyPreset(id, bundledPlugins);
   },
-  saveCustom: async () => {
-    await saveCustomPreset(bundledPlugins);
+  saveCustom: async (name?: string) => {
+    await saveCustomPreset(bundledPlugins, name);
+  },
+  discardCustom: async () => {
+    await discardCustomDraft(bundledPlugins);
   },
 };
 

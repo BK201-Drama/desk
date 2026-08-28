@@ -5,7 +5,15 @@ import { listCommands } from "../../host/api";
 import { escapeHtml } from "../../host/util";
 import { toggleEditing } from "../../host/edit";
 import { getConfig, listPresets } from "../../host/presets";
-import { chipLabel, enabledIds, PRESET_LABEL } from "../../host/layout-util";
+import {
+  chipLabel,
+  enabledIds,
+  hasCustomDraft,
+  hasCustomSaved,
+  PRESET_LABEL,
+  savedEnabledIds,
+  schemeName,
+} from "../../host/layout-util";
 import { showToast } from "../../host/toast";
 import type { PluginsConfig } from "../../host/types";
 import "./panel.css";
@@ -15,7 +23,8 @@ type DeskHostBridge = {
   setPluginEnabled?: (id: string, enabled: boolean) => Promise<void>;
   movePlugin?: (id: string, dir: -1 | 1) => Promise<void>;
   applyPreset?: (id: string) => Promise<void>;
-  saveCustom?: () => Promise<void>;
+  saveCustom?: (name?: string) => Promise<void>;
+  discardCustom?: () => Promise<void>;
 };
 
 const MAIN_PLUGINS = ["github", "multica", "remind", "fence", "qq-music", "clock"] as const;
@@ -220,12 +229,43 @@ function orderControlsHtml(id: string, on: boolean) {
   </span>`;
 }
 
+function chipsHtml(ids: string[], emptyText: string) {
+  if (!ids.length) {
+    return `<span class="cmdk-chip empty">${escapeHtml(emptyText)}</span>`;
+  }
+  return ids
+    .map((id) => `<span class="cmdk-chip">${escapeHtml(chipLabel(id))}</span>`)
+    .join('<span class="cmdk-chip-sep">›</span>');
+}
+
 async function applyPresetId(id: string) {
   await bridge().applyPreset?.(id);
   await refreshMeta();
-  if (id === "custom") showToast("已切到自定义布局");
+  if (id === "custom") showToast(`已应用「${layoutCfg ? schemeName(layoutCfg) : "我的方案"}」`);
   else showToast(`已切到${PRESET_LABEL[id] ?? id}`);
   renderAll();
+}
+
+async function saveScheme() {
+  const input = root?.querySelector<HTMLInputElement>(".cmdk-scheme-name");
+  const name = input?.value.trim();
+  await bridge().saveCustom?.(name || undefined);
+  await refreshMeta();
+  showToast(`方案已保存${name ? `：${name}` : ""}`);
+  renderAll();
+}
+
+async function discardScheme() {
+  const hadSaved = layoutCfg != null && hasCustomSaved(layoutCfg);
+  await bridge().discardCustom?.();
+  await refreshMeta();
+  showToast(hadSaved ? "已恢复为上次保存的方案" : "已恢复为程序员布局");
+  renderAll();
+}
+
+async function applySavedScheme() {
+  if (!layoutCfg || !hasCustomSaved(layoutCfg)) return;
+  await applyPresetId("custom");
 }
 
 function renderComposer() {
@@ -240,32 +280,55 @@ function renderComposer() {
     return;
   }
 
-  const isCustom = activePreset === "custom";
-  const blocks = enabledIds(layoutCfg);
-  const chips =
-    blocks.length > 0
-      ? blocks
-          .map(
-            (id) =>
-              `<span class="cmdk-chip${disabledIds.has(id) ? " off" : ""}">${escapeHtml(chipLabel(id))}</span>`
-          )
-          .join('<span class="cmdk-chip-sep">›</span>')
-      : `<span class="cmdk-chip empty">还没有面板，下面打开插件</span>`;
+  const saved = hasCustomSaved(layoutCfg);
+  const draft = hasCustomDraft(layoutCfg);
+  const currentBlocks = enabledIds(layoutCfg);
+  const savedBlocks = saved ? savedEnabledIds(layoutCfg) : [];
+  const name = schemeName(layoutCfg);
 
-  const pills = QUICK_PRESETS.map(
-    (p) =>
-      `<button type="button" class="cmdk-preset-pill${activePreset === p.id ? " is-active" : ""}" data-preset="${p.id}">${p.label}</button>`
-  ).join("");
+  const status = draft
+    ? `<span class="cmdk-scheme-status is-draft">● 有未保存改动</span>`
+    : saved
+      ? `<span class="cmdk-scheme-status is-saved">✓ 已保存</span>`
+      : `<span class="cmdk-scheme-status">在下面开关插件，然后保存</span>`;
+
+  const pills = [
+    ...QUICK_PRESETS.map(
+      (p) =>
+        `<button type="button" class="cmdk-preset-pill${activePreset === p.id ? " is-active" : ""}" data-preset="${p.id}">${p.label}</button>`
+    ),
+    saved
+      ? `<button type="button" class="cmdk-preset-pill cmdk-preset-pill-custom${activePreset === "custom" && !draft ? " is-active" : ""}" data-preset="custom">${escapeHtml(name)}</button>`
+      : "",
+  ].join("");
+
+  const savedTrack =
+    saved && draft
+      ? `<div class="cmdk-scheme-saved">
+          <span class="cmdk-scheme-sublabel">已保存</span>
+          <div class="cmdk-composer-track is-dim">${chipsHtml(savedBlocks, "空")}</div>
+        </div>`
+      : "";
 
   composer.innerHTML = `
-    <div class="cmdk-composer-card${isCustom ? " is-custom" : ""}">
-      <div class="cmdk-composer-top">
-        <div class="cmdk-composer-label">${isCustom ? "我的组合" : "当前布局"}</div>
-        <div class="cmdk-composer-name">${escapeHtml(PRESET_LABEL[activePreset] ?? activePreset)}</div>
+    <div class="cmdk-scheme-card">
+      <div class="cmdk-scheme-head">
+        <span class="cmdk-composer-label">我的方案</span>
+        <input class="cmdk-scheme-name" type="text" value="${escapeHtml(name === "我的方案" ? "" : name)}" placeholder="给方案起个名（可选）" maxlength="24" />
       </div>
-      <div class="cmdk-composer-track">${chips}</div>
-      <div class="cmdk-composer-foot">
-        <span class="cmdk-composer-hint">${isCustom ? "改开关或顺序会自动保存" : "切预设会重置顺序"}</span>
+      <div class="cmdk-scheme-edit">
+        <span class="cmdk-scheme-sublabel">${draft || !saved ? "正在编辑" : "当前"}</span>
+        <div class="cmdk-composer-track">${chipsHtml(currentBlocks, "还没有面板，下面打开插件")}</div>
+      </div>
+      ${savedTrack}
+      ${status}
+      <div class="cmdk-scheme-actions">
+        <button type="button" class="cmdk-scheme-btn primary" data-action="save">保存方案</button>
+        <button type="button" class="cmdk-scheme-btn" data-action="apply"${saved ? "" : " disabled"}>应用已保存</button>
+        <button type="button" class="cmdk-scheme-btn" data-action="discard"${draft ? "" : " disabled"}>放弃改动</button>
+      </div>
+      <div class="cmdk-builtin-row">
+        <span class="cmdk-builtin-label">内置</span>
         <div class="cmdk-preset-pills">${pills}</div>
       </div>
     </div>`;
@@ -275,6 +338,28 @@ function renderComposer() {
       e.stopPropagation();
       void applyPresetId(btn.dataset.preset!);
     });
+  });
+  composer.querySelector<HTMLButtonElement>('[data-action="save"]')?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void saveScheme();
+  });
+  composer.querySelector<HTMLButtonElement>('[data-action="apply"]')?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void applySavedScheme();
+  });
+  composer.querySelector<HTMLButtonElement>('[data-action="discard"]')?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void discardScheme();
+  });
+  composer.querySelector<HTMLInputElement>(".cmdk-scheme-name")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+  });
+  composer.querySelector<HTMLInputElement>(".cmdk-scheme-name")?.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void saveScheme();
+    }
   });
 }
 
@@ -344,7 +429,6 @@ async function movePlugin(id: string, dir: -1 | 1) {
     if (!fn) throw new Error("movePlugin unavailable");
     await fn(id, dir);
     await refreshMeta();
-    showToast("顺序已更新 · 自定义");
     renderAll();
   } catch (e) {
     console.error(e);
@@ -368,7 +452,6 @@ async function togglePlugin(id: string, nextOn: boolean) {
     if (!enable) throw new Error("setPluginEnabled unavailable");
     await enable(id, nextOn);
     await refreshMeta();
-    showToast(nextOn ? `已开启 ${PLUGIN_LABEL[id] ?? id} · 自定义` : `已关闭 ${PLUGIN_LABEL[id] ?? id} · 自定义`);
     renderAll();
   } catch (e) {
     console.error(e);

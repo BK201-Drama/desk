@@ -89,17 +89,132 @@
   background: rgba(255, 255, 255, 0.55);
 }
 
-.cmdk-composer-card.is-custom {
-  border-color: rgba(45, 106, 79, 0.35);
-  background: linear-gradient(135deg, rgba(149, 213, 178, 0.22), rgba(255, 255, 255, 0.62));
+.cmdk-scheme-card {
+  padding: 10px 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(26, 35, 50, 0.12);
+  background: rgba(255, 255, 255, 0.58);
 }
 
-.cmdk-composer-top {
+.cmdk-scheme-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.cmdk-scheme-name {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(26, 35, 50, 0.14);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
+  outline: none;
+}
+
+.cmdk-scheme-name:focus {
+  border-color: rgba(45, 106, 79, 0.45);
+}
+
+.cmdk-scheme-edit,
+.cmdk-scheme-saved {
+  margin-bottom: 6px;
+}
+
+.cmdk-scheme-sublabel {
+  display: block;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  opacity: 0.55;
+  margin-bottom: 4px;
+}
+
+.cmdk-composer-track.is-dim {
+  opacity: 0.55;
+}
+
+.cmdk-scheme-status {
+  display: block;
+  font-size: 10px;
+  margin: 4px 0 8px;
+  color: var(--ink-soft);
+}
+
+.cmdk-scheme-status.is-draft {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.cmdk-scheme-status.is-saved {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.cmdk-scheme-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.cmdk-scheme-btn {
+  border: 1px solid rgba(26, 35, 50, 0.14);
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cmdk-scheme-btn:hover:not(:disabled) {
+  border-color: rgba(45, 106, 79, 0.35);
+  background: rgba(45, 106, 79, 0.1);
+}
+
+.cmdk-scheme-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.cmdk-scheme-btn.primary:hover:not(:disabled) {
+  background: #245a42;
+}
+
+.cmdk-scheme-btn:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.cmdk-builtin-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(26, 35, 50, 0.12);
+}
+
+.cmdk-builtin-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+
+.cmdk-preset-pill-custom.is-active {
+  border-color: rgba(45, 106, 79, 0.5);
+  background: rgba(45, 106, 79, 0.16);
+  color: var(--accent);
 }
 
 .cmdk-composer-label {

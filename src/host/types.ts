@@ -90,6 +90,7 @@ export type PluginsConfig = {
   /** 插件显示顺序；空则用各 manifest.order */
   order?: string[];
   custom_order?: string[] | null;
+  custom_name?: string | null;
 };
 
 export type PresetInfo = {
