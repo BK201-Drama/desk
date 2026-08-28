@@ -3,7 +3,7 @@
   "name": "GitHub",
   "version": "0.1.0",
   "slot": "left",
-  "entry": "./panel.ts",
+  "entry": "./panel.tsx",
   "permissions": ["github.read", "host.open", "host.log"],
   "order": 10
 }

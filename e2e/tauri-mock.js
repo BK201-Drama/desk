@@ -136,15 +136,28 @@
           return {
             login: "mock",
             name: "Mock",
+            bio: "",
             avatar_url: "",
-            public_repos: 0,
-            followers: 0,
-            following: 0,
-            notifications: [],
-            events: [],
+            streak: 0,
+            year_total: 0,
+            weeks: [],
+            contrib_cells: [],
+            pins: [],
+            langs: [],
+            cached: true,
+            error: null,
           };
         case "multica_snapshot":
-          return { app_url: "", tasks: [], projects: [] };
+          return {
+            app_url: "http://localhost:18473",
+            inbox: 0,
+            doing: 0,
+            review: 0,
+            issues: [],
+            runtime_online: false,
+            cached: true,
+            error: null,
+          };
         case "fence_list":
         case "fence_takeover":
         case "fence_save_order":
