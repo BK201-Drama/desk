@@ -164,9 +164,24 @@
           return [];
         case "fence_snapshot":
           return { fences: [], icons: [] };
+        case "qqmusic_now_playing":
         case "qqmusic_status":
         case "qqmusic_snapshot":
-          return { running: false, title: "", artist: "" };
+          return {
+            active: false,
+            app_id: "",
+            title: "",
+            artist: "",
+            album: "",
+            status: "stopped",
+            artwork_path: null,
+            can_play_pause: false,
+            can_next: false,
+            can_prev: false,
+            installed: true,
+            install_path: null,
+            hint: "mock",
+          };
         default:
           // Prefer empty collections over null so vanilla plugins don't NPE in E2E
           if (/_list$/.test(cmd)) return [];
