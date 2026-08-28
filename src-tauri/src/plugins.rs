@@ -43,6 +43,11 @@ pub struct PluginsConfig {
     /// Snapshot when user saves「自定义」or diverges via toggles
     #[serde(default)]
     pub custom_disabled: Option<Vec<String>>,
+    /// Display order of plugin ids (within each slot). Empty = manifest.order.
+    #[serde(default)]
+    pub order: Vec<String>,
+    #[serde(default)]
+    pub custom_order: Option<Vec<String>>,
 }
 
 fn default_preset() -> String {
@@ -94,7 +99,11 @@ fn preset_disabled(id: &str, cfg: &PluginsConfig) -> Option<Vec<String>> {
         "coder" => Some(coder_disabled()),
         "minimal" => Some(minimal_disabled()),
         "fence" => Some(fence_only_disabled()),
-        "custom" => cfg.custom_disabled.clone(),
+        "custom" => Some(
+            cfg.custom_disabled
+                .clone()
+                .unwrap_or_else(|| cfg.disabled.clone()),
+        ),
         _ => None,
     }
 }
@@ -220,6 +229,8 @@ pub fn plugin_get_config() -> Result<PluginsConfig, String> {
             active_preset: default_preset(),
             disabled: default_disabled(),
             custom_disabled: None,
+            order: Vec::new(),
+            custom_order: None,
         };
         write_config(&cfg)?;
         return Ok(cfg);
@@ -250,6 +261,23 @@ pub fn plugin_set_disabled(id: String, disabled: bool) -> Result<PluginsConfig, 
     // individual tweak → custom
     cfg.active_preset = "custom".into();
     cfg.custom_disabled = Some(cfg.disabled.clone());
+    cfg.custom_order = Some(cfg.order.clone());
+    write_config(&cfg)?;
+    Ok(cfg)
+}
+
+#[tauri::command]
+pub fn plugin_set_order(order: Vec<String>) -> Result<PluginsConfig, String> {
+    let mut cfg = plugin_get_config()?;
+    // de-dupe, drop empty
+    let mut seen = std::collections::HashSet::new();
+    cfg.order = order
+        .into_iter()
+        .filter(|id| !id.is_empty() && seen.insert(id.clone()))
+        .collect();
+    cfg.active_preset = "custom".into();
+    cfg.custom_disabled = Some(cfg.disabled.clone());
+    cfg.custom_order = Some(cfg.order.clone());
     write_config(&cfg)?;
     Ok(cfg)
 }
@@ -277,11 +305,11 @@ pub fn plugin_list_presets() -> Result<Vec<PresetInfo>, String> {
             builtin: true,
         },
     ];
-    if cfg.custom_disabled.is_some() {
+    if cfg.custom_disabled.is_some() || cfg.custom_order.is_some() {
         out.push(PresetInfo {
             id: "custom".into(),
             name: "自定义".into(),
-            description: "你上次保存/微调的组合".into(),
+            description: "你上次保存/微调的组合与顺序".into(),
             builtin: false,
         });
     }
@@ -292,11 +320,19 @@ pub fn plugin_list_presets() -> Result<Vec<PresetInfo>, String> {
 pub fn plugin_apply_preset(id: String) -> Result<PluginsConfig, String> {
     let mut cfg = plugin_get_config()?;
     let disabled = preset_disabled(&id, &cfg).ok_or_else(|| format!("未知布局: {id}"))?;
-    if id == "custom" && cfg.custom_disabled.is_none() {
+    if id == "custom" && cfg.custom_disabled.is_none() && cfg.custom_order.is_none() {
         return Err("还没有自定义布局，先微调插件或「保存当前为自定义」".into());
     }
-    cfg.active_preset = id;
+    cfg.active_preset = id.clone();
     cfg.disabled = disabled;
+    if id == "custom" {
+        if let Some(o) = cfg.custom_order.clone() {
+            cfg.order = o;
+        }
+    } else {
+        // 内置布局回到 manifest 默认顺序
+        cfg.order.clear();
+    }
     write_config(&cfg)?;
     Ok(cfg)
 }
@@ -305,6 +341,7 @@ pub fn plugin_apply_preset(id: String) -> Result<PluginsConfig, String> {
 pub fn plugin_save_custom() -> Result<PluginsConfig, String> {
     let mut cfg = plugin_get_config()?;
     cfg.custom_disabled = Some(cfg.disabled.clone());
+    cfg.custom_order = Some(cfg.order.clone());
     cfg.active_preset = "custom".into();
     write_config(&cfg)?;
     Ok(cfg)

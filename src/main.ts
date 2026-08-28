@@ -1,7 +1,13 @@
 import { listen } from "@tauri-apps/api/event";
 import { toggleEditing } from "./host/edit";
-import { loadAll, reloadPlugins, setPluginEnabled } from "./host/registry";
+import {
+  loadAll,
+  movePluginInSlot,
+  reloadPlugins,
+  setPluginEnabled,
+} from "./host/registry";
 import { applyPreset, saveCustomPreset } from "./host/presets";
+import { initReorderDrag } from "./host/reorder";
 import { emit } from "./host/events";
 import { bundledPlugins } from "./plugins";
 import "./styles.css";
@@ -10,12 +16,16 @@ import "./styles.css";
   __deskHost: {
     reloadPlugins: () => Promise<void>;
     setPluginEnabled: (id: string, enabled: boolean) => Promise<void>;
+    movePlugin: (id: string, dir: -1 | 1) => Promise<void>;
     applyPreset: (id: string) => Promise<void>;
     saveCustom: () => Promise<void>;
   };
 }).__deskHost = {
   reloadPlugins: () => reloadPlugins(bundledPlugins),
   setPluginEnabled: (id, enabled) => setPluginEnabled(id, enabled, bundledPlugins),
+  movePlugin: async (id, dir) => {
+    await movePluginInSlot(id, dir);
+  },
   applyPreset: async (id: string) => {
     await applyPreset(id, bundledPlugins);
   },
@@ -25,6 +35,8 @@ import "./styles.css";
 };
 
 window.addEventListener("DOMContentLoaded", () => {
+  initReorderDrag();
+
   void listen("desk:toggle-edit", () => {
     toggleEditing();
   });

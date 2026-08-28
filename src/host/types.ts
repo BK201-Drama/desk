@@ -87,6 +87,9 @@ export type PluginsConfig = {
   active_preset: string;
   disabled: string[];
   custom_disabled?: string[] | null;
+  /** 插件显示顺序；空则用各 manifest.order */
+  order?: string[];
+  custom_order?: string[] | null;
 };
 
 export type PresetInfo = {

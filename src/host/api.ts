@@ -27,6 +27,7 @@ const PERM_COMMANDS: Record<PluginPermission, string[]> = {
     "plugin_list_user",
     "plugin_get_config",
     "plugin_set_disabled",
+    "plugin_set_order",
     "plugin_list_presets",
     "plugin_apply_preset",
     "plugin_save_custom",

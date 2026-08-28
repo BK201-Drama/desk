@@ -167,6 +167,7 @@ pub fn run() {
             plugins::plugin_list_user,
             plugins::plugin_get_config,
             plugins::plugin_set_disabled,
+            plugins::plugin_set_order,
             plugins::plugin_list_presets,
             plugins::plugin_apply_preset,
             plugins::plugin_save_custom,

@@ -720,20 +720,6 @@ const panel: PluginModule = {
     wireGlobalKeys();
 
     ctx.registerCommand({
-      id: "toggle-edit",
-      title: "切换编辑模式",
-      hint: "Win+Shift+D",
-      group: "Desk",
-      run: () => toggleEditing(),
-    });
-    ctx.registerCommand({
-      id: "search",
-      title: "搜索桌面图标",
-      hint: "/",
-      group: "围栏",
-      run: () => focusFenceSearch(),
-    });
-    ctx.registerCommand({
       id: "restore",
       title: "还原图标到桌面",
       group: "围栏",
@@ -743,7 +729,7 @@ const panel: PluginModule = {
       },
     });
 
-    // Expose focus for cmdk
+    // Expose focus for cmdk search
     (window as unknown as { __deskFocusFenceSearch?: () => void }).__deskFocusFenceSearch =
       focusFenceSearch;
 

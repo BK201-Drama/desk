@@ -5,14 +5,21 @@ import { listCommands } from "../../host/api";
 import { escapeHtml } from "../../host/util";
 import { toggleEditing } from "../../host/edit";
 import { getConfig, listPresets } from "../../host/presets";
+import { chipLabel, enabledIds, PRESET_LABEL } from "../../host/layout-util";
+import { showToast } from "../../host/toast";
+import type { PluginsConfig } from "../../host/types";
 import "./panel.css";
 
 type DeskHostBridge = {
   reloadPlugins?: () => Promise<void>;
   setPluginEnabled?: (id: string, enabled: boolean) => Promise<void>;
+  movePlugin?: (id: string, dir: -1 | 1) => Promise<void>;
   applyPreset?: (id: string) => Promise<void>;
   saveCustom?: () => Promise<void>;
 };
+
+const MAIN_PLUGINS = ["github", "multica", "remind", "fence", "qq-music", "clock"] as const;
+const EXTENDED_PLUGINS = ["ops-hud", "event-tape", "hello"] as const;
 
 const PLUGIN_LABEL: Record<string, string> = {
   github: "GitHub",
@@ -39,7 +46,16 @@ let keyHandler: ((e: KeyboardEvent) => void) | null = null;
 let unsubs: Array<() => void> = [];
 let presetCache: PresetInfo[] = [];
 let disabledIds = new Set<string>();
+let activePreset = "coder";
+let layoutCfg: PluginsConfig | null = null;
 let toggling = false;
+let moving = false;
+
+const QUICK_PRESETS = [
+  { id: "coder", label: "程序员" },
+  { id: "minimal", label: "极简" },
+  { id: "fence", label: "围栏" },
+] as const;
 
 type NavItem =
   | { kind: "cmd"; group: string; cmd: HostCommand }
@@ -64,12 +80,14 @@ async function refreshMeta() {
   try {
     const cfg = await getConfig();
     disabledIds = new Set(cfg.disabled ?? []);
+    activePreset = cfg.active_preset || "coder";
+    layoutCfg = cfg;
   } catch {
     /* ignore */
   }
 }
 
-function collectCommands(): HostCommand[] {
+function collectCommands(searching: boolean): HostCommand[] {
   const cmds = listCommands().filter((c) => c.id !== "cmdk:open" && c.id !== "open");
   const extras: HostCommand[] = [
     {
@@ -79,15 +97,18 @@ function collectCommands(): HostCommand[] {
       group: "Desk",
       run: () => toggleEditing(),
     },
-    {
+  ];
+
+  if (searching) {
+    extras.push({
       id: "host:reload-plugins",
       title: "重载插件",
       group: "Desk",
       run: async () => {
         await bridge().reloadPlugins?.();
       },
-    },
-    {
+    });
+    extras.push({
       id: "host:focus-fence-search",
       title: "搜索桌面图标",
       hint: "/",
@@ -97,36 +118,27 @@ function collectCommands(): HostCommand[] {
           window as unknown as { __deskFocusFenceSearch?: () => void }
         ).__deskFocusFenceSearch?.();
       },
-    },
-    {
-      id: "host:save-custom",
-      title: "保存为自定义",
-      group: "布局",
-      run: async () => {
-        await bridge().saveCustom?.();
-      },
-    },
-  ];
-
-  for (const p of presetCache) {
-    const mark = p.id === "coder" ? " · 默认" : "";
-    extras.push({
-      id: `host:preset:${p.id}`,
-      title: `${p.name}${mark}`,
-      hint: p.description,
-      group: "布局",
-      run: async () => {
-        await bridge().applyPreset?.(p.id);
-        await refreshMeta();
-      },
     });
+    for (const p of presetCache) {
+      const mark = p.id === "coder" ? " · 默认" : "";
+      extras.push({
+        id: `host:preset:${p.id}`,
+        title: `${p.name}${mark}`,
+        hint: p.description,
+        group: "布局",
+        run: async () => {
+          await bridge().applyPreset?.(p.id);
+          await refreshMeta();
+          renderAll();
+        },
+      });
+    }
   }
 
   const seen = new Set<string>();
   const out: HostCommand[] = [];
-  for (const c of [...extras, ...cmds]) {
+  for (const c of [...extras, ...(searching ? cmds : [])]) {
     if (seen.has(c.id)) continue;
-    // 旧的 打开/关闭 命令不再出现
     if (c.id.startsWith("host:enable:") || c.id.startsWith("host:disable:")) continue;
     seen.add(c.id);
     out.push(c);
@@ -136,11 +148,12 @@ function collectCommands(): HostCommand[] {
 
 function collectNav(): NavItem[] {
   const q = filter.trim().toLowerCase();
+  const searching = q.length > 0;
   const items: NavItem[] = [];
 
-  for (const cmd of collectCommands()) {
+  for (const cmd of collectCommands(searching)) {
     if (
-      q &&
+      searching &&
       !cmd.title.toLowerCase().includes(q) &&
       !cmd.id.toLowerCase().includes(q) &&
       !(cmd.group ?? "").toLowerCase().includes(q) &&
@@ -151,9 +164,15 @@ function collectNav(): NavItem[] {
     items.push({ kind: "cmd", group: cmd.group || "其他", cmd });
   }
 
-  for (const [id, title] of Object.entries(PLUGIN_LABEL)) {
+  const pluginIds = searching
+    ? Object.keys(PLUGIN_LABEL)
+    : [...MAIN_PLUGINS, ...EXTENDED_PLUGINS.filter((id) => !disabledIds.has(id))];
+
+  for (const id of pluginIds) {
+    const title = PLUGIN_LABEL[id];
+    if (!title) continue;
     if (
-      q &&
+      searching &&
       !title.toLowerCase().includes(q) &&
       !id.toLowerCase().includes(q) &&
       !"插件".includes(q)
@@ -193,6 +212,77 @@ function switchHtml(on: boolean) {
   return `<span class="cmdk-switch${on ? " is-on" : ""}" aria-hidden="true"><span class="cmdk-switch-knob"></span></span>`;
 }
 
+function orderControlsHtml(id: string, on: boolean) {
+  if (!on || id === "cmdk") return "";
+  return `<span class="cmdk-order" data-plugin-order="${escapeHtml(id)}">
+    <button type="button" class="cmdk-order-btn" data-move="-1" title="上移 (Alt+↑)">↑</button>
+    <button type="button" class="cmdk-order-btn" data-move="1" title="下移 (Alt+↓)">↓</button>
+  </span>`;
+}
+
+async function applyPresetId(id: string) {
+  await bridge().applyPreset?.(id);
+  await refreshMeta();
+  if (id === "custom") showToast("已切到自定义布局");
+  else showToast(`已切到${PRESET_LABEL[id] ?? id}`);
+  renderAll();
+}
+
+function renderComposer() {
+  const composer = root?.querySelector(".cmdk-composer");
+  if (!composer || filter.trim()) {
+    composer?.classList.add("hidden");
+    return;
+  }
+  composer.classList.remove("hidden");
+  if (!layoutCfg) {
+    composer.innerHTML = "";
+    return;
+  }
+
+  const isCustom = activePreset === "custom";
+  const blocks = enabledIds(layoutCfg);
+  const chips =
+    blocks.length > 0
+      ? blocks
+          .map(
+            (id) =>
+              `<span class="cmdk-chip${disabledIds.has(id) ? " off" : ""}">${escapeHtml(chipLabel(id))}</span>`
+          )
+          .join('<span class="cmdk-chip-sep">›</span>')
+      : `<span class="cmdk-chip empty">还没有面板，下面打开插件</span>`;
+
+  const pills = QUICK_PRESETS.map(
+    (p) =>
+      `<button type="button" class="cmdk-preset-pill${activePreset === p.id ? " is-active" : ""}" data-preset="${p.id}">${p.label}</button>`
+  ).join("");
+
+  composer.innerHTML = `
+    <div class="cmdk-composer-card${isCustom ? " is-custom" : ""}">
+      <div class="cmdk-composer-top">
+        <div class="cmdk-composer-label">${isCustom ? "我的组合" : "当前布局"}</div>
+        <div class="cmdk-composer-name">${escapeHtml(PRESET_LABEL[activePreset] ?? activePreset)}</div>
+      </div>
+      <div class="cmdk-composer-track">${chips}</div>
+      <div class="cmdk-composer-foot">
+        <span class="cmdk-composer-hint">${isCustom ? "改开关或顺序会自动保存" : "切预设会重置顺序"}</span>
+        <div class="cmdk-preset-pills">${pills}</div>
+      </div>
+    </div>`;
+
+  composer.querySelectorAll<HTMLButtonElement>("[data-preset]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void applyPresetId(btn.dataset.preset!);
+    });
+  });
+}
+
+function renderAll() {
+  renderComposer();
+  renderList();
+}
+
 function renderList() {
   if (!root) return;
   const items = collectNav();
@@ -213,6 +303,7 @@ function renderList() {
       if (row.item.kind === "plugin") {
         return `<button type="button" class="cmdk-item cmdk-item-row${sel}" data-idx="${row.index}">
           <span class="cmdk-title">${escapeHtml(row.item.title)}</span>
+          ${orderControlsHtml(row.item.id, row.item.on)}
           ${switchHtml(row.item.on)}
         </button>`;
       }
@@ -225,12 +316,44 @@ function renderList() {
     .join("");
 
   list.querySelectorAll<HTMLButtonElement>(".cmdk-item").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest(".cmdk-order-btn")) return;
       selected = Number(btn.dataset.idx);
       void activateSelected();
     });
   });
+  list.querySelectorAll<HTMLButtonElement>(".cmdk-order-btn").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const wrap = btn.closest("[data-plugin-order]") as HTMLElement | null;
+      const id = wrap?.dataset.pluginOrder;
+      const dir = Number(btn.dataset.move) as -1 | 1;
+      if (!id || (dir !== -1 && dir !== 1)) return;
+      void movePlugin(id, dir);
+    });
+  });
   list.querySelector(".cmdk-item.is-selected")?.scrollIntoView({ block: "nearest" });
+}
+
+async function movePlugin(id: string, dir: -1 | 1) {
+  if (moving) return;
+  moving = true;
+  try {
+    const fn = bridge().movePlugin;
+    if (!fn) throw new Error("movePlugin unavailable");
+    await fn(id, dir);
+    await refreshMeta();
+    showToast("顺序已更新 · 自定义");
+    renderAll();
+  } catch (e) {
+    console.error(e);
+    await refreshMeta();
+    renderAll();
+    alert(String(e));
+  } finally {
+    moving = false;
+  }
 }
 
 async function togglePlugin(id: string, nextOn: boolean) {
@@ -240,17 +363,17 @@ async function togglePlugin(id: string, nextOn: boolean) {
     // 乐观更新，开关立刻翻
     if (nextOn) disabledIds.delete(id);
     else disabledIds.add(id);
-    renderList();
-    // 只挂载/卸载这一个，其它面板不重载
+    renderAll();
     const enable = bridge().setPluginEnabled;
     if (!enable) throw new Error("setPluginEnabled unavailable");
     await enable(id, nextOn);
     await refreshMeta();
-    renderList();
+    showToast(nextOn ? `已开启 ${PLUGIN_LABEL[id] ?? id} · 自定义` : `已关闭 ${PLUGIN_LABEL[id] ?? id} · 自定义`);
+    renderAll();
   } catch (e) {
     console.error(e);
     await refreshMeta();
-    renderList();
+    renderAll();
     alert(String(e));
   } finally {
     toggling = false;
@@ -282,7 +405,7 @@ function setOpen(next: boolean) {
     filter = "";
     selected = 0;
     void setKeyboard(true);
-    void refreshMeta().then(() => renderList());
+    void refreshMeta().then(() => renderAll());
     if (input) {
       input.value = "";
       window.setTimeout(() => input.focus(), 30);
@@ -301,9 +424,10 @@ const panel: PluginModule = {
       <div class="cmdk-panel" role="dialog" aria-label="命令面板">
         <div class="cmdk-head">
           <span class="cmdk-prompt">›</span>
-          <input class="cmdk-input" type="text" placeholder="搜索命令" autocomplete="off" spellcheck="false" />
+          <input class="cmdk-input" type="text" placeholder="布局 / 插件 / 搜索更多…" autocomplete="off" spellcheck="false" />
           <kbd>esc</kbd>
         </div>
+        <div class="cmdk-composer hidden"></div>
         <div class="cmdk-list"></div>
       </div>`;
 
@@ -312,11 +436,20 @@ const panel: PluginModule = {
     input.addEventListener("input", () => {
       filter = input.value;
       selected = 0;
-      renderList();
+      renderAll();
     });
     input.addEventListener("keydown", (e) => {
       const items = collectNav();
-      if (e.key === "ArrowDown") {
+      if (
+        e.altKey &&
+        (e.key === "ArrowUp" || e.key === "ArrowDown")
+      ) {
+        e.preventDefault();
+        const item = items[selected];
+        if (item?.kind === "plugin" && item.on) {
+          void movePlugin(item.id, e.key === "ArrowUp" ? -1 : 1);
+        }
+      } else if (e.key === "ArrowDown") {
         e.preventDefault();
         selected = Math.min(selected + 1, Math.max(0, items.length - 1));
         renderList();
