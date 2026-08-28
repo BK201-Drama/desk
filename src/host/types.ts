@@ -16,7 +16,9 @@ export type PluginPermission =
   | "host.plugins"
   | "host.log"
   | "host.open"
-  | "qqmusic.launch";
+  | "qqmusic.launch"
+  | "stock.read"
+  | "cursor.read";
 
 export type PluginManifest = {
   id: string;

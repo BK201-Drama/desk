@@ -71,7 +71,8 @@ export function FencePanel({ ctx }: PluginComponentProps) {
   const total = totalFenceItems(fences);
 
   useEffect(() => {
-    document.querySelector('[data-plugin="fence"]')?.classList.add("pane-fences");
+    const host = document.querySelector<HTMLElement>('[data-plugin="fence"]');
+    host?.classList.add("pane-fences");
     setEditing(false);
     const unsubs = [
       ctx.onEditChange((on) => {
@@ -147,6 +148,9 @@ export function FencePanel({ ctx }: PluginComponentProps) {
   }, [ctx, launch, loadFences, setKeyboard]);
 
   useEffect(() => {
+    const host = document.querySelector<HTMLElement>('[data-plugin="fence"]');
+    if (!host) return;
+    host.classList.toggle("is-searching", Boolean(q));
     setSelected(q ? 0 : -1);
   }, [q]);
 
@@ -160,7 +164,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
   return (
     <div
       ref={rootRef}
-      className={q ? "is-searching" : undefined}
+      className="fence-panel-root"
       data-testid="fence-panel"
       onPointerMove={(e) => {
         const over = (e.target as HTMLElement | null)?.closest<HTMLElement>(".fence-app");
@@ -392,27 +396,26 @@ export function FencePanel({ ctx }: PluginComponentProps) {
         </div>
       ) : null}
 
-      {!q && recents.length > 0 ? (
-        <div className="fence">
-          <div className="fence-title">
-            最近 <em>{recents.length}</em>
-          </div>
-          <div className="fence-grid">
-            {recents.map((item) => (
-              <AppButton
-                key={item.id}
-                ctx={ctx}
-                item={item}
-                dragging={false}
-                onPointerDown={() => {}}
-                onLaunch={() => tryLaunch(item.path, item.id)}
-              />
-            ))}
-          </div>
-        </div>
-      ) : null}
-
       <div id="fences" hidden={Boolean(q)}>
+        {!q && recents.length > 0 ? (
+          <div id="fenceRecent" className="fence">
+            <div className="fence-title" aria-label={`最近 ${recents.length}`}>
+              最近 <em>{recents.length}</em>
+            </div>
+            <div className="fence-grid">
+              {recents.map((item) => (
+                <AppButton
+                  key={item.id}
+                  ctx={ctx}
+                  item={item}
+                  dragging={false}
+                  onPointerDown={() => {}}
+                  onLaunch={() => tryLaunch(item.path, item.id)}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
         {loadError ? (
           <div className="fence">
             <div className="fence-title">围栏</div>
@@ -423,7 +426,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
         ) : (
           fences.map((f) => (
             <div key={f.name} className="fence" data-name={f.name}>
-              <div className="fence-title">
+              <div className="fence-title" aria-label={`${f.name} ${f.items.length}`}>
                 {f.name} <em>{f.items.length}</em>
               </div>
               <div className="fence-grid">

@@ -1,0 +1,97 @@
+.tc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 5px 6px 6px;
+  border-radius: 7px;
+  background: rgba(26, 35, 50, 0.05);
+  border: 1px solid rgba(26, 35, 50, 0.08);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.tc-card:hover {
+  border-color: rgba(45, 106, 79, 0.28);
+}
+
+.tc-card.tone-warn {
+  border-color: rgba(180, 83, 9, 0.28);
+}
+
+.tc-card.tone-crit,
+.tc-card.is-limit {
+  border-color: rgba(193, 18, 31, 0.32);
+}
+
+.tc-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tc-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tc-row-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tc-row-pct {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+.tc-bar {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(26, 35, 50, 0.1);
+  overflow: hidden;
+}
+
+.tc-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #6b8cae;
+  transition: width 0.3s ease;
+}
+
+.tc-card.tone-warn .tc-bar-fill {
+  background: #c47a2c;
+}
+
+.tc-card.tone-crit .tc-bar-fill,
+.tc-card.is-limit .tc-bar-fill {
+  background: #b4232c;
+}
+
+.tc-row-hint {
+  font-size: 8px;
+  line-height: 1.25;
+  color: var(--ink-soft);
+  opacity: 0.62;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tc-error {
+  font-size: 10px;
+  color: #9b2226;
+  padding: 2px 0;
+}

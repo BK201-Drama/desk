@@ -13,8 +13,10 @@ export const PRESET_LABEL: Record<string, string> = {
 
 const PLUGIN_SHORT: Record<string, string> = {
   github: "GitHub",
+  "token-capsule": "Token",
   multica: "Multica",
   remind: "待办",
+  stock: "股票",
   fence: "围栏",
   "qq-music": "QQ",
   clock: "时钟",
@@ -26,8 +28,10 @@ const PLUGIN_SHORT: Record<string, string> = {
 
 const ALL_KNOWN_PLUGINS = [
   "github",
+  "token-capsule",
   "multica",
   "remind",
+  "stock",
   "fence",
   "qq-music",
   "clock",

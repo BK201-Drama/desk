@@ -25,10 +25,10 @@
   display: none;
   position: absolute;
   left: 50%;
-  top: 14%;
+  top: 12%;
   transform: translateX(-50%);
   width: min(440px, 90%);
-  max-height: 68%;
+  max-height: 72%;
   background: rgba(248, 250, 252, 0.92);
   border: 1px solid rgba(26, 35, 50, 0.16);
   border-radius: 10px;
@@ -75,7 +75,8 @@
 }
 
 .cmdk-composer {
-  padding: 10px 10px 0;
+  padding: 4px 8px 0;
+  flex-shrink: 0;
 }
 
 .cmdk-composer.hidden {
@@ -90,7 +91,7 @@
 }
 
 .cmdk-scheme-card {
-  padding: 10px 11px;
+  padding: 5px 7px;
   border-radius: 8px;
   border: 1px solid rgba(26, 35, 50, 0.12);
   background: rgba(255, 255, 255, 0.58);
@@ -99,9 +100,8 @@
 .cmdk-scheme-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin-bottom: 3px;
 }
 
 .cmdk-scheme-count {
@@ -115,9 +115,11 @@
   color: var(--accent);
   font-size: 10px;
   font-weight: 700;
-  padding: 3px 9px;
+  padding: 2px 7px;
   border-radius: 6px;
   cursor: pointer;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .cmdk-scheme-new:hover:not(.disabled):not(:disabled) {
@@ -133,23 +135,24 @@
 .cmdk-scheme-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
 }
 
 .cmdk-scheme-tab {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   border: 1px solid rgba(26, 35, 50, 0.14);
   background: rgba(255, 255, 255, 0.7);
   color: var(--ink-soft);
   font-size: 10px;
   font-weight: 600;
-  padding: 4px 10px;
+  padding: 2px 8px;
   border-radius: 999px;
   cursor: pointer;
-  max-width: 120px;
+  max-width: 100px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -175,12 +178,20 @@
   opacity: 0.6;
 }
 
+.cmdk-scheme-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
 .cmdk-scheme-name {
-  width: 100%;
-  margin-bottom: 8px;
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
   border: 1px solid rgba(26, 35, 50, 0.14);
   border-radius: 6px;
-  padding: 4px 8px;
+  padding: 3px 7px;
   font-size: 11px;
   background: rgba(255, 255, 255, 0.85);
   color: var(--ink);
@@ -201,31 +212,35 @@
   border-color: rgba(155, 34, 38, 0.35);
 }
 
-.cmdk-scheme-edit,
+.cmdk-scheme-edit {
+  margin-bottom: 0;
+}
+
 .cmdk-scheme-saved {
-  margin-bottom: 6px;
+  margin-bottom: 0;
 }
 
 .cmdk-scheme-sublabel {
-  display: block;
+  display: inline;
   font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--ink-soft);
   opacity: 0.55;
-  margin-bottom: 4px;
+  margin-right: 6px;
 }
 
 .cmdk-composer-track.is-dim {
-  opacity: 0.55;
+  opacity: 0.5;
+  margin-top: 2px;
 }
 
 .cmdk-scheme-status {
-  display: block;
+  display: inline;
   font-size: 10px;
-  margin: 4px 0 8px;
+  margin: 0 0 0 6px;
   color: var(--ink-soft);
+  white-space: nowrap;
 }
 
 .cmdk-scheme-status.is-draft {
@@ -240,9 +255,10 @@
 
 .cmdk-scheme-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin-bottom: 0;
+  flex-shrink: 0;
 }
 
 .cmdk-scheme-btn {
@@ -251,7 +267,7 @@
   color: var(--ink);
   font-size: 10px;
   font-weight: 600;
-  padding: 5px 10px;
+  padding: 3px 8px;
   border-radius: 6px;
   cursor: pointer;
 }
@@ -279,8 +295,9 @@
 .cmdk-builtin-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-top: 8px;
+  gap: 6px;
+  padding-top: 3px;
+  margin-top: 3px;
   border-top: 1px dashed rgba(26, 35, 50, 0.12);
 }
 
@@ -301,10 +318,10 @@
 .cmdk-composer-label {
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--ink-soft);
   opacity: 0.62;
+  flex-shrink: 0;
 }
 
 .cmdk-composer-name {
@@ -318,22 +335,23 @@
 }
 
 .cmdk-composer-track {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  min-height: 24px;
-  margin-bottom: 8px;
+  gap: 3px;
+  min-height: 0;
+  margin-bottom: 0;
+  vertical-align: middle;
 }
 
 .cmdk-chip {
   display: inline-flex;
   align-items: center;
-  padding: 2px 7px;
+  padding: 1px 6px;
   border-radius: 999px;
   background: rgba(45, 106, 79, 0.12);
   color: var(--ink);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
 }
 
@@ -345,7 +363,7 @@
 
 .cmdk-chip-sep {
   opacity: 0.35;
-  font-size: 10px;
+  font-size: 9px;
   user-select: none;
 }
 
@@ -375,7 +393,7 @@
   color: var(--ink-soft);
   font-size: 10px;
   font-weight: 600;
-  padding: 3px 8px;
+  padding: 2px 7px;
   border-radius: 999px;
   cursor: pointer;
 }
@@ -393,8 +411,9 @@
 
 .cmdk-list {
   overflow: auto;
-  padding: 6px;
-  min-height: 120px;
+  padding: 4px 6px 6px;
+  min-height: 0;
+  flex: 1;
 }
 
 .cmdk-item {

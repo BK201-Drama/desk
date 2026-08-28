@@ -12,7 +12,7 @@ import {
 import { useLayoutConfig } from "../../application/layout/useLayoutConfig";
 import { useEffect, useState } from "react";
 
-function TrackChips({ ids, emptyText }: { ids: string[]; emptyText: string; dim?: boolean }) {
+function TrackChips({ ids, emptyText }: { ids: string[]; emptyText: string }) {
   if (!ids.length) {
     return <span className="cmdk-chip empty">{emptyText}</span>;
   }
@@ -59,9 +59,9 @@ export function SchemeComposer({ hidden }: Props) {
   const current = config ? activeScheme(config) : null;
 
   const status = !onScheme ? (
-    <span className="cmdk-scheme-status">在下方改插件，再新建或保存到方案</span>
+    <span className="cmdk-scheme-status">改插件后新建/保存</span>
   ) : draft ? (
-    <span className="cmdk-scheme-status is-draft">● 有未保存改动</span>
+    <span className="cmdk-scheme-status is-draft">● 未保存</span>
   ) : (
     <span className="cmdk-scheme-status is-saved">✓ 已保存</span>
   );
@@ -71,8 +71,31 @@ export function SchemeComposer({ hidden }: Props) {
       <div className="cmdk-scheme-card">
         <div className="cmdk-scheme-head">
           <span className="cmdk-composer-label">
-            我的方案 <span className="cmdk-scheme-count">{count}/{MAX_SCHEMES}</span>
+            方案 <span className="cmdk-scheme-count">{count}/{MAX_SCHEMES}</span>
           </span>
+          <div className="cmdk-scheme-tabs">
+            {schemes.length === 0 ? (
+              <span className="cmdk-scheme-empty">暂无</span>
+            ) : (
+              schemes.map((s) => {
+                const isActive = activeId === s.id && onScheme;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={`cmdk-scheme-tab${isActive ? " is-active" : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void applySchemeTab(s.id);
+                    }}
+                  >
+                    {isActive && draft && <span className="cmdk-scheme-dot" />}
+                    {s.name}
+                  </button>
+                );
+              })
+            )}
+          </div>
           <button
             type="button"
             className={`cmdk-scheme-new${canCreate ? "" : " disabled"}`}
@@ -86,99 +109,71 @@ export function SchemeComposer({ hidden }: Props) {
           </button>
         </div>
 
-        <div className="cmdk-scheme-tabs">
-          {schemes.length === 0 ? (
-            <span className="cmdk-scheme-empty">还没有方案，点「新建」</span>
-          ) : (
-            schemes.map((s) => {
-              const isActive = activeId === s.id && onScheme;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={`cmdk-scheme-tab${isActive ? " is-active" : ""}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void applySchemeTab(s.id);
-                  }}
-                >
-                  {isActive && draft && <span className="cmdk-scheme-dot" />}
-                  {s.name}
-                </button>
-              );
-            })
-          )}
+        <div className="cmdk-scheme-row">
+          <input
+            className="cmdk-scheme-name"
+            type="text"
+            value={nameInput}
+            onChange={(e) => setNameInput(e.target.value)}
+            placeholder="方案名称"
+            maxLength={24}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void saveActiveScheme(nameInput.trim() || undefined);
+              }
+            }}
+          />
+          <div className="cmdk-scheme-actions">
+            <button
+              type="button"
+              className="cmdk-scheme-btn primary"
+              disabled={!(onScheme || count < MAX_SCHEMES)}
+              onClick={(e) => {
+                e.stopPropagation();
+                void saveActiveScheme(nameInput.trim() || undefined);
+              }}
+            >
+              保存
+            </button>
+            <button
+              type="button"
+              className="cmdk-scheme-btn"
+              disabled={!draft}
+              onClick={(e) => {
+                e.stopPropagation();
+                void discardScheme();
+              }}
+            >
+              放弃
+            </button>
+            <button
+              type="button"
+              className="cmdk-scheme-btn danger"
+              disabled={!activeId}
+              onClick={(e) => {
+                e.stopPropagation();
+                void deleteActiveScheme();
+              }}
+            >
+              删除
+            </button>
+          </div>
         </div>
-
-        <input
-          className="cmdk-scheme-name"
-          type="text"
-          value={nameInput}
-          onChange={(e) => setNameInput(e.target.value)}
-          placeholder="方案名称"
-          maxLength={24}
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => {
-            e.stopPropagation();
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void saveActiveScheme(nameInput.trim() || undefined);
-            }
-          }}
-        />
 
         <div className="cmdk-scheme-edit">
-          <span className="cmdk-scheme-sublabel">正在编辑</span>
+          <span className="cmdk-scheme-sublabel">面板</span>
           <div className="cmdk-composer-track">
-            <TrackChips ids={currentBlocks} emptyText="还没有面板，下面打开插件" />
+            <TrackChips ids={currentBlocks} emptyText="下方打开插件" />
           </div>
-        </div>
-
-        {current && draft && (
-          <div className="cmdk-scheme-saved">
-            <span className="cmdk-scheme-sublabel">已保存版本</span>
-            <div className="cmdk-composer-track is-dim">
+          {current && draft ? (
+            <div className="cmdk-composer-track is-dim" title="已保存版本">
               <TrackChips ids={savedBlocks} emptyText="空" />
             </div>
-          </div>
-        )}
-
-        {status}
-
-        <div className="cmdk-scheme-actions">
-          <button
-            type="button"
-            className="cmdk-scheme-btn primary"
-            disabled={!(onScheme || count < MAX_SCHEMES)}
-            onClick={(e) => {
-              e.stopPropagation();
-              void saveActiveScheme(nameInput.trim() || undefined);
-            }}
-          >
-            保存方案
-          </button>
-          <button
-            type="button"
-            className="cmdk-scheme-btn"
-            disabled={!draft}
-            onClick={(e) => {
-              e.stopPropagation();
-              void discardScheme();
-            }}
-          >
-            放弃改动
-          </button>
-          <button
-            type="button"
-            className="cmdk-scheme-btn danger"
-            disabled={!activeId}
-            onClick={(e) => {
-              e.stopPropagation();
-              void deleteActiveScheme();
-            }}
-          >
-            删除
-          </button>
+          ) : null}
+          {status}
         </div>
 
         <div className="cmdk-builtin-row">
@@ -203,3 +198,5 @@ export function SchemeComposer({ hidden }: Props) {
     </div>
   );
 }
+
+export default SchemeComposer;

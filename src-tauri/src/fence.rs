@@ -49,6 +49,12 @@ fn default_origin() -> String {
     "user".into()
 }
 
+/// Installer / manual setup may drop `desk.lnk` on the desktop — never vault it.
+fn is_self_desk_shortcut(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower == "desk.lnk" || lower == "desk.url" || lower == "desk.lnk.lnk"
+}
+
 fn app_data_dir() -> Result<PathBuf, String> {
     let base = dirs::data_local_dir().ok_or("no local app data")?;
     let dir = base.join("desk");
@@ -210,22 +216,120 @@ fn extract_icon_png(src: &Path, dest: &Path) -> bool {
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
-        // PowerShell ExtractAssociatedIcon → PNG
+        // Resolve .lnk/.url → target (or IconLocation) so Windows does NOT bake in
+        // the shortcut-arrow overlay. ExtractAssociatedIcon(.lnk) always overlays.
         let src_s = src.to_string_lossy().replace('\'', "''");
         let dest_s = dest.to_string_lossy().replace('\'', "''");
         let script = format!(
-            "Add-Type -AssemblyName System.Drawing; \
-             $i=[System.Drawing.Icon]::ExtractAssociatedIcon('{src_s}'); \
-             if($null -eq $i){{ exit 1 }}; \
-             $b=$i.ToBitmap(); $b.Save('{dest_s}', [System.Drawing.Imaging.ImageFormat]::Png); \
-             $b.Dispose(); $i.Dispose();"
+            r#"
+Add-Type -AssemblyName System.Drawing
+$ErrorActionPreference = 'Stop'
+$src = '{src_s}'
+$dest = '{dest_s}'
+$ext = [IO.Path]::GetExtension($src).ToLowerInvariant()
+
+function Save-Icon([string]$path, [int]$index) {{
+  if (-not (Test-Path -LiteralPath $path)) {{ return $false }}
+  $code = @'
+using System;
+using System.Runtime.InteropServices;
+using System.Drawing;
+using System.Drawing.Imaging;
+public static class DeskCleanIcon {{
+  [DllImport("User32.dll", CharSet = CharSet.Unicode)]
+  public static extern uint PrivateExtractIcons(string f, int i, int cx, int cy, IntPtr[] ph, uint[] pid, uint n, uint flags);
+  [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr h);
+  public static bool Save(string file, int index, int px, string dest) {{
+    IntPtr[] icons = new IntPtr[1];
+    uint[] ids = new uint[1];
+    if (PrivateExtractIcons(file, index, px, px, icons, ids, 1, 0) == 0 || icons[0] == IntPtr.Zero) return false;
+    using (Icon icon = (Icon)Icon.FromHandle(icons[0]).Clone()) {{
+      DestroyIcon(icons[0]);
+      using (Bitmap bmp = new Bitmap(px, px, PixelFormat.Format32bppArgb))
+      using (Graphics g = Graphics.FromImage(bmp)) {{
+        g.Clear(Color.Transparent);
+        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+        g.DrawIcon(icon, new Rectangle(0, 0, px, px));
+        bmp.Save(dest, ImageFormat.Png);
+      }}
+    }}
+    return true;
+  }}
+}}
+'@
+  if (-not ("DeskCleanIcon" -as [type])) {{
+    Add-Type -TypeDefinition $code -ReferencedAssemblies System.Drawing
+  }}
+  if ([DeskCleanIcon]::Save($path, $index, 64, $dest)) {{ return $true }}
+  $i = [System.Drawing.Icon]::ExtractAssociatedIcon($path)
+  if ($null -eq $i) {{ return $false }}
+  $b = $i.ToBitmap()
+  $b.Save($dest, [System.Drawing.Imaging.ImageFormat]::Png)
+  $b.Dispose(); $i.Dispose()
+  return $true
+}}
+
+$ok = $false
+if ($ext -eq '.lnk') {{
+  $sh = New-Object -ComObject WScript.Shell
+  $lnk = $sh.CreateShortcut($src)
+  $iconLoc = $lnk.IconLocation
+  $target = $lnk.TargetPath
+  $idx = 0
+  $iconPath = $null
+  if ($iconLoc -and $iconLoc.Trim() -ne '' -and $iconLoc -ne ',') {{
+    $parts = $iconLoc -split ',', 2
+    $iconPath = $parts[0].Trim('"')
+    if ($parts.Count -gt 1) {{ [void][int]::TryParse($parts[1], [ref]$idx) }}
+    if ($idx -lt 0) {{ $idx = [Math]::Abs($idx) }}
+  }}
+  if ($iconPath -and (Test-Path -LiteralPath $iconPath)) {{
+    $ok = Save-Icon $iconPath $idx
+  }}
+  if (-not $ok -and $target -and (Test-Path -LiteralPath $target)) {{
+    $ok = Save-Icon $target 0
+  }}
+}} elseif ($ext -eq '.url') {{
+  $iconFile = $null
+  $idx = 0
+  foreach ($line in Get-Content -LiteralPath $src -ErrorAction SilentlyContinue) {{
+    if ($line -match '^\s*IconFile\s*=\s*(.+)\s*$') {{ $iconFile = $Matches[1].Trim().Trim('"') }}
+    if ($line -match '^\s*IconIndex\s*=\s*(-?\d+)\s*$') {{ $idx = [Math]::Abs([int]$Matches[1]) }}
+  }}
+  if ($iconFile -and (Test-Path -LiteralPath $iconFile)) {{
+    $ok = Save-Icon $iconFile $idx
+  }}
+}}
+
+if (-not $ok) {{
+  $ok = Save-Icon $src 0
+}}
+if (-not $ok) {{ exit 1 }}
+"#
         );
-        Command::new("powershell")
-            .args(["-NoProfile", "-Command", &script])
+        let tmp = std::env::temp_dir().join(format!(
+            "desk-clean-icon-{}.ps1",
+            dest.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "x".into())
+        ));
+        if fs::write(&tmp, &script).is_err() {
+            return false;
+        }
+        let ok = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                &tmp.to_string_lossy(),
+            ])
             .creation_flags(CREATE_NO_WINDOW)
             .status()
             .map(|s| s.success())
-            .unwrap_or(false)
+            .unwrap_or(false);
+        let _ = fs::remove_file(&tmp);
+        ok
     }
     #[cfg(not(windows))]
     {
@@ -362,6 +466,11 @@ pub fn fence_takeover() -> Result<Vec<FenceDto>, String> {
             if name.eq_ignore_ascii_case("desktop.ini") {
                 continue;
             }
+            // 安装器可能往桌面丢 desk.lnk；desk 本身不该进围栏
+            if is_self_desk_shortcut(&name) {
+                let _ = fs::remove_file(&path);
+                continue;
+            }
             // already tracked by original name + origin?
             if let Some(existing) = meta
                 .items
@@ -429,8 +538,55 @@ pub fn fence_takeover() -> Result<Vec<FenceDto>, String> {
 
 #[tauri::command]
 pub fn fence_list() -> Result<Vec<FenceDto>, String> {
-    let meta = load_meta()?;
+    let mut meta = load_meta()?;
+    if purge_self_desk_entries(&mut meta)? {
+        save_meta(&meta)?;
+    }
+    refresh_icon_cache_if_needed(&meta)?;
     list_fences_inner(&meta)
+}
+
+/// Drop vaulted installer shortcuts to desk itself (and their icon caches).
+fn purge_self_desk_entries(meta: &mut VaultMeta) -> Result<bool, String> {
+    let vault = vault_dir()?;
+    let icons = icons_dir()?;
+    let before = meta.items.len();
+    meta.items.retain(|e| {
+        if is_self_desk_shortcut(&e.original_name)
+            || (e.label.eq_ignore_ascii_case("desk")
+                && e.vault_name.to_ascii_lowercase().ends_with(".lnk"))
+        {
+            let _ = fs::remove_file(vault.join(&e.vault_name));
+            let _ = fs::remove_file(icons.join(format!("{}.png", e.id)));
+            false
+        } else {
+            true
+        }
+    });
+    Ok(meta.items.len() != before)
+}
+
+/// v2 = extract from .lnk target (no Windows shortcut-arrow overlay).
+const ICON_CACHE_VER: &str = "2";
+
+fn refresh_icon_cache_if_needed(meta: &VaultMeta) -> Result<(), String> {
+    let marker = app_data_dir()?.join(format!("icon-cache-v{ICON_CACHE_VER}"));
+    if marker.exists() {
+        return Ok(());
+    }
+    let vault = vault_dir()?;
+    let icons = icons_dir()?;
+    for e in &meta.items {
+        let src = vault.join(&e.vault_name);
+        if !src.exists() {
+            continue;
+        }
+        let dest = icons.join(format!("{}.png", e.id));
+        let _ = fs::remove_file(&dest);
+        let _ = extract_icon_png(&src, &dest);
+    }
+    let _ = fs::write(&marker, ICON_CACHE_VER.as_bytes());
+    Ok(())
 }
 
 fn list_fences_inner(meta: &VaultMeta) -> Result<Vec<FenceDto>, String> {
@@ -515,13 +671,45 @@ pub fn fence_save_order(layout: Vec<FenceLayoutDto>) -> Result<Vec<FenceDto>, St
     list_fences_inner(&meta)
 }
 
+fn move_path(src: &Path, dest: &Path) -> Result<(), std::io::Error> {
+    match fs::rename(src, dest) {
+        Ok(()) => Ok(()),
+        Err(_) => {
+            if src.is_dir() {
+                // directories: copy tree is heavy; rename already failed — surface error
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "无法移动文件夹（权限不足）",
+                ));
+            }
+            fs::copy(src, dest)?;
+            fs::remove_file(src)?;
+            Ok(())
+        }
+    }
+}
+
+fn unique_dest(desktop: &Path, original_name: &str, vault_name: &str) -> PathBuf {
+    let dest = desktop.join(original_name);
+    if dest.exists() {
+        desktop.join(vault_name)
+    } else {
+        dest
+    }
+}
+
 #[tauri::command]
 pub fn fence_launch(path: String) -> Result<(), String> {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        use windows::core::{w, HSTRING};
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
         if path.starts_with("shell:") {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
             Command::new("explorer")
                 .arg(&path)
                 .creation_flags(CREATE_NO_WINDOW)
@@ -529,12 +717,14 @@ pub fn fence_launch(path: String) -> Result<(), String> {
                 .map_err(|e| e.to_string())?;
             return Ok(());
         }
-        // start "" "path"
-        Command::new("cmd")
-            .args(["/C", "start", "", &path])
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-            .map_err(|e| e.to_string())?;
+
+        let h = HSTRING::from(path.as_str());
+        let rc = unsafe {
+            ShellExecuteW(HWND::default(), w!("open"), &h, None, None, SW_SHOWNORMAL)
+        };
+        if (rc.0 as usize) <= 32 {
+            return Err(format!("无法打开（错误码 {}）", rc.0 as usize));
+        }
         Ok(())
     }
     #[cfg(not(windows))]
@@ -550,33 +740,54 @@ pub fn fence_restore() -> Result<(), String> {
     let public_desktop = public_desktop_dir();
     let vault = vault_dir()?;
     let mut meta = load_meta()?;
+    let mut errors: Vec<String> = Vec::new();
+    let mut remaining: Vec<VaultEntry> = Vec::new();
 
-    for e in &meta.items {
+    for e in meta.items.drain(..) {
         let src = vault.join(&e.vault_name);
         if !src.exists() {
             continue;
         }
-        let desktop = if e.origin == "public" {
+
+        let preferred = if e.origin == "public" {
             public_desktop
                 .clone()
                 .unwrap_or_else(|| user_desktop.clone())
         } else {
             user_desktop.clone()
         };
-        let dest = desktop.join(&e.original_name);
-        let dest = if dest.exists() {
-            desktop.join(&e.vault_name)
-        } else {
-            dest
-        };
-        fs::rename(&src, &dest).map_err(|err| format!("{}: {err}", e.original_name))?;
+        let dest = unique_dest(&preferred, &e.original_name, &e.vault_name);
+
+        match move_path(&src, &dest) {
+            Ok(()) => {}
+            Err(_public_denied) if e.origin == "public" => {
+                // 公共桌面常需管理员；回退到用户桌面，避免整批失败
+                let fallback = unique_dest(&user_desktop, &e.original_name, &e.vault_name);
+                if let Err(err2) = move_path(&src, &fallback) {
+                    errors.push(format!("{}: {err2}", e.original_name));
+                    remaining.push(e);
+                }
+            }
+            Err(err) => {
+                errors.push(format!("{}: {err}", e.original_name));
+                remaining.push(e);
+            }
+        }
     }
-    meta.items.clear();
-    if meta.hide_icons_applied {
+
+    meta.items = remaining;
+    if meta.items.is_empty() && meta.hide_icons_applied {
         set_desktop_icons_hidden(false)?;
         meta.hide_icons_applied = false;
     }
     save_meta(&meta)?;
+    if !errors.is_empty() {
+        return Err(format!(
+            "部分图标未能还原（{}）：{}",
+            errors.len(),
+            errors.join("；")
+        ));
+    }
     Ok(())
 }
 

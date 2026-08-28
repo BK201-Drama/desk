@@ -82,18 +82,21 @@ fn coder_disabled() -> Vec<String> {
         "ops-hud".into(),
         "event-tape".into(),
         "qq-music".into(),
+        "stock".into(),
     ]
 }
 
 fn minimal_disabled() -> Vec<String> {
     vec![
         "github".into(),
+        "token-capsule".into(),
         "multica".into(),
         "remind".into(),
         "hello".into(),
         "ops-hud".into(),
         "event-tape".into(),
         "qq-music".into(),
+        "stock".into(),
     ]
 }
 
@@ -101,12 +104,14 @@ fn fence_only_disabled() -> Vec<String> {
     vec![
         "clock".into(),
         "github".into(),
+        "token-capsule".into(),
         "multica".into(),
         "remind".into(),
         "hello".into(),
         "ops-hud".into(),
         "event-tape".into(),
         "qq-music".into(),
+        "stock".into(),
     ]
 }
 

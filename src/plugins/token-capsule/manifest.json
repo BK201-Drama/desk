@@ -1,0 +1,9 @@
+{
+  "id": "token-capsule",
+  "name": "Token 胶囊",
+  "version": "0.1.0",
+  "slot": "left",
+  "entry": "./panel.tsx",
+  "permissions": ["cursor.read", "host.open", "host.log"],
+  "order": 15
+}

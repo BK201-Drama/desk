@@ -1,0 +1,9 @@
+{
+  "id": "stock",
+  "name": "股票行情",
+  "version": "0.1.0",
+  "slot": "left",
+  "entry": "./panel.tsx",
+  "permissions": ["stock.read", "host.log"],
+  "order": 35
+}

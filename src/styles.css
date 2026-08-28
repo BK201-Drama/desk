@@ -1,7 +1,9 @@
 :root {
-  --fence-row: 48px;
-  --fence-gap: 5px;
-  --fence-pad-y: 5px;
+  --desk-zoom: 1.28;
+  --desk-radius: 14px;
+  --fence-row: 42px;
+  --fence-gap: 3px;
+  --fence-pad-y: 3px;
 
   --ink: #1a2332;
   --ink-soft: #3d4a5c;
@@ -34,9 +36,17 @@ body {
   font-family: "Segoe UI", system-ui, sans-serif;
   color: var(--ink);
   user-select: none;
-  zoom: 1.28;
+  zoom: var(--desk-zoom);
   -webkit-app-region: no-drag;
   app-region: no-drag;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  border-radius: var(--desk-radius);
 }
 
 .board {
@@ -45,19 +55,25 @@ body {
   height: 100%;
   display: grid;
   grid-template-columns: 1.2fr 0.9fr;
-  border-radius: 14px;
+  border-radius: var(--desk-radius);
   overflow: hidden;
+  /* 略内收裁切，消掉 zoom/透明窗体顶边毛边 */
+  clip-path: inset(1px round calc(var(--desk-radius) - 1px));
   background: var(--glass);
-  border: 1px solid var(--mist-border);
+  border: none;
+  /* 用内描边代替 border，避免圆角抗锯齿白边 */
+  box-shadow: inset 0 0 0 1px var(--mist-border);
   backdrop-filter: blur(24px) saturate(1.35);
   -webkit-backdrop-filter: blur(24px) saturate(1.35);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset;
+  isolation: isolate;
 }
 
 #slot-left {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  border-radius: 14px 0 0 14px;
+  overflow: hidden;
 }
 
 #slot-right {
@@ -67,6 +83,7 @@ body {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  border-radius: 0 14px 14px 0;
 }
 
 #slot-right > .plugin-root {
@@ -145,15 +162,36 @@ body {
   border-right: 1px solid rgba(26, 35, 50, 0.1);
   overflow: auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-content: flex-start;
+  border-radius: 14px 0 0 14px;
+}
+
+#slot-left > .plugin-root {
+  flex: 0 0 auto;
+  min-height: 0;
 }
 
 .pane-fences {
-  padding: 7px 6px 6px;
+  padding: 4px 5px 6px;
   background: rgba(255, 255, 255, 0.22);
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 0;
   min-height: 0;
+  overflow: hidden;
+  border-radius: 0 14px 14px 0;
+}
+
+.fence-panel-root {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   overflow: hidden;
 }
 
@@ -162,9 +200,10 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
   overflow-x: hidden;
   overflow-y: auto;
+  padding-bottom: 6px;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -179,6 +218,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  margin-bottom: 4px;
 }
 
 .profile {
@@ -737,6 +777,7 @@ body {
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
+  min-height: 20px;
 }
 .fences-head h2 {
   font-size: 8px;
@@ -793,18 +834,22 @@ body {
 
 .fence-search {
   width: 100%;
-  height: 22px;
-  padding: 0 7px;
+  height: auto;
+  min-height: 28px;
+  padding: 6px 9px;
+  box-sizing: border-box;
   border-radius: 6px;
   border: 1px solid rgba(26, 35, 50, 0.12);
   background: rgba(255, 255, 255, 0.55);
   font-size: 10px;
+  line-height: 1.3;
   font-family: inherit;
   color: var(--ink);
   flex-shrink: 0;
   user-select: text;
   -webkit-user-select: text;
   pointer-events: auto;
+  margin: 0;
 }
 .fence-search::placeholder {
   color: #8b9cb3;
@@ -953,11 +998,12 @@ body {
 }
 
 .fence {
+  position: relative;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   border-radius: 8px;
-  padding: 5px 5px 4px;
+  padding: 1px 3px 1px;
   background: rgba(255, 255, 255, 0.48);
   border: 1px dashed rgba(26, 35, 50, 0.14);
 }
@@ -965,32 +1011,49 @@ body {
   border-style: solid;
   border-color: rgba(45, 106, 79, 0.35);
 }
+/* 分类角标：轻量元数据，不抢图标注意力 */
 .fence-title {
-  font-size: 10px;
-  font-weight: 600;
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 2px;
-  flex-shrink: 0;
+  position: absolute;
+  top: 5px;
+  left: 6px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  margin: 0;
+  padding: 1px 5px 2px;
+  border-radius: 4px;
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft, #6b7a8c);
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: none;
+  pointer-events: none;
+  max-width: calc(100% - 12px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .fence-title em {
   font-style: normal;
-  font-size: 9px;
+  font-size: 7px;
   font-weight: 400;
-  color: #6b7a8c;
+  color: #8b9cb3;
 }
 .fence-grid {
   --fence-rows: 2;
   max-height: calc(
-    var(--fence-row) * var(--fence-rows) + var(--fence-gap) * (var(--fence-rows) - 1) +
-      var(--fence-pad-y) * 2
+    var(--fence-row) * var(--fence-rows) + var(--fence-gap) * (var(--fence-rows) - 1) + 28px
   );
   overflow-y: auto;
   overflow-x: hidden;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: var(--fence-gap) 4px;
-  padding: var(--fence-pad-y) 3px 4px;
+  /* 标题角标下方留空，避免和首行图标贴死 */
+  padding: 22px 3px 5px;
   align-content: start;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -1012,18 +1075,18 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   font-size: 8px;
-  line-height: 1.15;
+  line-height: 1.1;
   color: var(--ink-soft);
   text-align: center;
   min-width: 0;
-  height: var(--fence-row, 48px);
+  height: var(--fence-row, 42px);
   cursor: pointer;
   background: none;
   border: none;
   font-family: inherit;
-  padding: 3px 2px 2px;
+  padding: 2px 1px 1px;
   border-radius: 8px;
   transition: background 0.12s ease, transform 0.12s ease;
 }
@@ -1057,16 +1120,18 @@ body {
   border-radius: 4px;
 }
 .fence-app .label {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  word-break: break-all;
+  display: block;
   max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+  line-height: 1.15;
+  padding: 0 1px;
 }
 .fence-app .face {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.4);
   background-size: contain;
@@ -1142,7 +1207,7 @@ body {
 }
 
 #fenceRecent:not([hidden]) {
-  margin-bottom: 5px;
+  margin-bottom: 0;
   border-style: solid;
   border-color: rgba(45, 106, 79, 0.2);
   background: rgba(45, 106, 79, 0.06);
@@ -1167,8 +1232,10 @@ body {
   }
 
   .board {
-    border-color: rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    border-color: transparent;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+      0 8px 32px rgba(0, 0, 0, 0.35);
   }
 
   .pane-left,
@@ -1232,6 +1299,14 @@ body {
   .fence {
     background: rgba(255, 255, 255, 0.04);
     border-color: rgba(255, 255, 255, 0.1);
+  }
+  .fence-title {
+    color: #8a9aab;
+    background: rgba(22, 28, 38, 0.55);
+    box-shadow: none;
+  }
+  .fence-title em {
+    color: #6b7a8c;
   }
   #fenceRecent:not([hidden]) {
     border-color: rgba(82, 183, 136, 0.25);

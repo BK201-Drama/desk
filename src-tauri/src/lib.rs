@@ -1,3 +1,4 @@
+mod cursor;
 mod fence;
 mod github;
 mod multica;
@@ -5,6 +6,7 @@ mod plugins;
 mod qqmusic;
 mod recent;
 mod remind;
+mod stock;
 #[cfg(windows)]
 mod win_zorder;
 
@@ -185,6 +187,8 @@ pub fn run() {
             qqmusic::qqmusic_toggle,
             qqmusic::qqmusic_next,
             qqmusic::qqmusic_prev,
+            stock::stock_quotes,
+            cursor::cursor_usage,
         ])
         .setup(|app| {
             let locked: Arc<Mutex<Option<(i32, i32)>>> = Arc::new(Mutex::new(None));
