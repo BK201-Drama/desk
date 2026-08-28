@@ -3,7 +3,7 @@
   "name": "Command Palette",
   "version": "0.1.0",
   "slot": "overlay",
-  "entry": "./panel.ts",
+  "entry": "./panel.tsx",
   "permissions": [
     "github.read",
     "multica.read",

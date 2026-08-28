@@ -28,3 +28,8 @@ docs/screenshots/_*.ps1
 docs/screenshots/_*.png
 docs/screenshots/*-screen.png
 docs/screenshots/*-desktop-full.png
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/

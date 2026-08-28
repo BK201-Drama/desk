@@ -22,7 +22,10 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
   const togglingRef = useRef(false);
   const movingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+
+  const hostEl = () =>
+    shellRef.current?.closest<HTMLElement>('[data-plugin="cmdk"]') ?? null;
 
   const disabledIds = useMemo(
     () => optimisticDisabled ?? new Set(config?.disabled ?? []),
@@ -49,7 +52,7 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
     (next: boolean | ((was: boolean) => boolean)) => {
       setOpenState((was) => {
         const value = typeof next === "function" ? next(was) : next;
-        rootRef.current?.classList.toggle("show", value);
+        hostEl()?.classList.toggle("show", value);
         if (value) {
           setFilter("");
           setSelected(0);
@@ -248,7 +251,7 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
   };
 
   return (
-    <div ref={rootRef} className="cmdk-root" data-testid="cmdk-root">
+    <div ref={shellRef} className="cmdk-root" data-testid="cmdk-root">
       <div className="cmdk-backdrop" onClick={() => setOpen(false)} />
       <div className="cmdk-panel" role="dialog" aria-label="命令面板">
         <div className="cmdk-head">
