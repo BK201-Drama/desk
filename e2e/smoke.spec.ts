@@ -62,13 +62,7 @@ test("cmdk can create a named scheme", async ({ page }) => {
   await expect(composer.getByRole("button", { name: "测试方案" })).toBeVisible();
 });
 
-test("clock panel mounts when enabled", async ({ page }) => {
-  await page.goto("/");
-  // clock is in default order but may be disabled in coder preset — still check board
-  await expect(page.getByTestId("desk-board")).toBeVisible();
-  await expect(page.getByTestId("cmdk-root")).toBeAttached({ timeout: 15_000 });
-});
-
+test("page has no shell/react console errors on boot", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (err) => errors.push(err.message));
   page.on("console", (msg) => {
@@ -80,7 +74,6 @@ test("clock panel mounts when enabled", async ({ page }) => {
   await expect(page.getByTestId("cmdk-root")).toBeAttached({ timeout: 15_000 });
   await page.waitForTimeout(800);
 
-  // Vanilla 插件在 mock IPC 下可能因快照字段不全报错；这里只盯壳层 / React / cmdk
   const critical = errors.filter((e) => {
     if (/github_snapshot|multica_snapshot|remind_list|fence_|qqmusic_/i.test(e)) return false;
     if (/favicon|React DevTools/i.test(e)) return false;
