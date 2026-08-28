@@ -59,11 +59,70 @@
             active_scheme_id: null,
           });
           return config;
-        case "plugin_apply_scheme":
-        case "plugin_create_scheme":
-        case "plugin_update_scheme":
-        case "plugin_delete_scheme":
+        case "plugin_apply_scheme": {
+          const scheme = (config.schemes || []).find(function (s) {
+            return s.id === args.id;
+          });
+          if (scheme) {
+            config = Object.assign({}, config, {
+              active_preset: "scheme",
+              active_scheme_id: scheme.id,
+              disabled: scheme.disabled.slice(),
+              order: scheme.order.slice(),
+            });
+          }
+          return config;
+        }
+        case "plugin_create_scheme": {
+          const schemes = (config.schemes || []).slice();
+          if (schemes.length >= 3) return config;
+          const id = "scheme-" + Date.now();
+          const name = (args.name && String(args.name).trim()) || "方案 " + (schemes.length + 1);
+          schemes.push({
+            id: id,
+            name: name,
+            disabled: (config.disabled || []).slice(),
+            order: (config.order || []).slice(),
+          });
+          config = Object.assign({}, config, {
+            schemes: schemes,
+            active_preset: "scheme",
+            active_scheme_id: id,
+          });
+          return config;
+        }
+        case "plugin_update_scheme": {
+          const schemes = (config.schemes || []).map(function (s) {
+            if (s.id !== args.id) return s;
+            return Object.assign({}, s, {
+              name: (args.name && String(args.name).trim()) || s.name,
+              disabled: (config.disabled || []).slice(),
+              order: (config.order || []).slice(),
+            });
+          });
+          config = Object.assign({}, config, {
+            schemes: schemes,
+            active_preset: "scheme",
+            active_scheme_id: args.id,
+          });
+          return config;
+        }
+        case "plugin_delete_scheme": {
+          const schemes = (config.schemes || []).filter(function (s) {
+            return s.id !== args.id;
+          });
+          config = Object.assign({}, config, {
+            schemes: schemes,
+            active_preset: "coder",
+            active_scheme_id: null,
+          });
+          return config;
+        }
         case "plugin_discard_custom_draft":
+          config = Object.assign({}, config, {
+            active_preset: "coder",
+            active_scheme_id: null,
+          });
           return config;
         case "set_keyboard_input":
           return null;
@@ -71,8 +130,35 @@
           return 1;
         case "plugin:event|unlisten":
           return null;
+        case "remind_list":
+          return [];
+        case "github_snapshot":
+          return {
+            login: "mock",
+            name: "Mock",
+            avatar_url: "",
+            public_repos: 0,
+            followers: 0,
+            following: 0,
+            notifications: [],
+            events: [],
+          };
+        case "multica_snapshot":
+          return { app_url: "", tasks: [], projects: [] };
+        case "fence_list":
+        case "fence_takeover":
+        case "fence_save_order":
+          return [];
+        case "fence_snapshot":
+          return { fences: [], icons: [] };
+        case "qqmusic_status":
+        case "qqmusic_snapshot":
+          return { running: false, title: "", artist: "" };
         default:
-          return null;
+          // Prefer empty collections over null so vanilla plugins don't NPE in E2E
+          if (/_list$/.test(cmd)) return [];
+          if (/_snapshot$/.test(cmd)) return {};
+          return {};
       }
     },
   };
