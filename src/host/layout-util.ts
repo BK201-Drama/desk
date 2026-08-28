@@ -1,60 +1,11 @@
+/**
+ * 兼容层：领域逻辑在 domain/layout；enabledIds 仍依赖宿主 listMounted。
+ */
+import { activeScheme, schemeEnabledIds } from "../domain/layout";
 import { listMounted } from "./registry";
-import type { LayoutScheme, PluginsConfig } from "./types";
+import type { PluginsConfig } from "./types";
 
-export const MAX_SCHEMES = 3;
-
-export const PRESET_LABEL: Record<string, string> = {
-  coder: "程序员",
-  minimal: "极简",
-  fence: "仅围栏",
-  scheme: "自定义方案",
-};
-
-const PLUGIN_SHORT: Record<string, string> = {
-  github: "GitHub",
-  multica: "Multica",
-  remind: "待办",
-  fence: "围栏",
-  "qq-music": "QQ",
-  clock: "时钟",
-  "ops-hud": "HUD",
-  "event-tape": "磁带",
-  hello: "Hello",
-  cmdk: "命令",
-};
-
-const ALL_KNOWN_PLUGINS = [
-  "github",
-  "multica",
-  "remind",
-  "fence",
-  "qq-music",
-  "clock",
-  "ops-hud",
-  "event-tape",
-  "hello",
-] as const;
-
-export function chipLabel(id: string): string {
-  return PLUGIN_SHORT[id] ?? id;
-}
-
-export function idsFromSnapshot(disabled: string[], order: string[]): string[] {
-  const dis = new Set(disabled);
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const id of order) {
-    if (id === "cmdk" || dis.has(id) || seen.has(id)) continue;
-    seen.add(id);
-    out.push(id);
-  }
-  for (const id of ALL_KNOWN_PLUGINS) {
-    if (dis.has(id) || seen.has(id)) continue;
-    seen.add(id);
-    out.push(id);
-  }
-  return out;
-}
+export * from "../domain/layout";
 
 export function enabledIds(cfg: PluginsConfig): string[] {
   const disabled = new Set(cfg.disabled ?? []);
@@ -75,30 +26,7 @@ export function enabledIds(cfg: PluginsConfig): string[] {
   return out;
 }
 
-export function activeScheme(cfg: PluginsConfig): LayoutScheme | null {
-  const id = cfg.active_scheme_id;
-  if (!id) return null;
-  return (cfg.schemes ?? []).find((s) => s.id === id) ?? null;
-}
-
-export function schemeEnabledIds(scheme: LayoutScheme): string[] {
-  return idsFromSnapshot(scheme.disabled ?? [], scheme.order ?? []);
-}
-
-function sameList(a: string[], b: string[]): boolean {
-  return a.length === b.length && a.every((v, i) => v === b[i]);
-}
-
-export function hasSchemeDraft(cfg: PluginsConfig): boolean {
-  if (cfg.active_preset !== "scheme") return false;
+export function savedEnabledIds(cfg: PluginsConfig): string[] {
   const scheme = activeScheme(cfg);
-  if (!scheme) return true;
-  return (
-    !sameList(cfg.disabled ?? [], scheme.disabled ?? []) ||
-    !sameList(cfg.order ?? [], scheme.order ?? [])
-  );
-}
-
-export function isBuiltinPreset(preset: string): boolean {
-  return preset === "coder" || preset === "minimal" || preset === "fence";
+  return scheme ? schemeEnabledIds(scheme) : [];
 }
