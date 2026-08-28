@@ -1,6 +1,7 @@
 import { createHostContext, clearPluginCommands } from "./api";
 import { emit } from "./events";
 import { isEditing } from "./edit";
+import { mountReactPlugin, unmountReactPlugin } from "../infrastructure/react/pluginMount";
 import type {
   BundledPlugin,
   PluginManifest,
@@ -111,7 +112,13 @@ async function mountOne(
     unsubs.push(ctx.onEditChange((on) => mod.onEditChange?.(on)));
   }
   try {
-    await mod.mount(root, ctx);
+    if (mod.Component) {
+      mountReactPlugin(manifest.id, root, mod.Component, ctx);
+    } else if (mod.mount) {
+      await mod.mount(root, ctx);
+    } else {
+      throw new Error(`plugin ${manifest.id}: no Component or mount()`);
+    }
     mounted.set(manifest.id, { manifest, source, root, mod, ctx, unsubs });
     emit("plugin:mounted", { id: manifest.id, slot: manifest.slot, source }, "host");
   } catch (e) {
@@ -130,6 +137,7 @@ export async function unmountOne(id: string): Promise<void> {
   if (!m) return;
   for (const u of m.unsubs) u();
   clearPluginCommands(id);
+  unmountReactPlugin(id);
   try {
     await m.mod.unmount?.();
   } catch (e) {

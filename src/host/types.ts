@@ -63,10 +63,19 @@ export type HostCommand = {
   run: () => void | Promise<void>;
 };
 
+import type { ComponentType } from "react";
+
+export type PluginComponentProps = {
+  ctx: HostContext;
+};
+
 export type PluginModule = {
-  mount: (el: HTMLElement, ctx: HostContext) => void | Promise<void>;
+  /** legacy vanilla 插件 */
+  mount?: (el: HTMLElement, ctx: HostContext) => void | Promise<void>;
   unmount?: () => void | Promise<void>;
   onEditChange?: (editing: boolean) => void;
+  /** React 插件（内置插件逐步迁移） */
+  Component?: ComponentType<PluginComponentProps>;
 };
 
 export type BundledPlugin = {
