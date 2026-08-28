@@ -93,6 +93,8 @@ export function FencePanel({ ctx }: PluginComponentProps) {
     void ctx.invoke<boolean>("autostart_get").then(setAutostartOn).catch(() => {});
 
     const keyHandler = (e: KeyboardEvent) => {
+      const cmdkOpen = document.querySelector('[data-plugin="cmdk"].show');
+      if (cmdkOpen) return;
       const active = document.activeElement;
       const inField = isTextField(active);
       const inSearch = active === searchRef.current;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { HostContext } from "../../host/types";
 import { DRAG_THRESHOLD_PX, moveItemAcross, type FenceGroup } from "../../domain/fence";
 
@@ -17,51 +17,10 @@ export function useFenceDnD(
     startX: number;
     startY: number;
     active: boolean;
+    targetFence?: string;
+    beforeId?: string | null;
   } | null>(null);
   const suppressClick = useRef(false);
-
-  useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      const p = pointer.current;
-      if (!p || e.pointerId !== p.id) return;
-      const dx = e.clientX - p.startX;
-      const dy = e.clientY - p.startY;
-      if (!p.active) {
-        if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return;
-        p.active = true;
-        setDraggingId(p.itemId);
-      }
-      e.preventDefault();
-      const under = document.elementFromPoint(e.clientX, e.clientY);
-      const grid = under?.closest<HTMLElement>(".fence-grid");
-      const fence = grid?.closest<HTMLElement>(".fence");
-      if (!grid || !fence || fence.dataset.name === "系统") return;
-      document.querySelectorAll(".fence-grid.drag-over").forEach((el) => el.classList.remove("drag-over"));
-      grid.classList.add("drag-over");
-    };
-
-    const end = (persist: boolean) => {
-      const p = pointer.current;
-      if (!p) return;
-      document.querySelectorAll(".fence-grid.drag-over").forEach((el) => el.classList.remove("drag-over"));
-      if (p.active) {
-        suppressClick.current = true;
-        if (persist) {
-          const over = document.elementFromPoint(
-            /* last known - use center of dragging not available; read from hover */ 0,
-            0
-          );
-          void over;
-        }
-      }
-      pointer.current = null;
-      setDraggingId(null);
-    };
-
-    // Use window listeners only while dragging — attached in onPointerDown
-    void onMove;
-    void end;
-  }, []);
 
   const onAppPointerDown = (e: ReactPointerEvent, itemId: string, fenceName: string) => {
     if (!ctx.editing() || e.button !== 0) return;
@@ -91,8 +50,7 @@ export function useFenceDnD(
       const fence = grid?.closest<HTMLElement>(".fence");
       if (grid && fence && fence.dataset.name !== "系统") {
         grid.classList.add("drag-over");
-        (pointer.current as { targetFence?: string; beforeId?: string | null }).targetFence =
-          fence.dataset.name;
+        p.targetFence = fence.dataset.name;
         const apps = [...grid.querySelectorAll<HTMLElement>(".fence-app")].filter(
           (a) => a.dataset.id !== p.itemId
         );
@@ -107,14 +65,12 @@ export function useFenceDnD(
             break;
           }
         }
-        (pointer.current as { beforeId?: string | null }).beforeId = beforeId;
+        p.beforeId = beforeId;
       }
     };
 
     const onUp = (ev: PointerEvent) => {
-      const p = pointer.current as
-        | (typeof pointer.current & { targetFence?: string; beforeId?: string | null })
-        | null;
+      const p = pointer.current;
       if (!p || ev.pointerId !== p.id) return;
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
