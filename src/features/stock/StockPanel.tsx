@@ -22,9 +22,6 @@ export function StockPanel({ ctx }: PluginComponentProps) {
 
   return (
     <div className="stock-card" data-testid="stock-panel">
-      <div className="stock-head">
-        <span className="stock-label">行情</span>
-      </div>
       {error ? (
         <div className="stock-error">{error}</div>
       ) : quotes.length === 0 ? (

@@ -5,20 +5,6 @@
   border: 1px solid rgba(26, 35, 50, 0.1);
 }
 
-.stock-head {
-  display: flex;
-  align-items: center;
-  margin-bottom: 2px;
-}
-
-.stock-label {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  color: var(--ink-soft);
-  opacity: 0.62;
-}
-
 .stock-list {
   display: flex;
   flex-direction: column;

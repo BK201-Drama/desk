@@ -80,16 +80,6 @@
   background: #b4232c;
 }
 
-.tc-row-hint {
-  font-size: 8px;
-  line-height: 1.25;
-  color: var(--ink-soft);
-  opacity: 0.62;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .tc-error {
   font-size: 10px;
   color: #9b2226;

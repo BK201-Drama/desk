@@ -4,15 +4,7 @@ import { useCursorUsage } from "../../application/cursor/useCursorUsage";
 import { barWidth, formatUsedPct, toneFor } from "../../domain/cursor";
 import "../../plugins/token-capsule/panel.css";
 
-function UsageRow({
-  title,
-  used,
-  hint,
-}: {
-  title: string;
-  used: number;
-  hint?: string;
-}) {
+function UsageRow({ title, used }: { title: string; used: number }) {
   const w = barWidth(used);
   return (
     <div className="tc-row">
@@ -23,7 +15,6 @@ function UsageRow({
       <div className="tc-bar" aria-hidden="true">
         <div className="tc-bar-fill" style={{ width: `${w}%` }} />
       </div>
-      {hint ? <div className="tc-row-hint">{hint}</div> : null}
     </div>
   );
 }
@@ -56,13 +47,8 @@ export function TokenCapsulePanel({ ctx }: PluginComponentProps) {
           <UsageRow
             title="Cursor Models"
             used={usage.autoPctUsed || usage.usedPct}
-            hint={usage.autoMessage || undefined}
           />
-          <UsageRow
-            title="Other Models"
-            used={usage.apiPctUsed}
-            hint={usage.apiMessage || undefined}
-          />
+          <UsageRow title="Other Models" used={usage.apiPctUsed} />
         </>
       )}
     </button>

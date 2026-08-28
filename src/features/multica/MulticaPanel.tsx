@@ -33,12 +33,6 @@ export function MulticaPanel({ ctx }: PluginComponentProps) {
 
   return (
     <div className="mc" data-testid="multica-panel">
-      <div className="mc-head">
-        <span className="brand">Multica</span>
-        <button type="button" className="mc-open" onClick={() => void openBoard()}>
-          打开看板 →
-        </button>
-      </div>
       <div className="mc-stats">
         <span className="mc-pill warn">
           <strong>{snap ? snap.inbox : "—"}</strong> inbox
@@ -49,6 +43,31 @@ export function MulticaPanel({ ctx }: PluginComponentProps) {
         <span className="mc-pill">
           <strong>{snap ? snap.review : "—"}</strong> review
         </span>
+        <button
+          type="button"
+          className="mc-open-icon"
+          title="打开 Multica 看板"
+          aria-label="打开 Multica 看板"
+          onClick={() => void openBoard()}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="M6.5 3.5H4.2A1.2 1.2 0 0 0 3 4.7v7.1c0 .66.54 1.2 1.2 1.2h7.1c.66 0 1.2-.54 1.2-1.2V9.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+            <path
+              d="M9 3.5h3.5V7M12.5 3.5 8 8"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
       </div>
       <div className="mc-list">
         {errorText ? (
