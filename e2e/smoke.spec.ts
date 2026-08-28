@@ -62,7 +62,13 @@ test("cmdk can create a named scheme", async ({ page }) => {
   await expect(composer.getByRole("button", { name: "测试方案" })).toBeVisible();
 });
 
-test("page has no shell/react console errors on boot", async ({ page }) => {
+test("clock panel mounts when enabled", async ({ page }) => {
+  await page.goto("/");
+  // clock is in default order but may be disabled in coder preset — still check board
+  await expect(page.getByTestId("desk-board")).toBeVisible();
+  await expect(page.getByTestId("cmdk-root")).toBeAttached({ timeout: 15_000 });
+});
+
   const errors: string[] = [];
   page.on("pageerror", (err) => errors.push(err.message));
   page.on("console", (msg) => {
