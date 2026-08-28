@@ -55,7 +55,10 @@ test("cmdk can create a named scheme", async ({ page }) => {
   const composer = page.getByTestId("cmdk-composer");
   await expect(composer.getByText("0/3")).toBeVisible();
 
-  await composer.locator(".cmdk-scheme-name").fill("测试方案");
+  const nameInput = composer.locator(".cmdk-scheme-name");
+  await expect(nameInput).toBeVisible();
+  await nameInput.click();
+  await nameInput.fill("测试方案");
   await composer.getByRole("button", { name: "+ 新建" }).click();
 
   await expect(composer.getByText("1/3")).toBeVisible({ timeout: 10_000 });

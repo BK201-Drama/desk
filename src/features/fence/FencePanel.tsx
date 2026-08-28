@@ -61,6 +61,12 @@ export function FencePanel({ ctx }: PluginComponentProps) {
 
   const q = filter.trim().toLowerCase();
   const hits = searchFences(fences, filter);
+  const hitsRef = useRef(hits);
+  hitsRef.current = hits;
+  const filterRef = useRef(filter);
+  filterRef.current = filter;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
   const recents = recentItems(fences, recentIds);
   const total = totalFenceItems(fences);
 
@@ -70,7 +76,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
     const unsubs = [
       ctx.onEditChange((on) => {
         setEditingOn(on);
-        if (on && filter) {
+        if (on && filterRef.current) {
           setFilter("");
           setSelected(-1);
         }
@@ -98,13 +104,16 @@ export function FencePanel({ ctx }: PluginComponentProps) {
       const active = document.activeElement;
       const inField = isTextField(active);
       const inSearch = active === searchRef.current;
+      const curFilter = filterRef.current;
+      const curHits = hitsRef.current;
+      const curSelected = selectedRef.current;
       if (e.key === "/" && !inField) {
         e.preventDefault();
         window.__deskFocusFenceSearch?.();
         return;
       }
       if (e.key === "Escape") {
-        if (filter.trim() || inSearch) {
+        if (curFilter.trim() || inSearch) {
           e.preventDefault();
           setFilter("");
           setSelected(-1);
@@ -112,18 +121,18 @@ export function FencePanel({ ctx }: PluginComponentProps) {
         }
         return;
       }
-      if (!filter.trim()) return;
+      if (!curFilter.trim()) return;
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        if (!hits.length) return;
+        if (!curHits.length) return;
         e.preventDefault();
         setSelected((s) => {
-          if (e.key === "ArrowDown") return s < 0 ? 0 : Math.min(s + 1, hits.length - 1);
-          return s < 0 ? hits.length - 1 : Math.max(s - 1, 0);
+          if (e.key === "ArrowDown") return s < 0 ? 0 : Math.min(s + 1, curHits.length - 1);
+          return s < 0 ? curHits.length - 1 : Math.max(s - 1, 0);
         });
         return;
       }
-      if (e.key === "Enter" && selected >= 0 && (inSearch || !inField)) {
-        const hit = hits[selected];
+      if (e.key === "Enter" && curSelected >= 0 && (inSearch || !inField)) {
+        const hit = curHits[curSelected];
         if (!hit) return;
         e.preventDefault();
         launch(hit.item.path, hit.item.id);
@@ -135,7 +144,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
       document.removeEventListener("keydown", keyHandler);
       delete window.__deskFocusFenceSearch;
     };
-  }, [ctx, filter, hits, launch, loadFences, selected, setKeyboard]);
+  }, [ctx, launch, loadFences, setKeyboard]);
 
   useEffect(() => {
     setSelected(q ? 0 : -1);
