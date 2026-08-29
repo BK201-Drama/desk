@@ -19,7 +19,9 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 fn sink_below_apps(window: &tauri::WebviewWindow) {
     #[cfg(windows)]
     if let Ok(hwnd) = window.hwnd() {
-        win_zorder::sink_if_needed(hwnd.0 as isize);
+        let h = hwnd.0 as isize;
+        win_zorder::hide_from_taskbar(h);
+        win_zorder::sink_if_needed(h);
         return;
     }
     let _ = window.set_always_on_bottom(true);
@@ -114,6 +116,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_skip_taskbar(true);
                 let _ = window.show();
                 let _ = window.set_focus();
                 sink_below_apps(&window);
@@ -196,6 +199,7 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 // Sit under normal apps, but stay interactive — fence icons / 编辑
                 // must receive clicks. Full ignore_cursor_events made the board dead.
+                let _ = window.set_skip_taskbar(true);
                 sink_below_apps(&window);
                 let _ = window.set_always_on_bottom(true);
                 let _ = window.set_ignore_cursor_events(false);

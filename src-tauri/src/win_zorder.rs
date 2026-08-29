@@ -14,11 +14,15 @@ type DWORD = u32;
 
 const GWL_EXSTYLE: i32 = -20;
 const WS_EX_NOACTIVATE: i32 = 0x0800_0000;
+const WS_EX_TOOLWINDOW: i32 = 0x0000_0080;
+const WS_EX_APPWINDOW: i32 = 0x0004_0000;
 const HWND_BOTTOM: HWND = 1 as HWND;
 const SWP_NOSIZE: u32 = 0x0001;
 const SWP_NOMOVE: u32 = 0x0002;
+const SWP_NOZORDER: u32 = 0x0004;
 const SWP_NOREDRAW: u32 = 0x0008;
 const SWP_NOACTIVATE: u32 = 0x0010;
+const SWP_FRAMECHANGED: u32 = 0x0020;
 const GW_HWNDNEXT: u32 = 2;
 
 type WndEnumProc = unsafe extern "system" fn(HWND, isize) -> BOOL;
@@ -89,6 +93,31 @@ pub fn set_keyboard_input_mode(hwnd: isize, active: bool) {
         return;
     }
     set_noactivate_flag(hwnd as HWND, !active);
+}
+
+/// Keep desk off the taskbar (config skipTaskbar is not always enough on WebView2).
+pub fn hide_from_taskbar(hwnd: isize) {
+    if hwnd == 0 {
+        return;
+    }
+    let hwnd = hwnd as HWND;
+    unsafe {
+        let ex = GetWindowLongW(hwnd, GWL_EXSTYLE);
+        let next = (ex | WS_EX_TOOLWINDOW) & !WS_EX_APPWINDOW;
+        if next == ex {
+            return;
+        }
+        SetWindowLongW(hwnd, GWL_EXSTYLE, next);
+        let _ = SetWindowPos(
+            hwnd,
+            std::ptr::null_mut(),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        );
+    }
 }
 
 fn apply_noactivate(hwnd: HWND) {
