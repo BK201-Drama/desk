@@ -1,5 +1,5 @@
 /**
- * 应用启动 — 副作用与 imperative 桥接（逐步迁入 React Context）
+ * 应用启动 — 插件加载与全局监听（桥接对象由 React Provider 持有）
  */
 import { listen } from "@tauri-apps/api/event";
 import { toggleEditing } from "../host/edit";
@@ -33,18 +33,8 @@ export type DeskHostBridge = {
   discardDraft: () => Promise<void>;
 };
 
-declare global {
-  interface Window {
-    __deskHost?: DeskHostBridge;
-    __deskOpenCmdk?: () => void;
-    __deskFocusFenceSearch?: () => void;
-  }
-}
-
-export function bootstrapDesk(): void {
-  initReorderDrag();
-
-  window.__deskHost = {
+export function createDeskHostBridge(): DeskHostBridge {
+  return {
     reloadPlugins: () => reloadPlugins(bundledPlugins),
     setPluginEnabled: (id, enabled) => setPluginEnabled(id, enabled, bundledPlugins),
     movePlugin: async (id, dir) => {
@@ -69,6 +59,10 @@ export function bootstrapDesk(): void {
       await discardSchemeDraft(bundledPlugins);
     },
   };
+}
+
+export function bootstrapDesk(_bridge: DeskHostBridge): void {
+  initReorderDrag();
 
   void listen("desk:toggle-edit", () => {
     toggleEditing();

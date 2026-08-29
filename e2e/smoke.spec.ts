@@ -4,6 +4,11 @@ import { fileURLToPath } from "node:url";
 
 const mockPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "tauri-mock.js");
 
+async function openCmdk(page: import("@playwright/test").Page) {
+  await page.keyboard.press("Control+k");
+  await expect(page.getByTestId("cmdk-input")).toBeVisible();
+}
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript({ path: mockPath });
 });
@@ -19,8 +24,7 @@ test("cmdk opens and shows scheme composer", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("cmdk-root")).toBeAttached({ timeout: 15_000 });
 
-  await page.evaluate(() => window.__deskOpenCmdk?.());
-  await expect(page.getByTestId("cmdk-input")).toBeVisible();
+  await openCmdk(page);
   await expect(page.getByTestId("cmdk-composer")).toBeVisible();
   await expect(page.getByTestId("cmdk-composer").getByText("方案")).toBeVisible();
   await expect(page.getByTestId("cmdk-list")).toBeVisible();
@@ -29,7 +33,7 @@ test("cmdk opens and shows scheme composer", async ({ page }) => {
 test("cmdk lists default plugins when not searching", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("cmdk-root")).toBeAttached({ timeout: 15_000 });
-  await page.evaluate(() => window.__deskOpenCmdk?.());
+  await openCmdk(page);
 
   const list = page.getByTestId("cmdk-list");
   await expect(list.getByText("GitHub")).toBeVisible();
@@ -50,7 +54,7 @@ test("cmdk keyboard shortcut toggles panel", async ({ page }) => {
 test("cmdk can create a named scheme", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("cmdk-root")).toBeAttached({ timeout: 15_000 });
-  await page.evaluate(() => window.__deskOpenCmdk?.());
+  await openCmdk(page);
 
   const composer = page.getByTestId("cmdk-composer");
   await expect(composer.getByText("0/3")).toBeVisible();
@@ -80,7 +84,7 @@ test("page has no shell/react console errors on boot", async ({ page }) => {
   const critical = errors.filter((e) => {
     if (/github_snapshot|multica_snapshot|remind_list|fence_|qqmusic_/i.test(e)) return false;
     if (/favicon|React DevTools/i.test(e)) return false;
-    return /React|Minified React|cmdk|DeskBridge|useLayoutConfig|Invariant/i.test(e) || e.includes("Uncaught");
+    return /React|Minified React|cmdk|DeskBridge|DeskShell|useLayoutConfig|Invariant/i.test(e) || e.includes("Uncaught");
   });
   expect(critical, critical.join("\n")).toEqual([]);
 });

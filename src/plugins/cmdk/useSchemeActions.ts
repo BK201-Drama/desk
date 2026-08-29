@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useDeskBridgeOptional } from "../../app/providers/DeskBridgeProvider";
+import { useDeskBridgeOptional } from "../../app/providers/DeskShellProvider";
 import { useLayoutConfig } from "./useLayoutConfig";
 import {
   activeScheme,

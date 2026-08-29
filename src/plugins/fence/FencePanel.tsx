@@ -3,6 +3,7 @@ import type { PluginComponentProps } from "../../host/types";
 import { isTextField } from "../../host/util";
 import { setEditing, toggleEditing } from "../../host/edit";
 import { useKeyboardInput } from "../../lib/useKeyboardInput";
+import { useDeskShellOptional } from "../../app/providers/DeskShellProvider";
 import { useFences } from "./useFences";
 import {
   recentItems,
@@ -45,6 +46,7 @@ function AppButton({
 }
 
 export function FencePanel({ ctx }: PluginComponentProps) {
+  const shell = useDeskShellOptional();
   const setKeyboard = useKeyboardInput(ctx);
   const { fences, recentIds, loadError, loadFences, persistOrder, launch } = useFences(ctx);
   const { draggingId, onAppPointerDown, consumeSuppressClick } = useFenceDnD(
@@ -92,11 +94,12 @@ export function FencePanel({ ctx }: PluginComponentProps) {
         },
       }),
     ];
-    window.__deskFocusFenceSearch = () => {
+    const focusSearch = () => {
       void setKeyboard(true);
       searchRef.current?.focus();
       searchRef.current?.select();
     };
+    shell?.registerFocusFenceSearch(focusSearch);
     void ctx.invoke<boolean>("autostart_get").then(setAutostartOn).catch(() => {});
 
     const keyHandler = (e: KeyboardEvent) => {
@@ -110,7 +113,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
       const curSelected = selectedRef.current;
       if (e.key === "/" && !inField) {
         e.preventDefault();
-        window.__deskFocusFenceSearch?.();
+        focusSearch();
         return;
       }
       if (e.key === "Escape") {
@@ -143,9 +146,9 @@ export function FencePanel({ ctx }: PluginComponentProps) {
     return () => {
       unsubs.forEach((u) => u());
       document.removeEventListener("keydown", keyHandler);
-      delete window.__deskFocusFenceSearch;
+      shell?.registerFocusFenceSearch(null);
     };
-  }, [ctx, launch, loadFences, setKeyboard]);
+  }, [ctx, launch, loadFences, setKeyboard, shell]);
 
   useEffect(() => {
     const host = document.querySelector<HTMLElement>('[data-plugin="fence"]');
@@ -260,7 +263,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
               className="icon-btn"
               title="命令面板 (Ctrl+Shift+K)"
               aria-label="命令面板"
-              onClick={() => window.__deskOpenCmdk?.()}
+              onClick={() => shell?.openCmdk()}
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path

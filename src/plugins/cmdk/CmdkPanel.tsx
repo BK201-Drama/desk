@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { PluginComponentProps } from "../../host/types";
 import { listCommands } from "../../host/api";
 import { toggleEditing } from "../../host/edit";
-import { useDeskBridgeOptional } from "../../app/providers/DeskBridgeProvider";
+import { useDeskShellOptional } from "../../app/providers/DeskShellProvider";
 import { useLayoutConfig } from "./useLayoutConfig";
 import { clampSelected, collectCommands, collectNav } from "./navLogic";
 import type { HostCommand } from "../../host/types";
@@ -13,7 +13,8 @@ import { SchemeComposer } from "./SchemeComposer";
 import "../../plugins/cmdk/panel.css";
 
 export function CmdkPanel({ ctx }: PluginComponentProps) {
-  const bridge = useDeskBridgeOptional();
+  const shell = useDeskShellOptional();
+  const bridge = shell?.bridge;
   const { config, presets, refresh } = useLayoutConfig();
   const [open, setOpenState] = useState(false);
   const [filter, setFilter] = useState("");
@@ -95,7 +96,7 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
         hint: "/",
         group: "Desk",
         run: () => {
-          window.__deskFocusFenceSearch?.();
+          shell?.focusFenceSearch();
         },
       });
       for (const p of presets) {
@@ -113,7 +114,7 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
       }
     }
     return extras;
-  }, [bridge, filter, presets, refresh]);
+  }, [bridge, filter, presets, refresh, shell]);
 
   const commands = useMemo(() => {
     const searching = filter.trim().length > 0;
@@ -219,14 +220,14 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
       if (!cancelled) setOpen(true);
     }).then((u) => unsubs.push(u));
 
-    window.__deskOpenCmdk = () => setOpen(true);
+    shell?.registerOpenCmdk(() => setOpen(true));
 
     return () => {
       cancelled = true;
       for (const u of unsubs) u();
-      delete window.__deskOpenCmdk;
+      shell?.registerOpenCmdk(null);
     };
-  }, [setOpen]);
+  }, [setOpen, shell]);
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
