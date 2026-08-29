@@ -3,13 +3,13 @@ import type { PluginComponentProps } from "../../host/types";
 import { isTextField } from "../../host/util";
 import { setEditing, toggleEditing } from "../../host/edit";
 import { useKeyboardInput } from "../../lib/useKeyboardInput";
-import { useFences } from "../../application/fence/useFences";
+import { useFences } from "./useFences";
 import {
   recentItems,
   searchFences,
   totalFenceItems,
   type FenceItem,
-} from "../../domain/fence";
+} from "./model";
 import { fenceIconStyle, highlightLabelParts } from "./iconStyle";
 import { useFenceDnD } from "./useFenceDnD";
 

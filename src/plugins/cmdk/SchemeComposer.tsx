@@ -2,14 +2,14 @@ import {
   activeScheme,
   chipLabel,
   MAX_SCHEMES,
-} from "../../domain/layout";
-import { QUICK_PRESETS } from "../../domain/cmdk";
+} from "../../host/schemeLogic";
+import { QUICK_PRESETS } from "./constants";
 import {
   buildSchemeComposerView,
   isBuiltinActive,
   useSchemeActions,
-} from "../../application/cmdk/useSchemeActions";
-import { useLayoutConfig } from "../../application/layout/useLayoutConfig";
+} from "./useSchemeActions";
+import { useLayoutConfig } from "./useLayoutConfig";
 import { useEffect, useState } from "react";
 
 function TrackChips({ ids, emptyText }: { ids: string[]; emptyText: string }) {

@@ -1,7 +1,7 @@
 import type { PluginModule } from "../../host/types";
-import CmdkPanel from "../../features/cmdk/CmdkPanel";
+import CmdkPanel from "./CmdkPanel";
 
-/** 插件入口：薄包装，业务在 features/cmdk */
+/** 插件入口：业务在同目录 */
 const panel: PluginModule = {
   Component: CmdkPanel,
 };

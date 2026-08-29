@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import type { NavItem } from "../../domain/cmdk";
-import { buildRows } from "../../domain/cmdk";
+import type { NavItem } from "./navLogic";
+import { buildRows } from "./navLogic";
 
 function Switch({ on }: { on: boolean }) {
   return (

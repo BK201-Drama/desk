@@ -6,7 +6,7 @@ import {
   isBuiltinPreset,
   MAX_SCHEMES,
 } from "./schemeLogic";
-import type { PluginsConfig } from "../../host/types";
+import type { PluginsConfig } from "./types";
 
 describe("schemeLogic", () => {
   it("idsFromSnapshot respects order and disabled", () => {

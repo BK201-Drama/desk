@@ -1,13 +1,13 @@
 import { useCallback } from "react";
 import { useDeskBridgeOptional } from "../../app/providers/DeskBridgeProvider";
-import { useLayoutConfig } from "../../application/layout/useLayoutConfig";
+import { useLayoutConfig } from "./useLayoutConfig";
 import {
   activeScheme,
   hasSchemeDraft,
   isBuiltinPreset,
   MAX_SCHEMES,
   PRESET_LABEL,
-} from "../../domain/layout";
+} from "../../host/schemeLogic";
 import { enabledIds, schemeEnabledIds } from "../../host/layout-util";
 import { showToast } from "../../host/toast";
 import type { PluginsConfig } from "../../host/types";

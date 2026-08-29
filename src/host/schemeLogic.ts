@@ -1,4 +1,4 @@
-import type { LayoutScheme, PluginsConfig } from "../../host/types";
+import type { LayoutScheme, PluginsConfig } from "./types";
 
 /** 领域层：布局方案纯逻辑，不依赖 React / Tauri / DOM */
 

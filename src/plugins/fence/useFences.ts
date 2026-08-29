@@ -6,7 +6,7 @@ import {
   layoutFromFences,
   normalizeFences,
   type FenceGroup,
-} from "../../domain/fence";
+} from "./model";
 import { asArray } from "../../lib/safe";
 
 export function useFences(ctx: HostContext) {

@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { HostContext } from "../../host/types";
-import { DRAG_THRESHOLD_PX, moveItemAcross, type FenceGroup } from "../../domain/fence";
+import { DRAG_THRESHOLD_PX, moveItemAcross, type FenceGroup } from "./model";
 
 /** application/UI：编辑模式下拖拽重排 */
 export function useFenceDnD(
