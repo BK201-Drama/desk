@@ -1,10 +1,9 @@
 /**
- * Bundled 插件自动发现（L1/L2）
+ * Bundled 插件自动发现
  *
- * 约定：`src/plugins/<id>/manifest.json` + `panel.tsx`
- * - 新增插件：只加目录，不必改本文件
- * - `_` 开头目录（如 `_template`）跳过
- * - 旧面板可继续用 features/ 转发；新面板应自包含在本目录
+ * `src/plugins/<id>/manifest.json` + `panel.tsx`
+ * - 新增：只加目录；`_` 前缀跳过
+ * - 面板自包含；跨插件工具见 `src/lib/`
  */
 import type { BundledPlugin, PluginManifest, PluginModule } from "../host/types";
 
