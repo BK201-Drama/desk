@@ -22,7 +22,7 @@ test("cmdk opens and shows scheme composer", async ({ page }) => {
   await page.evaluate(() => window.__deskOpenCmdk?.());
   await expect(page.getByTestId("cmdk-input")).toBeVisible();
   await expect(page.getByTestId("cmdk-composer")).toBeVisible();
-  await expect(page.getByText("我的方案")).toBeVisible();
+  await expect(page.getByTestId("cmdk-composer").getByText("方案")).toBeVisible();
   await expect(page.getByTestId("cmdk-list")).toBeVisible();
 });
 

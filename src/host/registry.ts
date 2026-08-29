@@ -1,7 +1,7 @@
 import { createHostContext, clearPluginCommands } from "./api";
 import { emit } from "./events";
 import { isEditing } from "./edit";
-import { mountReactPlugin, unmountReactPlugin } from "../infrastructure/react/pluginMount";
+import { setMountEntries } from "./mount-store";
 import type {
   BundledPlugin,
   PluginManifest,
@@ -14,9 +14,10 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 export type MountedPlugin = {
   manifest: PluginManifest;
   source: "bundled" | "user";
-  root: HTMLElement;
   mod: PluginModule;
   ctx: ReturnType<typeof createHostContext>;
+  order: number;
+  error?: string;
   unsubs: Array<() => void>;
 };
 
@@ -28,6 +29,19 @@ type DesiredPlugin = {
 };
 
 const mounted = new Map<string, MountedPlugin>();
+
+function publishMountStore(): void {
+  setMountEntries(
+    [...mounted.values()].map((m) => ({
+      manifest: m.manifest,
+      source: m.source,
+      mod: m.mod,
+      ctx: m.ctx,
+      order: m.order,
+      error: m.error,
+    }))
+  );
+}
 
 function slotEl(slot: string): HTMLElement | null {
   return document.getElementById(`slot-${slot}`);
@@ -46,39 +60,23 @@ export function effectiveSortKey(
 
 export function applyDomOrders(entries: Array<{ id: string; order: number }>): void {
   for (const { id, order } of entries) {
+    const m = mounted.get(id);
+    if (m) m.order = order;
     const el = document.querySelector<HTMLElement>(`[data-plugin="${id}"]`);
     if (el) el.style.order = String(order);
   }
+  publishMountStore();
 }
 
 export function applyOrderList(order: string[]): void {
   order.forEach((id, i) => {
+    const next = i * 10;
+    const m = mounted.get(id);
+    if (m) m.order = next;
     const el = document.querySelector<HTMLElement>(`[data-plugin="${id}"]`);
-    if (el) el.style.order = String(i * 10);
+    if (el) el.style.order = String(next);
   });
-}
-
-function ensureMountRoot(slot: string, id: string, order: number): HTMLElement {
-  const parent = slotEl(slot);
-  if (!parent) throw new Error(`missing slot-${slot}`);
-  let root = parent.querySelector<HTMLElement>(`[data-plugin="${id}"]`);
-  if (!root) {
-    root = document.createElement("div");
-    root.dataset.plugin = id;
-    root.className = `plugin-root plugin-${id}`;
-    root.style.order = String(order);
-    if (slot === "overlay") {
-      root.classList.add("plugin-overlay-root");
-    }
-    parent.appendChild(root);
-  } else {
-    root.style.order = String(order);
-  }
-  if (slot !== "overlay" && slot === "left" && isEditing()) {
-    root.draggable = true;
-    root.classList.add("plugin-reorderable");
-  }
-  return root;
+  publishMountStore();
 }
 
 async function loadCss(href: string, id: string) {
@@ -101,8 +99,6 @@ async function mountOne(
   if (mounted.has(manifest.id)) {
     await unmountOne(manifest.id);
   }
-  const root = ensureMountRoot(manifest.slot, manifest.id, cssOrder);
-  root.innerHTML = "";
   if (cssHref) {
     await loadCss(cssHref, manifest.id);
   }
@@ -111,24 +107,44 @@ async function mountOne(
   if (mod.onEditChange) {
     unsubs.push(ctx.onEditChange((on) => mod.onEditChange?.(on)));
   }
-  try {
-    if (mod.Component) {
-      mountReactPlugin(manifest.id, root, mod.Component, ctx);
-    } else if (mod.mount) {
-      await mod.mount(root, ctx);
-    } else {
-      throw new Error(`plugin ${manifest.id}: no Component or mount()`);
-    }
-    mounted.set(manifest.id, { manifest, source, root, mod, ctx, unsubs });
-    emit("plugin:mounted", { id: manifest.id, slot: manifest.slot, source }, "host");
-  } catch (e) {
-    console.error(`plugin mount failed: ${manifest.id}`, e);
-    emit(
-      "plugin:error",
-      { id: manifest.id, phase: "mount", error: String(e) },
-      "host"
-    );
-    root.innerHTML = `<div class="plugin-error" title="${String(e)}">插件 ${manifest.id} 加载失败</div>`;
+
+  if (!mod.Component && !mod.mount) {
+    const error = `plugin ${manifest.id}: no Component or mount()`;
+    console.error(error);
+    mounted.set(manifest.id, {
+      manifest,
+      source,
+      mod,
+      ctx,
+      order: cssOrder,
+      error,
+      unsubs,
+    });
+    publishMountStore();
+    emit("plugin:error", { id: manifest.id, phase: "mount", error }, "host");
+    return;
+  }
+
+  mounted.set(manifest.id, {
+    manifest,
+    source,
+    mod,
+    ctx,
+    order: cssOrder,
+    unsubs,
+  });
+  publishMountStore();
+  emit("plugin:mounted", { id: manifest.id, slot: manifest.slot, source }, "host");
+
+  // 编辑态拖拽 class 由 Board 根据 useEditing 渲染；此处同步一次 DOM 兜底
+  if (manifest.slot === "left" && isEditing()) {
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-plugin="${manifest.id}"]`);
+      if (el) {
+        el.draggable = true;
+        el.classList.add("plugin-reorderable");
+      }
+    });
   }
 }
 
@@ -137,15 +153,14 @@ export async function unmountOne(id: string): Promise<void> {
   if (!m) return;
   for (const u of m.unsubs) u();
   clearPluginCommands(id);
-  unmountReactPlugin(id);
   try {
     await m.mod.unmount?.();
   } catch (e) {
     console.error(`plugin unmount failed: ${id}`, e);
   }
-  m.root.remove();
   document.getElementById(`plugin-css-${id}`)?.remove();
   mounted.delete(id);
+  publishMountStore();
   emit("plugin:unmounted", { id }, "host");
 }
 
@@ -155,6 +170,12 @@ export function listMounted(): MountedPlugin[] {
 
 /** 同槽内当前显示顺序（已挂载） */
 export function listSlotOrder(slot: string): string[] {
+  const fromStore = [...mounted.values()]
+    .filter((m) => m.manifest.slot === slot)
+    .sort((a, b) => a.order - b.order || a.manifest.id.localeCompare(b.manifest.id))
+    .map((m) => m.manifest.id);
+  if (fromStore.length) return fromStore;
+
   const parent = slotEl(slot);
   if (!parent) return [];
   return [...parent.querySelectorAll<HTMLElement>(":scope > [data-plugin]")]
@@ -275,7 +296,7 @@ export async function reconcilePlugins(bundled: BundledPlugin[]): Promise<void> 
     );
     if (mounted.has(spec.manifest.id)) {
       const m = mounted.get(spec.manifest.id)!;
-      m.root.style.order = String(cssOrder);
+      m.order = cssOrder;
       continue;
     }
     try {
@@ -293,6 +314,8 @@ export async function reconcilePlugins(bundled: BundledPlugin[]): Promise<void> 
 
   if (order.length) {
     applyOrderList(order);
+  } else {
+    publishMountStore();
   }
 
   emit(
