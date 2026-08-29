@@ -63,6 +63,8 @@ desk 置底时普通 `Ctrl+K` 常收不到，所以用带 `Shift` 的全局热�
 
 看板由插件填充左右栏与 overlay。
 
+**加一个内置面板（L2）：** 复制 `src/plugins/_template/` → `src/plugins/<id>/`，改 manifest 与 `panel.tsx` 即可（`plugins/index.ts` 用 glob 自动发现，不必改注册表）。新面板逻辑放在插件目录内，不要再开 `domain/` / `application/` / `features/`。说明见 `src/plugins/README.md`。
+
 **用户插件目录：** `%LOCALAPPDATA%\desk\plugins\<id>\`
 
 ```

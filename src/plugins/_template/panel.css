@@ -1,0 +1,12 @@
+.my-panel {
+  font-size: 11px;
+  opacity: 0.75;
+  padding: 6px 0;
+  margin-top: 6px;
+  border-top: 1px dashed rgba(26, 35, 50, 0.15);
+  font-family: "Cascadia Code", Consolas, monospace;
+}
+
+.my-panel-mark {
+  color: #2d6a4f;
+}

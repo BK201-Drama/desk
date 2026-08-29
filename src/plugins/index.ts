@@ -1,68 +1,68 @@
-import type { BundledPlugin, PluginManifest } from "../host/types";
-import clockManifest from "./clock/manifest.json";
-import githubManifest from "./github/manifest.json";
-import multicaManifest from "./multica/manifest.json";
-import remindManifest from "./remind/manifest.json";
-import fenceManifest from "./fence/manifest.json";
-import helloManifest from "./hello/manifest.json";
-import opsHudManifest from "./ops-hud/manifest.json";
-import cmdkManifest from "./cmdk/manifest.json";
-import eventTapeManifest from "./event-tape/manifest.json";
-import qqMusicManifest from "./qq-music/manifest.json";
-import stockManifest from "./stock/manifest.json";
-import tokenCapsuleManifest from "./token-capsule/manifest.json";
+/**
+ * Bundled 插件自动发现（L1/L2）
+ *
+ * 约定：`src/plugins/<id>/manifest.json` + `panel.tsx`
+ * - 新增插件：只加目录，不必改本文件
+ * - `_` 开头目录（如 `_template`）跳过
+ * - 旧面板可继续用 features/ 转发；新面板应自包含在本目录
+ */
+import type { BundledPlugin, PluginManifest, PluginModule } from "../host/types";
 
-function m(raw: unknown): PluginManifest {
-  return raw as PluginManifest;
+const manifestModules = import.meta.glob("./*/manifest.json", {
+  eager: true,
+  import: "default",
+}) as Record<string, PluginManifest>;
+
+const panelModules = import.meta.glob("./*/panel.tsx") as Record<
+  string,
+  () => Promise<{ default: PluginModule }>
+>;
+
+function pluginDir(globPath: string): string | null {
+  const match = /^\.\/([^/]+)\//.exec(globPath);
+  if (!match) return null;
+  const dir = match[1];
+  if (dir.startsWith("_")) return null;
+  return dir;
 }
 
-export const bundledPlugins: BundledPlugin[] = [
-  {
-    manifest: m(clockManifest),
-    load: async () => (await import("./clock/panel")).default,
-  },
-  {
-    manifest: m(githubManifest),
-    load: async () => (await import("./github/panel")).default,
-  },
-  {
-    manifest: m(tokenCapsuleManifest),
-    load: async () => (await import("./token-capsule/panel")).default,
-  },
-  {
-    manifest: m(multicaManifest),
-    load: async () => (await import("./multica/panel")).default,
-  },
-  {
-    manifest: m(remindManifest),
-    load: async () => (await import("./remind/panel")).default,
-  },
-  {
-    manifest: m(stockManifest),
-    load: async () => (await import("./stock/panel")).default,
-  },
-  {
-    manifest: m(qqMusicManifest),
-    load: async () => (await import("./qq-music/panel")).default,
-  },
-  {
-    manifest: m(fenceManifest),
-    load: async () => (await import("./fence/panel")).default,
-  },
-  {
-    manifest: m(helloManifest),
-    load: async () => (await import("./hello/panel")).default,
-  },
-  {
-    manifest: m(opsHudManifest),
-    load: async () => (await import("./ops-hud/panel")).default,
-  },
-  {
-    manifest: m(cmdkManifest),
-    load: async () => (await import("./cmdk/panel")).default,
-  },
-  {
-    manifest: m(eventTapeManifest),
-    load: async () => (await import("./event-tape/panel")).default,
-  },
-];
+function discoverBundledPlugins(): BundledPlugin[] {
+  const out: BundledPlugin[] = [];
+
+  for (const [manifestPath, manifest] of Object.entries(manifestModules)) {
+    const dir = pluginDir(manifestPath);
+    if (!dir) continue;
+
+    const panelPath = `./${dir}/panel.tsx`;
+    const loadPanel = panelModules[panelPath];
+    if (!loadPanel) {
+      console.error(`[plugins] ${dir}: missing panel.tsx (has manifest.json)`);
+      continue;
+    }
+
+    if (!manifest?.id) {
+      console.error(`[plugins] ${dir}: manifest.json missing id`);
+      continue;
+    }
+
+    if (manifest.id !== dir) {
+      console.warn(
+        `[plugins] dir "${dir}" ≠ manifest.id "${manifest.id}"; discovery uses folder path, runtime id is manifest.id`
+      );
+    }
+
+    out.push({
+      manifest,
+      load: async () => {
+        const mod = await loadPanel();
+        return mod.default;
+      },
+    });
+  }
+
+  return out.sort(
+    (a, b) => (a.manifest.order ?? 100) - (b.manifest.order ?? 100) || a.manifest.id.localeCompare(b.manifest.id)
+  );
+}
+
+export const bundledPlugins: BundledPlugin[] = discoverBundledPlugins();
