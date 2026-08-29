@@ -1,6 +1,6 @@
-export function pad(n: number) {
-  return String(n).padStart(2, "0");
-}
+import { formatSyncTime, pad } from "../lib/time";
+
+export { pad, formatSyncTime };
 
 export function escapeHtml(s: string) {
   return s
@@ -8,11 +8,6 @@ export function escapeHtml(s: string) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-}
-
-export function formatSyncTime(at: number) {
-  const d = new Date(at);
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export function setSyncStatus(

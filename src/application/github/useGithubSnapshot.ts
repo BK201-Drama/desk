@@ -5,7 +5,7 @@ import {
   normalizeGithubSnapshot,
   type GithubSnapshot,
 } from "../../domain/github";
-import { formatClockDate, formatClockTime } from "../../domain/clock";
+import { formatClockDate, formatClockTime } from "../../lib/time";
 import { setSyncStatus } from "../../host/util";
 
 const PANEL_REFRESH_MS = 5 * 60 * 1000;
