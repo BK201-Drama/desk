@@ -1,4 +1,4 @@
-import { asArray, asObject, asString } from "../shared/safe";
+import { asArray, asObject, asString } from "../../lib/safe";
 
 export type FenceItem = {
   id: string;

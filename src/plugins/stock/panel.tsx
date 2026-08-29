@@ -1,5 +1,5 @@
 import type { PluginModule } from "../../host/types";
-import StockPanel from "../../features/stock/StockPanel";
+import StockPanel from "./StockPanel";
 
 const panel: PluginModule = {
   Component: StockPanel,

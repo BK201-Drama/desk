@@ -1,5 +1,5 @@
 import type { PluginModule } from "../../host/types";
-import EventTapePanel from "../../features/event-tape/EventTapePanel";
+import EventTapePanel from "./EventTapePanel";
 
 const panel: PluginModule = {
   Component: EventTapePanel,

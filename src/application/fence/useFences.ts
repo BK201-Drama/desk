@@ -7,7 +7,7 @@ import {
   normalizeFences,
   type FenceGroup,
 } from "../../domain/fence";
-import { asArray } from "../../domain/shared/safe";
+import { asArray } from "../../lib/safe";
 
 export function useFences(ctx: HostContext) {
   const [fences, setFences] = useState<FenceGroup[]>([]);

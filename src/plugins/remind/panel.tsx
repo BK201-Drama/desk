@@ -1,5 +1,5 @@
 import type { PluginModule } from "../../host/types";
-import RemindPanel from "../../features/remind/RemindPanel";
+import RemindPanel from "./RemindPanel";
 
 const panel: PluginModule = {
   Component: RemindPanel,

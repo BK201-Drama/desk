@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import type { PluginComponentProps } from "../../host/types";
 import { isTextField } from "../../host/util";
 import { setEditing, toggleEditing } from "../../host/edit";
-import { useKeyboardInput } from "../../application/host/useKeyboardInput";
+import { useKeyboardInput } from "../../lib/useKeyboardInput";
 import { useFences } from "../../application/fence/useFences";
 import {
   recentItems,

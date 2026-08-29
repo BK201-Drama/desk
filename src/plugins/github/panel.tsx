@@ -1,5 +1,5 @@
 import type { PluginModule } from "../../host/types";
-import GithubPanel from "../../features/github/GithubPanel";
+import GithubPanel from "./GithubPanel";
 
 const panel: PluginModule = {
   Component: GithubPanel,
