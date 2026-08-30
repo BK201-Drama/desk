@@ -1,0 +1,107 @@
+.sys-res {
+  padding: 4px 6px 5px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.38);
+  border: 1px solid rgba(26, 35, 50, 0.1);
+}
+
+.sys-res-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sys-res-cell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sys-res-ring {
+  position: relative;
+  width: 78px;
+  height: 78px;
+}
+
+.sys-res-ring svg {
+  width: 78px;
+  height: 78px;
+  transform: rotate(-90deg);
+}
+
+.sys-res-seg {
+  fill: none;
+  stroke-width: 9;
+  stroke-linecap: butt;
+  cursor: pointer;
+  transition: opacity 0.15s ease, stroke-width 0.15s ease;
+}
+
+.sys-res-seg.is-hot {
+  stroke-width: 11;
+  opacity: 1;
+}
+
+.sys-res-seg.is-dim {
+  opacity: 0.35;
+}
+
+.sys-res-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-family: "Cascadia Code", Consolas, ui-monospace, monospace;
+  text-align: center;
+  line-height: 1.15;
+  padding: 0 4px;
+}
+
+.sys-res-pct {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.sys-res-sub {
+  font-size: 8.5px;
+  color: rgba(26, 35, 50, 0.45);
+  max-width: 54px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sys-res-sub.is-app {
+  color: #2d6a4f;
+  font-weight: 600;
+}
+
+.sys-res-cap {
+  font-family: "Cascadia Code", Consolas, ui-monospace, monospace;
+  font-size: 9px;
+  color: rgba(26, 35, 50, 0.4);
+}
+
+.sys-res-empty,
+.sys-res-error {
+  font-size: 9px;
+  color: var(--ink-soft);
+  padding: 2px 0;
+}
+
+.sys-res-error {
+  color: #9b2226;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
+}

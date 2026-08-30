@@ -1,0 +1,9 @@
+{
+  "id": "sys-res",
+  "name": "系统资源",
+  "version": "0.1.0",
+  "slot": "left",
+  "entry": "./panel.tsx",
+  "permissions": ["sys-res.read", "host.log"],
+  "order": 28
+}
