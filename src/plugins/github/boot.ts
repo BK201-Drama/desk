@@ -3,9 +3,27 @@ import { normalizeGithubSnapshot, type GithubSnapshot } from "./model";
 
 /** 启动时预读，供面板首帧同步使用（避免 mount 后先 null 再闪一下） */
 let bootSnap: GithubSnapshot | null = null;
+const listeners = new Set<() => void>();
 
 export function peekGithubBoot(): GithubSnapshot | null {
   return bootSnap;
+}
+
+export function onGithubBoot(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+  };
+}
+
+function notify() {
+  for (const cb of [...listeners]) {
+    try {
+      cb();
+    } catch (e) {
+      console.warn("onGithubBoot", e);
+    }
+  }
 }
 
 export async function preloadGithubBoot(): Promise<void> {
@@ -13,6 +31,7 @@ export async function preloadGithubBoot(): Promise<void> {
     const raw = await invoke("github_cached");
     if (raw == null) {
       bootSnap = null;
+      notify();
       return;
     }
     bootSnap = normalizeGithubSnapshot(raw);
@@ -23,8 +42,10 @@ export async function preloadGithubBoot(): Promise<void> {
       img.decoding = "async";
       img.src = bootSnap.avatar_url;
     }
+    notify();
   } catch (e) {
     console.warn("preloadGithubBoot", e);
     bootSnap = null;
+    notify();
   }
 }

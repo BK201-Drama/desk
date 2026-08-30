@@ -7,12 +7,12 @@ import {
 } from "./model";
 import { formatClockDate, formatClockTime } from "../../lib/time";
 import { setSyncStatus } from "../../host/util";
-import { peekGithubBoot } from "./boot";
+import { peekGithubBoot, onGithubBoot } from "./boot";
 
 const PANEL_REFRESH_MS = 5 * 60 * 1000;
 
 export function useGithubSnapshot(ctx: HostContext) {
-  // 首帧用启动预读；无 cache 时才是 null
+  // 首帧用启动预读；若预读仍在飞，监听完成后补上（与 loadAll 并行）
   const [snap, setSnap] = useState<GithubSnapshot | null>(() => peekGithubBoot());
   const [errorText, setErrorText] = useState<string | null>(null);
 
@@ -45,24 +45,23 @@ export function useGithubSnapshot(ctx: HostContext) {
   }, [ctx, applyRaw]);
 
   useEffect(() => {
-    // 若启动预读未完成（极少），再补一次 cache；然后后台刷新
-    if (!peekGithubBoot()) {
-      void ctx
-        .invoke("github_cached")
-        .then((raw) => {
-          if (raw != null && !peekGithubBoot()) applyRaw(raw, "cache");
-        })
-        .catch(() => undefined);
-    }
+    const unsub = onGithubBoot(() => {
+      const boot = peekGithubBoot();
+      if (boot) setSnap((prev) => prev ?? boot);
+    });
+    const boot = peekGithubBoot();
+    if (boot) setSnap((prev) => prev ?? boot);
+
     const t = window.setTimeout(() => {
       void refresh();
     }, 900);
     const iv = window.setInterval(() => void refresh(), PANEL_REFRESH_MS);
     return () => {
+      unsub();
       window.clearTimeout(t);
       window.clearInterval(iv);
     };
-  }, [ctx, refresh, applyRaw]);
+  }, [refresh]);
 
   return { snap, errorText, refresh };
 }

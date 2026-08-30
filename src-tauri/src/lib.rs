@@ -86,6 +86,21 @@ fn set_click_through(app: tauri::AppHandle, enabled: bool) -> Result<(), String>
     Ok(())
 }
 
+/// Frontend reports plugins-ready ms for cold-start tuning.
+#[tauri::command]
+fn boot_mark(ms: u32) -> Result<(), String> {
+    let dir = dirs::data_local_dir()
+        .ok_or("no local app data")?
+        .join("desk");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let body = format!("{{\"ms\":{ms},\"at\":{secs}}}\n");
+    std::fs::write(dir.join("boot-last.json"), body).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn autostart_get(app: tauri::AppHandle) -> Result<bool, String> {
     app.autolaunch().is_enabled().map_err(|e| e.to_string())
@@ -151,6 +166,7 @@ pub fn run() {
             set_click_through,
             set_keyboard_input,
             set_cursor,
+            boot_mark,
             autostart_get,
             autostart_set,
             multica::multica_app_url,

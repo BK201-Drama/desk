@@ -69,12 +69,18 @@ export function bootstrapDesk(_bridge: DeskHostBridge): void {
     toggleEditing();
   });
 
-  // 先读 GitHub 本地缓存，再挂面板 —— 首帧就有墙/资料，不先闪「加载…」
-  void preloadGithubBoot()
-    .catch(() => undefined)
-    .then(() => loadAll(bundledPlugins))
+  // 预读 cache 与挂载并行：不再串行挡住围栏/其它面板首屏
+  const t0 = performance.now();
+  void Promise.all([preloadGithubBoot().catch(() => undefined), loadAll(bundledPlugins)])
     .then(() => {
-      emit("host:boot", { plugins: bundledPlugins.map((p) => p.manifest.id) }, "host");
+      const ms = Math.round(performance.now() - t0);
+      emit(
+        "host:boot",
+        { plugins: bundledPlugins.map((p) => p.manifest.id), ms },
+        "host"
+      );
+      console.info(`[desk] plugins ready in ${ms}ms`);
+      return invokeBootMark(ms);
     })
     .catch((e) => {
       console.error("plugin boot failed", e);
@@ -83,4 +89,13 @@ export function bootstrapDesk(_bridge: DeskHostBridge): void {
         left.innerHTML = `<div class="plugin-error">插件宿主启动失败：${String(e)}</div>`;
       }
     });
+}
+
+async function invokeBootMark(ms: number): Promise<void> {
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("boot_mark", { ms });
+  } catch {
+    /* optional command / outside tauri */
+  }
 }
