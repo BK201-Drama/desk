@@ -271,6 +271,105 @@ mod smtc {
         on_worker(now_playing_blocking, Duration::from_millis(1200))
             .unwrap_or_else(|| empty_np("读取超时（已跳过，避免卡死）"))
     }
+
+    fn with_qq_session<F>(f: F) -> Result<(), String>
+    where
+        F: FnOnce(&GlobalSystemMediaTransportControlsSession) -> Result<(), String>,
+    {
+        unsafe {
+            let _ = windows::Win32::System::Com::CoInitializeEx(
+                None,
+                windows::Win32::System::Com::COINIT_MULTITHREADED,
+            );
+        }
+        let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
+            .map_err(|e| e.to_string())?
+            .get()
+            .map_err(|e| e.to_string())?;
+        let session = pick_session(&manager)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "无 QQ 音乐媒体会话".to_string())?;
+        f(&session)
+    }
+
+    fn ensure_playing_blocking() -> Result<(), String> {
+        with_qq_session(|session| {
+            let playing = session
+                .GetPlaybackInfo()
+                .ok()
+                .and_then(|info| info.PlaybackStatus().ok())
+                .map(|st| {
+                    matches!(
+                        st,
+                        GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing
+                    )
+                })
+                .unwrap_or(false);
+            if playing {
+                return Ok(());
+            }
+            let _ = session
+                .TryPlayAsync()
+                .map_err(|e| e.to_string())?
+                .get()
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        })
+    }
+
+    fn skip_next_blocking() -> Result<(), String> {
+        with_qq_session(|session| {
+            let _ = session
+                .TrySkipNextAsync()
+                .map_err(|e| e.to_string())?
+                .get()
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        })
+    }
+
+    fn skip_previous_blocking() -> Result<(), String> {
+        with_qq_session(|session| {
+            let _ = session
+                .TrySkipPreviousAsync()
+                .map_err(|e| e.to_string())?
+                .get()
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        })
+    }
+
+    fn toggle_play_pause_blocking() -> Result<(), String> {
+        with_qq_session(|session| {
+            let _ = session
+                .TryTogglePlayPauseAsync()
+                .map_err(|e| e.to_string())?
+                .get()
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        })
+    }
+
+    /// 仅在未播放时 TryPlay，避免把「下一首」误做成暂停。
+    pub fn ensure_playing() -> Result<(), String> {
+        on_worker(ensure_playing_blocking, Duration::from_secs(2))
+            .unwrap_or_else(|| Err("SMTC 超时".into()))
+    }
+
+    pub fn skip_next() -> Result<(), String> {
+        on_worker(skip_next_blocking, Duration::from_secs(2))
+            .unwrap_or_else(|| Err("SMTC 超时".into()))
+    }
+
+    pub fn skip_previous() -> Result<(), String> {
+        on_worker(skip_previous_blocking, Duration::from_secs(2))
+            .unwrap_or_else(|| Err("SMTC 超时".into()))
+    }
+
+    pub fn toggle_play_pause() -> Result<(), String> {
+        on_worker(toggle_play_pause_blocking, Duration::from_secs(2))
+            .unwrap_or_else(|| Err("SMTC 超时".into()))
+    }
 }
 
 #[cfg(windows)]
@@ -382,7 +481,10 @@ pub fn qqmusic_toggle() -> Result<QqmusicControlResult, String> {
     #[cfg(windows)]
     {
         let cold = ensure_ready_for_control()?;
-        mediakey::toggle()?;
+        // 优先打 QQ 自己的 SMTC，避免全局媒体键打到别的 App
+        if smtc::toggle_play_pause().is_err() {
+            mediakey::toggle()?;
+        }
         Ok(QqmusicControlResult {
             cold_started: cold,
         })
@@ -399,11 +501,14 @@ pub fn qqmusic_next() -> Result<QqmusicControlResult, String> {
     {
         let cold = ensure_ready_for_control()?;
         if cold {
-            // 刚起来先播起来，再切下一首才有意义
-            mediakey::toggle()?;
-            std::thread::sleep(Duration::from_millis(600));
+            // 只 TryPlay，绝不用 PlayPause（已在播时 toggle = 暂停）
+            std::thread::sleep(Duration::from_millis(500));
+            let _ = smtc::ensure_playing();
+            std::thread::sleep(Duration::from_millis(300));
         }
-        mediakey::next()?;
+        if smtc::skip_next().is_err() {
+            mediakey::next()?;
+        }
         Ok(QqmusicControlResult {
             cold_started: cold,
         })
@@ -420,10 +525,13 @@ pub fn qqmusic_prev() -> Result<QqmusicControlResult, String> {
     {
         let cold = ensure_ready_for_control()?;
         if cold {
-            mediakey::toggle()?;
-            std::thread::sleep(Duration::from_millis(600));
+            std::thread::sleep(Duration::from_millis(500));
+            let _ = smtc::ensure_playing();
+            std::thread::sleep(Duration::from_millis(300));
         }
-        mediakey::prev()?;
+        if smtc::skip_previous().is_err() {
+            mediakey::prev()?;
+        }
         Ok(QqmusicControlResult {
             cold_started: cold,
         })
@@ -458,7 +566,7 @@ fn qq_pids() -> Vec<u32> {
                     .position(|&c| c == 0)
                     .unwrap_or(entry.szExeFile.len());
                 let name = String::from_utf16_lossy(&entry.szExeFile[..end]).to_lowercase();
-                if QQ_EXES.iter().any(|n| name == n.to_lowercase()) {
+                if is_qq_process_name(&name) {
                     out.push(entry.th32ProcessID);
                 }
                 if Process32NextW(snap, &mut entry).is_err() {
@@ -475,6 +583,14 @@ fn qq_pids() -> Vec<u32> {
 fn process_running(names: &[&str]) -> bool {
     let _ = names;
     !qq_pids().is_empty()
+}
+
+#[cfg(windows)]
+fn is_qq_process_name(name: &str) -> bool {
+    let n = name.to_lowercase();
+    // 精确名 + 宽松匹配，避免新版本改进程名导致误判「未运行」→ 冷启动路径乱 toggle
+    QQ_EXES.iter().any(|x| n == x.to_lowercase())
+        || (n.contains("qqmusic") && n.ends_with(".exe"))
 }
 
 /// 把 QQ 主窗口藏到后台（无官方静默参数，只能启动后强藏）。

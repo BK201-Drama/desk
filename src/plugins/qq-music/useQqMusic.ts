@@ -18,6 +18,7 @@ export function useQqMusic(ctx: HostContext) {
   const artBust = useRef({ key: "", t: 0 });
   const refreshing = useRef(false);
   const flashTimer = useRef<number | null>(null);
+  const acting = useRef(false);
 
   useEffect(() => {
     npRef.current = np;
@@ -53,6 +54,8 @@ export function useQqMusic(ctx: HostContext) {
 
   const act = useCallback(
     async (kind: "toggle" | "next" | "prev") => {
+      if (acting.current) return;
+      acting.current = true;
       const cmd =
         kind === "toggle"
           ? "qqmusic_toggle"
@@ -81,6 +84,8 @@ export function useQqMusic(ctx: HostContext) {
       } catch (e) {
         console.warn(cmd, e);
         flashMsg(String(e));
+      } finally {
+        acting.current = false;
       }
     },
     [ctx, flashMsg, refresh]
