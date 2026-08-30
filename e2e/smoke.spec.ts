@@ -82,9 +82,19 @@ test("cmdk can create a named scheme", async ({ page }) => {
 
   const nameInput = composer.locator(".cmdk-scheme-name");
   await expect(nameInput).toBeVisible();
-  await nameInput.click({ force: true });
-  await nameInput.fill("测试方案", { force: true });
-  await composer.getByRole("button", { name: "+ 新建" }).click({ force: true });
+  // React 受控输入：用原生 setter + input 事件写入，避免 Playwright fill 在穿透层挂死
+  await nameInput.evaluate((el, value) => {
+    const input = el as HTMLInputElement;
+    const proto = Object.getPrototypeOf(input);
+    const desc = Object.getOwnPropertyDescriptor(proto, "value");
+    desc?.set?.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }, "测试方案");
+  await expect(nameInput).toHaveValue("测试方案");
+
+  await composer.getByRole("button", { name: "+ 新建" }).evaluate((btn) => {
+    (btn as HTMLButtonElement).click();
+  });
 
   await expect(composer.getByText("1/3")).toBeVisible({ timeout: 10_000 });
   await expect(composer.getByRole("button", { name: "测试方案" })).toBeVisible();

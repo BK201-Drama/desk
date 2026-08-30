@@ -45,7 +45,7 @@ export function useMulticaSnapshot(ctx: HostContext) {
   }, [ctx]);
 
   useEffect(() => {
-    const t = window.setTimeout(() => void refresh(), 800);
+    const t = window.setTimeout(() => void refresh(), 1500);
     const iv = window.setInterval(() => void refresh(), PANEL_REFRESH_MS);
     return () => {
       window.clearTimeout(t);

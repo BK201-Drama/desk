@@ -32,9 +32,12 @@ export function useStockQuotes(ctx: HostContext) {
   }, [ctx]);
 
   useEffect(() => {
-    void refresh();
-    const t = window.setInterval(() => void refresh(), POLL_MS);
-    return () => window.clearInterval(t);
+    const boot = window.setTimeout(() => void refresh(), 2200);
+    const iv = window.setInterval(() => void refresh(), POLL_MS);
+    return () => {
+      window.clearTimeout(boot);
+      window.clearInterval(iv);
+    };
   }, [refresh]);
 
   return { quotes, error, updatedAt, refresh };

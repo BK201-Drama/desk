@@ -22,9 +22,12 @@ export function useCursorUsage(ctx: HostContext) {
   }, [ctx]);
 
   useEffect(() => {
-    void refresh();
-    const t = window.setInterval(() => void refresh(), POLL_MS);
-    return () => window.clearInterval(t);
+    const t = window.setTimeout(() => void refresh(), 1800);
+    const iv = window.setInterval(() => void refresh(), POLL_MS);
+    return () => {
+      window.clearTimeout(t);
+      window.clearInterval(iv);
+    };
   }, [refresh]);
 
   return { usage, refresh };

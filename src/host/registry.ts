@@ -288,25 +288,49 @@ export async function reconcilePlugins(bundled: BundledPlugin[]): Promise<void> 
   }
 
   const sorted = sortDesired(desired, order);
+  const toMount = sorted.filter((spec) => !mounted.has(spec.manifest.id));
   for (const spec of sorted) {
+    if (!mounted.has(spec.manifest.id)) continue;
     const cssOrder = effectiveSortKey(
       spec.manifest.id,
       spec.manifest.order,
       order
     );
-    if (mounted.has(spec.manifest.id)) {
-      const m = mounted.get(spec.manifest.id)!;
-      m.order = cssOrder;
-      continue;
-    }
+    mounted.get(spec.manifest.id)!.order = cssOrder;
+  }
+
+  // 并行拉 chunk，再按 order 挂载 — 缩短首屏左栏+围栏齐活时间
+  const loaded = await Promise.all(
+    toMount.map(async (spec) => {
+      try {
+        const mod = await spec.load();
+        return { spec, mod, error: null as string | null };
+      } catch (e) {
+        console.error("plugin load", spec.manifest.id, e);
+        emit(
+          "plugin:error",
+          { id: spec.manifest.id, phase: "import", error: String(e) },
+          "host"
+        );
+        return { spec, mod: null, error: String(e) };
+      }
+    })
+  );
+
+  for (const { spec, mod } of loaded) {
+    if (!mod) continue;
+    const cssOrder = effectiveSortKey(
+      spec.manifest.id,
+      spec.manifest.order,
+      order
+    );
     try {
-      const mod = await spec.load();
       await mountOne(spec.manifest, mod, spec.source, spec.cssHref, cssOrder);
     } catch (e) {
-      console.error("plugin load", spec.manifest.id, e);
+      console.error("plugin mount", spec.manifest.id, e);
       emit(
         "plugin:error",
-        { id: spec.manifest.id, phase: "import", error: String(e) },
+        { id: spec.manifest.id, phase: "mount", error: String(e) },
         "host"
       );
     }

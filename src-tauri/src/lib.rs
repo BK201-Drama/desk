@@ -248,13 +248,17 @@ pub fn run() {
                 });
             }
 
-            let mgr = app.autolaunch();
-            let opted_out = autostart_off_flag().map(|p| p.exists()).unwrap_or(false);
-            if !opted_out {
-                // Re-register on every launch so HKCU\Run tracks current_exe().
-                // Otherwise boot keeps starting an old release build while dev uses debug.
-                let _ = mgr.enable();
-            }
+            // 自启注册延后：不挡首帧 / setup 临界路径
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(3));
+                let mgr = app_handle.autolaunch();
+                let opted_out = autostart_off_flag().map(|p| p.exists()).unwrap_or(false);
+                if !opted_out {
+                    // Re-register so HKCU\Run tracks current_exe().
+                    let _ = mgr.enable();
+                }
+            });
 
             let edit_sc =
                 Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyD);

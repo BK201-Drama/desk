@@ -333,10 +333,12 @@ mod mediakey {
 }
 
 #[tauri::command]
-pub fn qqmusic_now_playing() -> QqmusicNowPlaying {
+pub async fn qqmusic_now_playing() -> QqmusicNowPlaying {
     #[cfg(windows)]
     {
-        smtc::now_playing()
+        tauri::async_runtime::spawn_blocking(smtc::now_playing)
+            .await
+            .unwrap_or_else(|_| empty_np("读取失败"))
     }
     #[cfg(not(windows))]
     {
@@ -660,6 +662,6 @@ pub fn qqmusic_launch() -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn qqmusic_status() -> QqmusicNowPlaying {
-    qqmusic_now_playing()
+pub async fn qqmusic_status() -> QqmusicNowPlaying {
+    qqmusic_now_playing().await
 }

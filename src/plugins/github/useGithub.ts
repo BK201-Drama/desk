@@ -39,7 +39,7 @@ export function useGithubSnapshot(ctx: HostContext) {
   useEffect(() => {
     const t = window.setTimeout(() => {
       void refresh();
-    }, 800);
+    }, 900);
     const iv = window.setInterval(() => void refresh(), PANEL_REFRESH_MS);
     return () => {
       window.clearTimeout(t);

@@ -418,11 +418,16 @@ if (-not [DeskPIcon]::Save('{dll_s}', {index}, 64, '{dest_s}')) {{ exit 1 }}
 fn system_shell_items(icons: &Path) -> Vec<FenceItemDto> {
     // Windows shell icons live in imageres.dll (resource IDs are negative).
     // Recycle Bin empty = -55; This PC = -109.
+    // 冷启动：已有 PNG 绝不再起 PowerShell（否则 fence_list 同步卡死）。
     let imageres = r"C:\Windows\System32\imageres.dll";
     let recycle_icon = icons.join("sys-recycle.png");
     let pc_icon = icons.join("sys-pc.png");
-    let _ = extract_dll_icon(imageres, -55, &recycle_icon);
-    let _ = extract_dll_icon(imageres, -109, &pc_icon);
+    if !recycle_icon.exists() {
+        let _ = extract_dll_icon(imageres, -55, &recycle_icon);
+    }
+    if !pc_icon.exists() {
+        let _ = extract_dll_icon(imageres, -109, &pc_icon);
+    }
 
     vec![
         FenceItemDto {
@@ -472,9 +477,14 @@ pub fn fence_takeover() -> Result<Vec<FenceDto>, String> {
     // 冷启动快路径：vault 已有内容且桌面已空 → 不再跑 reg/powershell 刷 Explorer（易卡死）
     if !meta.items.is_empty() && !desktop_has_vaultable_items()? {
         if !meta.hide_icons_applied {
-            set_desktop_icons_hidden(true)?;
+            // 标记意图后后台藏图标，避免首次安装后 list/takeover 同步卡主线程
             meta.hide_icons_applied = true;
             save_meta(&meta)?;
+            std::thread::spawn(|| {
+                if let Err(e) = set_desktop_icons_hidden(true) {
+                    eprintln!("hide desktop icons bg: {e}");
+                }
+            });
         }
         return list_fences_inner(&meta);
     }
@@ -571,7 +581,17 @@ pub fn fence_list() -> Result<Vec<FenceDto>, String> {
     if purge_self_desk_entries(&mut meta)? {
         save_meta(&meta)?;
     }
-    refresh_icon_cache_if_needed(&meta)?;
+    // 冷启动：list 不做全量 icon-cache 重建（可能对每项起 PowerShell）。
+    // marker 缺失时放到后台，UI 先用已有/缺图标列表。
+    let marker = app_data_dir()?.join(format!("icon-cache-v{ICON_CACHE_VER}"));
+    if !marker.exists() {
+        let meta_bg = meta.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = refresh_icon_cache_if_needed(&meta_bg) {
+                eprintln!("icon cache bg: {e}");
+            }
+        });
+    }
     list_fences_inner(&meta)
 }
 

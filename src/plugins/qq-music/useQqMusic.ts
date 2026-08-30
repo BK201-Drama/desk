@@ -112,9 +112,10 @@ export function useQqMusic(ctx: HostContext) {
   useEffect(() => {
     // 不在挂载时 ensure_running：冷启动会弹 QQ 主窗，开机也拖慢 desk。
     // 仅轮询 SMTC；用户点播控时再由 toggle/next 冷启动。
-    void refresh();
+    const boot = window.setTimeout(() => void refresh(), 1200);
     const iv = window.setInterval(() => void refresh(), 2500);
     return () => {
+      window.clearTimeout(boot);
       window.clearInterval(iv);
       if (flashTimer.current != null) window.clearTimeout(flashTimer.current);
     };
