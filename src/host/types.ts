@@ -18,7 +18,8 @@ export type PluginPermission =
   | "host.open"
   | "qqmusic.launch"
   | "stock.read"
-  | "cursor.read";
+  | "cursor.read"
+  | "sys-res.read";
 
 export type PluginManifest = {
   id: string;

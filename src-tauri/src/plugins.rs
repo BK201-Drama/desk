@@ -83,6 +83,7 @@ fn coder_disabled() -> Vec<String> {
         "event-tape".into(),
         "qq-music".into(),
         "stock".into(),
+        "sys-res".into(),
     ]
 }
 
@@ -97,6 +98,7 @@ fn minimal_disabled() -> Vec<String> {
         "event-tape".into(),
         "qq-music".into(),
         "stock".into(),
+        "sys-res".into(),
     ]
 }
 
@@ -112,6 +114,7 @@ fn fence_only_disabled() -> Vec<String> {
         "event-tape".into(),
         "qq-music".into(),
         "stock".into(),
+        "sys-res".into(),
     ]
 }
 

@@ -52,6 +52,7 @@ const PERM_COMMANDS: Record<PluginPermission, string[]> = {
   ],
   "stock.read": ["stock_quotes", "stock_cached"],
   "cursor.read": ["cursor_usage", "cursor_cached"],
+  "sys-res.read": ["sys_res_snapshot"],
 };
 
 const commandOwners = new Map<string, HostCommand>();
