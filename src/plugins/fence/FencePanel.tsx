@@ -163,6 +163,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
   };
 
   const editHint = editingOn ? "完成 (Win+Shift+D)" : "编辑 (Win+Shift+D)";
+  const lastCursor = useRef<string>("");
 
   return (
     <div
@@ -170,17 +171,23 @@ export function FencePanel({ ctx }: PluginComponentProps) {
       className="fence-panel-root"
       data-testid="fence-panel"
       onPointerMove={(e) => {
-        const over = (e.target as HTMLElement | null)?.closest<HTMLElement>(".fence-app");
-        const next = over
-          ? editingOn
-            ? draggingId
-              ? "grabbing"
-              : "grab"
-            : "pointer"
-          : "default";
+        const t = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+          ".fence-app, .icon-btn, button, a, input, textarea, select, [role='button']"
+        );
+        let next = "default";
+        if (t) {
+          if (t.classList.contains("fence-app") && editingOn) {
+            next = draggingId ? "grabbing" : "grab";
+          } else {
+            next = "pointer";
+          }
+        }
+        if (next === lastCursor.current) return;
+        lastCursor.current = next;
         void ctx.invoke("set_cursor", { icon: next }).catch(() => {});
       }}
       onPointerLeave={() => {
+        lastCursor.current = "default";
         void ctx.invoke("set_cursor", { icon: "default" }).catch(() => {});
       }}
     >
