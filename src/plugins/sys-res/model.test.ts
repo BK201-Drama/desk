@@ -131,6 +131,10 @@ describe("buildRingSegments", () => {
     expect(segs.find((s) => s.kind === "rest")!.pct).toBeGreaterThanOrEqual(0);
     const total = segs.reduce((a, s) => a + s.pct, 0);
     expect(total).toBeCloseTo(100, 5);
+    for (const seg of segs.filter((s) => s.kind === "app")) {
+      expect(seg.label).toBe(formatCpuPct(seg.pct));
+    }
+    expect(segs[0].label).not.toBe("50%");
   });
 
   it("defaults limit to 3", () => {

@@ -153,10 +153,11 @@ export function buildRingSegments(
 
   const pcts = cpuSharePcts(snap.apps, top);
   top.forEach((app, i) => {
+    const pct = pcts[i] ?? 0;
     segments.push({
       name: app.name,
-      label: formatCpuPct(app.cpuPct),
-      pct: pcts[i] ?? 0,
+      label: formatCpuPct(pct),
+      pct,
       kind: "app",
     });
   });
