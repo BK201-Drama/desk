@@ -6,16 +6,22 @@
  * - 面板自包含；跨插件工具见 `src/lib/`
  */
 import type { BundledPlugin, PluginManifest, PluginModule } from "../host/types";
+import githubPanel from "./github/panel";
 
 const manifestModules = import.meta.glob("./*/manifest.json", {
   eager: true,
   import: "default",
 }) as Record<string, PluginManifest>;
 
-const panelModules = import.meta.glob("./*/panel.tsx") as Record<
-  string,
-  () => Promise<{ default: PluginModule }>
->;
+const panelModules = import.meta.glob([
+  "./*/panel.tsx",
+  "!./github/panel.tsx",
+]) as Record<string, () => Promise<{ default: PluginModule }>>;
+
+/** 首屏关键：打进主包，不走懒加载 chunk */
+const EAGER_PANELS: Record<string, PluginModule> = {
+  github: githubPanel,
+};
 
 function pluginDir(globPath: string): string | null {
   const match = /^\.\/([^/]+)\//.exec(globPath);
@@ -33,8 +39,9 @@ function discoverBundledPlugins(): BundledPlugin[] {
     if (!dir) continue;
 
     const panelPath = `./${dir}/panel.tsx`;
+    const eager = EAGER_PANELS[manifest.id] ?? EAGER_PANELS[dir];
     const loadPanel = panelModules[panelPath];
-    if (!loadPanel) {
+    if (!eager && !loadPanel) {
       console.error(`[plugins] ${dir}: missing panel.tsx (has manifest.json)`);
       continue;
     }
@@ -52,10 +59,12 @@ function discoverBundledPlugins(): BundledPlugin[] {
 
     out.push({
       manifest,
-      load: async () => {
-        const mod = await loadPanel();
-        return mod.default;
-      },
+      load: eager
+        ? async () => eager
+        : async () => {
+            const mod = await loadPanel!();
+            return mod.default;
+          },
     });
   }
 

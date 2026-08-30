@@ -20,7 +20,7 @@ import {
 import { initReorderDrag } from "../host/reorder";
 import { emit } from "../host/events";
 import { bundledPlugins } from "../plugins";
-import { preloadGithubBoot } from "../plugins/github/boot";
+import { invoke } from "@tauri-apps/api/core";
 
 export type DeskHostBridge = {
   reloadPlugins: () => Promise<void>;
@@ -69,9 +69,9 @@ export function bootstrapDesk(_bridge: DeskHostBridge): void {
     toggleEditing();
   });
 
-  // 预读 cache 与挂载并行：不再串行挡住围栏/其它面板首屏
+  // GitHub cache 已在 main.tsx 预读；这里只挂插件
   const t0 = performance.now();
-  void Promise.all([preloadGithubBoot().catch(() => undefined), loadAll(bundledPlugins)])
+  void loadAll(bundledPlugins)
     .then(() => {
       const ms = Math.round(performance.now() - t0);
       emit(
@@ -80,7 +80,7 @@ export function bootstrapDesk(_bridge: DeskHostBridge): void {
         "host"
       );
       console.info(`[desk] plugins ready in ${ms}ms`);
-      return invokeBootMark(ms);
+      return invoke("boot_mark", { ms }).catch(() => undefined);
     })
     .catch((e) => {
       console.error("plugin boot failed", e);
@@ -89,13 +89,4 @@ export function bootstrapDesk(_bridge: DeskHostBridge): void {
         left.innerHTML = `<div class="plugin-error">插件宿主启动失败：${String(e)}</div>`;
       }
     });
-}
-
-async function invokeBootMark(ms: number): Promise<void> {
-  try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("boot_mark", { ms });
-  } catch {
-    /* optional command / outside tauri */
-  }
 }
