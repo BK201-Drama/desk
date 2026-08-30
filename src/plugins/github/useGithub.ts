@@ -7,41 +7,22 @@ import {
 } from "./model";
 import { formatClockDate, formatClockTime } from "../../lib/time";
 import { setSyncStatus } from "../../host/util";
+import { peekGithubBoot } from "./boot";
 
 const PANEL_REFRESH_MS = 5 * 60 * 1000;
 
 export function useGithubSnapshot(ctx: HostContext) {
-  const [snap, setSnap] = useState<GithubSnapshot | null>(null);
+  // 首帧用启动预读；无 cache 时才是 null
+  const [snap, setSnap] = useState<GithubSnapshot | null>(() => peekGithubBoot());
   const [errorText, setErrorText] = useState<string | null>(null);
 
-  const applyRaw = useCallback(
-    (raw: unknown, source: "cache" | "live") => {
-      const next = normalizeGithubSnapshot(raw);
-      if (source === "cache") next.cached = true;
-      setSnap(next);
-      setErrorText(null);
-      return next;
-    },
-    []
-  );
-
-  const loadCache = useCallback(async () => {
-    try {
-      const raw = await ctx.invoke("github_cached");
-      if (raw == null) return null;
-      const next = applyRaw(raw, "cache");
-      ctx.emit("github:sync", {
-        ok: true,
-        cached: true,
-        hasToken: Boolean(next.login),
-        ms: 0,
-      });
-      return next;
-    } catch (e) {
-      console.warn("github_cached", e);
-      return null;
-    }
-  }, [ctx, applyRaw]);
+  const applyRaw = useCallback((raw: unknown, source: "cache" | "live") => {
+    const next = normalizeGithubSnapshot(raw);
+    if (source === "cache") next.cached = true;
+    setSnap(next);
+    setErrorText(null);
+    return next;
+  }, []);
 
   const refresh = useCallback(async () => {
     const at = Date.now();
@@ -64,8 +45,15 @@ export function useGithubSnapshot(ctx: HostContext) {
   }, [ctx, applyRaw]);
 
   useEffect(() => {
-    // 先秒出本地 cache，再后台拉增量；避免首屏空骨架干等 GraphQL
-    void loadCache();
+    // 若启动预读未完成（极少），再补一次 cache；然后后台刷新
+    if (!peekGithubBoot()) {
+      void ctx
+        .invoke("github_cached")
+        .then((raw) => {
+          if (raw != null && !peekGithubBoot()) applyRaw(raw, "cache");
+        })
+        .catch(() => undefined);
+    }
     const t = window.setTimeout(() => {
       void refresh();
     }, 900);
@@ -74,7 +62,7 @@ export function useGithubSnapshot(ctx: HostContext) {
       window.clearTimeout(t);
       window.clearInterval(iv);
     };
-  }, [loadCache, refresh]);
+  }, [ctx, refresh, applyRaw]);
 
   return { snap, errorText, refresh };
 }

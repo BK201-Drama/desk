@@ -124,7 +124,7 @@ export function GithubPanel({ ctx }: PluginComponentProps) {
           <div className="wall-meta">
             <span>Contributions</span>
             <span className="sync-hint" ref={syncRef}>
-              GitHub …
+              {snap?.cached ? "缓存" : snap ? "GitHub" : "GitHub …"}
             </span>
           </div>
           {snap ? (

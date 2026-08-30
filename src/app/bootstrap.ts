@@ -20,6 +20,7 @@ import {
 import { initReorderDrag } from "../host/reorder";
 import { emit } from "../host/events";
 import { bundledPlugins } from "../plugins";
+import { preloadGithubBoot } from "../plugins/github/boot";
 
 export type DeskHostBridge = {
   reloadPlugins: () => Promise<void>;
@@ -68,7 +69,10 @@ export function bootstrapDesk(_bridge: DeskHostBridge): void {
     toggleEditing();
   });
 
-  void loadAll(bundledPlugins)
+  // 先读 GitHub 本地缓存，再挂面板 —— 首帧就有墙/资料，不先闪「加载…」
+  void preloadGithubBoot()
+    .catch(() => undefined)
+    .then(() => loadAll(bundledPlugins))
     .then(() => {
       emit("host:boot", { plugins: bundledPlugins.map((p) => p.manifest.id) }, "host");
     })
