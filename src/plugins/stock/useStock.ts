@@ -5,11 +5,12 @@ import {
   normalizeQuotes,
   type StockQuote,
 } from "./model";
+import { onStockBoot, peekStockBoot } from "./boot";
 
 const POLL_MS = 15_000;
 
 export function useStockQuotes(ctx: HostContext) {
-  const [quotes, setQuotes] = useState<StockQuote[]>([]);
+  const [quotes, setQuotes] = useState<StockQuote[]>(() => peekStockBoot() ?? []);
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const busy = useRef(false);
@@ -32,10 +33,18 @@ export function useStockQuotes(ctx: HostContext) {
   }, [ctx]);
 
   useEffect(() => {
-    const boot = window.setTimeout(() => void refresh(), 2200);
+    const unsub = onStockBoot(() => {
+      const boot = peekStockBoot();
+      if (boot?.length) setQuotes((prev) => (prev.length ? prev : boot));
+    });
+    const boot = peekStockBoot();
+    if (boot?.length) setQuotes((prev) => (prev.length ? prev : boot));
+
+    const bootTimer = window.setTimeout(() => void refresh(), 1200);
     const iv = window.setInterval(() => void refresh(), POLL_MS);
     return () => {
-      window.clearTimeout(boot);
+      unsub();
+      window.clearTimeout(bootTimer);
       window.clearInterval(iv);
     };
   }, [refresh]);

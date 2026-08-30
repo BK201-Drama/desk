@@ -1,11 +1,11 @@
 //! Cursor 用量：从本机 state.vscdb 读会话 token，再打 Dashboard API。
 use rusqlite::Connection;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CursorUsage {
     pub ok: bool,
     pub remaining_pct: f64,
@@ -179,14 +179,27 @@ fn map_usage(v: Value) -> CursorUsage {
 }
 
 #[tauri::command]
+pub fn cursor_cached() -> Option<CursorUsage> {
+    load_cache().filter(|c| c.ok)
+}
+
+#[tauri::command]
 pub async fn cursor_usage() -> Result<CursorUsage, String> {
     let db = state_db_path().ok_or_else(|| "找不到 Cursor 配置目录".to_string())?;
     if !db.exists() {
+        if let Some(c) = load_cache().filter(|c| c.ok) {
+            return Ok(c);
+        }
         return Ok(empty("未检测到 Cursor（缺 state.vscdb）"));
     }
     let token = match read_access_token(&db) {
         Ok(t) => t,
-        Err(e) => return Ok(empty(e)),
+        Err(e) => {
+            if let Some(c) = load_cache().filter(|c| c.ok) {
+                return Ok(c);
+            }
+            return Ok(empty(e));
+        }
     };
 
     let client = reqwest::Client::builder()
@@ -208,11 +221,43 @@ pub async fn cursor_usage() -> Result<CursorUsage, String> {
     let status = res.status();
     let text = res.text().await.map_err(|e| e.to_string())?;
     if status.as_u16() == 401 || status.as_u16() == 403 {
+        if let Some(c) = load_cache().filter(|c| c.ok) {
+            return Ok(c);
+        }
         return Ok(empty("Cursor 登录已过期，请在 IDE 重新登录"));
     }
     if !status.is_success() {
+        if let Some(c) = load_cache().filter(|c| c.ok) {
+            return Ok(c);
+        }
         return Ok(empty(format!("Cursor API {status}")));
     }
     let v: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
-    Ok(map_usage(v))
+    let usage = map_usage(v);
+    if usage.ok {
+        let _ = save_cache(&usage);
+    }
+    Ok(usage)
+}
+
+fn app_data_dir() -> Result<PathBuf, String> {
+    let base = dirs::data_local_dir().ok_or("no local app data")?;
+    let dir = base.join("desk");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+fn cache_path() -> Result<PathBuf, String> {
+    Ok(app_data_dir()?.join("cursor-cache.json"))
+}
+
+fn load_cache() -> Option<CursorUsage> {
+    let s = fs::read_to_string(cache_path().ok()?).ok()?;
+    serde_json::from_str(&s).ok()
+}
+
+fn save_cache(usage: &CursorUsage) -> Result<(), String> {
+    let p = cache_path()?;
+    let s = serde_json::to_string_pretty(usage).map_err(|e| e.to_string())?;
+    fs::write(p, s).map_err(|e| e.to_string())
 }

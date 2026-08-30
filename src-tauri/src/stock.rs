@@ -1,8 +1,10 @@
 //! A 股简易行情（东财 delay / 腾讯备用）
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fs;
+use std::path::PathBuf;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StockQuote {
     pub code: String,
     pub name: String,
@@ -193,6 +195,11 @@ async fn fetch_tencent(
 }
 
 #[tauri::command]
+pub fn stock_cached() -> Option<Vec<StockQuote>> {
+    load_cache()
+}
+
+#[tauri::command]
 pub async fn stock_quotes(codes: Option<Vec<String>>) -> Result<Vec<StockQuote>, String> {
     let secids: Vec<String> = match codes {
         Some(list) if !list.is_empty() => list.iter().map(|c| parse_secid(c)).collect(),
@@ -200,10 +207,43 @@ pub async fn stock_quotes(codes: Option<Vec<String>>) -> Result<Vec<StockQuote>,
     };
     let client = client()?;
     match fetch_eastmoney(&client, &secids).await {
-        Ok(v) => Ok(v),
+        Ok(v) => {
+            let _ = save_cache(&v);
+            Ok(v)
+        }
         Err(e1) => match fetch_tencent(&client, &secids).await {
-            Ok(v) => Ok(v),
-            Err(e2) => Err(format!("行情失败: {e1}; 备用: {e2}")),
+            Ok(v) => {
+                let _ = save_cache(&v);
+                Ok(v)
+            }
+            Err(e2) => {
+                if let Some(c) = load_cache() {
+                    return Ok(c);
+                }
+                Err(format!("行情失败: {e1}; 备用: {e2}"))
+            }
         },
     }
+}
+
+fn app_data_dir() -> Result<PathBuf, String> {
+    let base = dirs::data_local_dir().ok_or("no local app data")?;
+    let dir = base.join("desk");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+fn cache_path() -> Result<PathBuf, String> {
+    Ok(app_data_dir()?.join("stock-cache.json"))
+}
+
+fn load_cache() -> Option<Vec<StockQuote>> {
+    let s = fs::read_to_string(cache_path().ok()?).ok()?;
+    serde_json::from_str(&s).ok()
+}
+
+fn save_cache(quotes: &[StockQuote]) -> Result<(), String> {
+    let p = cache_path()?;
+    let s = serde_json::to_string_pretty(quotes).map_err(|e| e.to_string())?;
+    fs::write(p, s).map_err(|e| e.to_string())
 }

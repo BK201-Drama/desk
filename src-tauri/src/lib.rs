@@ -207,7 +207,9 @@ pub fn run() {
             qqmusic::qqmusic_toggle,
             qqmusic::qqmusic_next,
             qqmusic::qqmusic_prev,
+            stock::stock_cached,
             stock::stock_quotes,
+            cursor::cursor_cached,
             cursor::cursor_usage,
         ])
         .setup(|app| {

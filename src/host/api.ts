@@ -50,8 +50,8 @@ const PERM_COMMANDS: Record<PluginPermission, string[]> = {
     "qqmusic_next",
     "qqmusic_prev"
   ],
-  "stock.read": ["stock_quotes"],
-  "cursor.read": ["cursor_usage"],
+  "stock.read": ["stock_quotes", "stock_cached"],
+  "cursor.read": ["cursor_usage", "cursor_cached"],
 };
 
 const commandOwners = new Map<string, HostCommand>();

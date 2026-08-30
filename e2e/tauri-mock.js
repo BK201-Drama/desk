@@ -173,6 +173,28 @@
             cached: true,
             error: null,
           };
+        case "stock_quotes":
+        case "stock_cached":
+          return [];
+        case "cursor_usage":
+        case "cursor_cached":
+          return {
+            ok: false,
+            remaining_pct: 0,
+            used_pct: 0,
+            auto_pct_used: 0,
+            api_pct_used: 0,
+            included_limit_usd: 0,
+            included_used_usd: 0,
+            included_remaining_usd: 0,
+            total_spend_usd: 0,
+            message: "",
+            auto_message: "",
+            api_message: "",
+            billing_cycle_end_ms: null,
+            hit_limit: false,
+            hint: "mock",
+          };
         case "fence_list":
         case "fence_takeover":
         case "fence_save_order":

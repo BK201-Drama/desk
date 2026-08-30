@@ -7,6 +7,8 @@
  */
 import type { BundledPlugin, PluginManifest, PluginModule } from "../host/types";
 import githubPanel from "./github/panel";
+import stockPanel from "./stock/panel";
+import tokenCapsulePanel from "./token-capsule/panel";
 
 const manifestModules = import.meta.glob("./*/manifest.json", {
   eager: true,
@@ -16,11 +18,15 @@ const manifestModules = import.meta.glob("./*/manifest.json", {
 const panelModules = import.meta.glob([
   "./*/panel.tsx",
   "!./github/panel.tsx",
+  "!./stock/panel.tsx",
+  "!./token-capsule/panel.tsx",
 ]) as Record<string, () => Promise<{ default: PluginModule }>>;
 
 /** 首屏关键：打进主包，不走懒加载 chunk */
 const EAGER_PANELS: Record<string, PluginModule> = {
   github: githubPanel,
+  stock: stockPanel,
+  "token-capsule": tokenCapsulePanel,
 };
 
 function pluginDir(globPath: string): string | null {
