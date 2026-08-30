@@ -445,11 +445,40 @@ fn system_shell_items(icons: &Path) -> Vec<FenceItemDto> {
 }
 
 /// Move ALL Desktop items (files + folders) into vault and hide desktop icons.
+/// True if user/public Desktop still has icons worth vaulting (not desktop.ini).
+fn desktop_has_vaultable_items() -> Result<bool, String> {
+    for (_origin, desktop) in desktop_roots()? {
+        let entries = match fs::read_dir(&desktop) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for ent in entries.flatten() {
+            let name = ent.file_name().to_string_lossy().to_string();
+            if name.eq_ignore_ascii_case("desktop.ini") {
+                continue;
+            }
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 #[tauri::command]
 pub fn fence_takeover() -> Result<Vec<FenceDto>, String> {
     let vault = vault_dir()?;
     let icons = icons_dir()?;
     let mut meta = load_meta()?;
+
+    // 冷启动快路径：vault 已有内容且桌面已空 → 不再跑 reg/powershell 刷 Explorer（易卡死）
+    if !meta.items.is_empty() && !desktop_has_vaultable_items()? {
+        if !meta.hide_icons_applied {
+            set_desktop_icons_hidden(true)?;
+            meta.hide_icons_applied = true;
+            save_meta(&meta)?;
+        }
+        return list_fences_inner(&meta);
+    }
+
     let mut errors: Vec<String> = Vec::new();
 
     for (origin, desktop) in desktop_roots()? {

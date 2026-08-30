@@ -43,6 +43,25 @@ export function useFences(ctx: HostContext) {
 
   const loadFences = useCallback(async () => {
     await loadRecent();
+    // 快路径：已有 vault 时先 list，避免开机同步跑完整 takeover（挪图标/抽图标/藏桌面）卡住 UI
+    try {
+      const raw = await ctx.invoke("fence_list");
+      const next = normalizeFences(raw);
+      setFences(next);
+      setLoadError(null);
+      ctx.emit("fence:loaded", {
+        count: next.reduce((n, f) => n + f.items.length, 0),
+        phase: "list",
+      });
+    } catch (e) {
+      console.warn("fence_list failed", e);
+      setLoadError(String(e));
+      setFences([]);
+    }
+  }, [ctx, loadRecent]);
+
+  /** 后台 reconcile：桌面新图标进 vault；不挡首屏 */
+  const reconcileDesktop = useCallback(async () => {
     try {
       const raw = await ctx.invoke("fence_takeover");
       const next = normalizeFences(raw);
@@ -50,20 +69,12 @@ export function useFences(ctx: HostContext) {
       setLoadError(null);
       ctx.emit("fence:loaded", {
         count: next.reduce((n, f) => n + f.items.length, 0),
+        phase: "takeover",
       });
     } catch (e) {
-      console.warn("fence_takeover failed, try list", e);
-      try {
-        const raw = await ctx.invoke("fence_list");
-        setFences(normalizeFences(raw));
-        setLoadError(null);
-      } catch (e2) {
-        console.error(e2);
-        setLoadError(String(e));
-        setFences([]);
-      }
+      console.warn("fence_takeover deferred", e);
     }
-  }, [ctx, loadRecent]);
+  }, [ctx]);
 
   const persistOrder = useCallback(
     async (next: FenceGroup[]) => {
@@ -104,15 +115,33 @@ export function useFences(ctx: HostContext) {
   );
 
   useEffect(() => {
-    void loadFences();
-  }, [loadFences]);
+    let cancelled = false;
+    const boot = window.setTimeout(() => {
+      if (cancelled) return;
+      void loadFences();
+    }, 250);
+    const takeover = window.setTimeout(() => {
+      if (cancelled) return;
+      void reconcileDesktop();
+    }, 2500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(boot);
+      window.clearTimeout(takeover);
+    };
+    // 仅冷启动一次；ctx 稳定，避免依赖抖动反复清 timer
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return {
     fences,
     setFences,
     recentIds,
     loadError,
-    loadFences,
+    loadFences: async () => {
+      await loadFences();
+      await reconcileDesktop();
+    },
     persistOrder,
     launch,
   };

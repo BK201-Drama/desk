@@ -628,7 +628,7 @@ fn launch_quiet(foreground: bool) -> Result<&'static str, String> {
     Ok("protocol")
 }
 
-/// 面板挂载时调用：已在跑则 noop；否则后台拉起（尽量不抢焦点）。
+/// 兼容保留：主动后台拉起 QQ。面板挂载不再调用（会弹窗/拖慢开机）。
 #[tauri::command]
 pub fn qqmusic_ensure_running() -> Result<String, String> {
     #[cfg(windows)]

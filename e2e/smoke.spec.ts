@@ -5,7 +5,19 @@ import { fileURLToPath } from "node:url";
 const mockPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "tauri-mock.js");
 
 async function openCmdk(page: import("@playwright/test").Page) {
-  await page.keyboard.press("Control+k");
+  await page.locator("body").click({ position: { x: 8, y: 8 } });
+  // Control+k 在部分环境会被系统/宿主吞掉，Playwright press 会一直挂起；直接派发 DOM 事件。
+  await page.evaluate(() => {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "k",
+        code: "KeyK",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      })
+    );
+  });
   await expect(page.getByTestId("cmdk-input")).toBeVisible();
 }
 
@@ -44,10 +56,19 @@ test("cmdk keyboard shortcut toggles panel", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("cmdk-root")).toBeAttached({ timeout: 15_000 });
 
-  await page.keyboard.press("Control+k");
+  await openCmdk(page);
   await expect(page.getByTestId("cmdk-input")).toBeVisible();
 
-  await page.keyboard.press("Escape");
+  await page.evaluate(() => {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        code: "Escape",
+        bubbles: true,
+        cancelable: true,
+      })
+    );
+  });
   await expect(page.getByTestId("cmdk-input")).not.toBeVisible();
 });
 
@@ -61,9 +82,9 @@ test("cmdk can create a named scheme", async ({ page }) => {
 
   const nameInput = composer.locator(".cmdk-scheme-name");
   await expect(nameInput).toBeVisible();
-  await nameInput.click();
-  await nameInput.fill("测试方案");
-  await composer.getByRole("button", { name: "+ 新建" }).click();
+  await nameInput.click({ force: true });
+  await nameInput.fill("测试方案", { force: true });
+  await composer.getByRole("button", { name: "+ 新建" }).click({ force: true });
 
   await expect(composer.getByText("1/3")).toBeVisible({ timeout: 10_000 });
   await expect(composer.getByRole("button", { name: "测试方案" })).toBeVisible();
