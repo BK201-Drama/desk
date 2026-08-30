@@ -9,11 +9,17 @@ import {
 import { useSysRes } from "./useSysRes";
 import "./panel.css";
 
-const SEG_COLORS = ["#2d6a4f", "#52b788", "#95d5b2", "rgba(26,35,50,0.14)"];
+const APP_COLORS = ["#2d6a4f", "#52b788", "#95d5b2"];
+const REST_COLOR = "rgba(26,35,50,0.14)";
 const R = 30;
 const C = 2 * Math.PI * R;
 const CX = 39;
 const CY = 39;
+
+function segmentStroke(seg: RingSegment, appIndex: number): string {
+  if (seg.kind === "rest") return REST_COLOR;
+  return APP_COLORS[appIndex] ?? APP_COLORS[APP_COLORS.length - 1]!;
+}
 
 function formatMemSub(used: number, total: number): string {
   const toG = (n: number) => {
@@ -55,6 +61,7 @@ function RingView({
   const subIsApp = Boolean(seg && seg.kind === "app");
 
   let offset = 0;
+  let appIndex = 0;
 
   return (
     <div className="sys-res-cell">
@@ -70,6 +77,10 @@ function RingView({
             offset += s.pct;
             const hot = active === i;
             const dim = active != null && active !== i;
+            const color =
+              s.kind === "rest"
+                ? REST_COLOR
+                : segmentStroke(s, appIndex++);
             return (
               <circle
                 key={`${s.name}-${i}`}
@@ -77,7 +88,7 @@ function RingView({
                 cx={CX}
                 cy={CY}
                 r={R}
-                stroke={SEG_COLORS[i] ?? SEG_COLORS[SEG_COLORS.length - 1]}
+                stroke={color}
                 strokeDasharray={`${dash} ${C}`}
                 strokeDashoffset={dashOffset}
                 onMouseEnter={() => setActive(i)}
