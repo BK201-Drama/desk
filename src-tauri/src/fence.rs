@@ -581,6 +581,10 @@ pub fn fence_list() -> Result<Vec<FenceDto>, String> {
     if purge_self_desk_entries(&mut meta)? {
         save_meta(&meta)?;
     }
+    // vault 里有文件但 meta 丢了（历史截断/异常写盘）→ 找回，避免图标「消失」
+    if reconcile_orphan_vault_files(&mut meta)? {
+        save_meta(&meta)?;
+    }
     // 冷启动：list 不做全量 icon-cache 重建（可能对每项起 PowerShell）。
     // marker 缺失时放到后台，UI 先用已有/缺图标列表。
     let marker = app_data_dir()?.join(format!("icon-cache-v{ICON_CACHE_VER}"));
@@ -593,6 +597,94 @@ pub fn fence_list() -> Result<Vec<FenceDto>, String> {
         });
     }
     list_fences_inner(&meta)
+}
+
+/// Re-attach vault files that exist on disk but are missing from vault.json.
+fn reconcile_orphan_vault_files(meta: &mut VaultMeta) -> Result<bool, String> {
+    let vault = vault_dir()?;
+    let icons = icons_dir()?;
+    let known: std::collections::HashSet<String> =
+        meta.items.iter().map(|e| e.vault_name.clone()).collect();
+    let mut changed = false;
+    let entries = match fs::read_dir(&vault) {
+        Ok(e) => e,
+        Err(_) => return Ok(false),
+    };
+    for ent in entries.flatten() {
+        let path = ent.path();
+        let name = ent.file_name().to_string_lossy().to_string();
+        if name.eq_ignore_ascii_case("desktop.ini") || known.contains(&name) {
+            continue;
+        }
+        let is_dir = path.is_dir();
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| name.clone());
+        let (origin, label, id) = parse_vault_stem(&stem);
+        let original_name = if is_dir {
+            label.clone()
+        } else {
+            let ext = path
+                .extension()
+                .map(|e| format!(".{}", e.to_string_lossy()))
+                .unwrap_or_default();
+            format!("{label}{ext}")
+        };
+        let icon_path = icons.join(format!("{id}.png"));
+        if !icon_path.exists() {
+            let _ = extract_icon_png(&path, &icon_path);
+        }
+        meta.items.push(VaultEntry {
+            id,
+            label: label.clone(),
+            vault_name: name,
+            fence: if is_dir {
+                "文件夹".into()
+            } else {
+                guess_fence(&original_name).to_string()
+            },
+            original_name,
+            origin,
+            is_dir,
+        });
+        changed = true;
+    }
+    Ok(changed)
+}
+
+/// `user-PVZ-15` / `public-Foo_Bar-3` → (origin, label, id)
+fn parse_vault_stem(stem: &str) -> (String, String, String) {
+    let id = stem.to_string();
+    if let Some(rest) = stem.strip_prefix("user-") {
+        if let Some((label_raw, _)) = rest.rsplit_once('-') {
+            if !label_raw.is_empty()
+                && rest
+                    .rsplit_once('-')
+                    .map(|(_, n)| n.chars().all(|c| c.is_ascii_digit()))
+                    .unwrap_or(false)
+            {
+                let label = label_raw.replace('_', " ");
+                return ("user".into(), label, id);
+            }
+        }
+        return ("user".into(), rest.replace('_', " "), id);
+    }
+    if let Some(rest) = stem.strip_prefix("public-") {
+        if let Some((label_raw, _)) = rest.rsplit_once('-') {
+            if !label_raw.is_empty()
+                && rest
+                    .rsplit_once('-')
+                    .map(|(_, n)| n.chars().all(|c| c.is_ascii_digit()))
+                    .unwrap_or(false)
+            {
+                let label = label_raw.replace('_', " ");
+                return ("public".into(), label, id);
+            }
+        }
+        return ("public".into(), rest.replace('_', " "), id);
+    }
+    ("user".into(), stem.replace('_', " "), id)
 }
 
 /// Drop vaulted installer shortcuts to desk itself (and their icon caches).
