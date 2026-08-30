@@ -7,6 +7,7 @@ mod qqmusic;
 mod recent;
 mod remind;
 mod stock;
+mod sys_res;
 #[cfg(windows)]
 mod win_zorder;
 
@@ -211,6 +212,7 @@ pub fn run() {
             stock::stock_quotes,
             cursor::cursor_cached,
             cursor::cursor_usage,
+            sys_res::sys_res_snapshot,
         ])
         .setup(|app| {
             let locked: Arc<Mutex<Option<(i32, i32)>>> = Arc::new(Mutex::new(None));

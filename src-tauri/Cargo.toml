@@ -28,6 +28,7 @@ tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-single-instance = "2"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
+sysinfo = "0.33"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
