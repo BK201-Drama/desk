@@ -11,7 +11,7 @@ import type {
 
 /** permission → allowed Tauri command names */
 const PERM_COMMANDS: Record<PluginPermission, string[]> = {
-  "github.read": ["github_snapshot"],
+  "github.read": ["github_snapshot", "github_cached"],
   "github.write": ["github_set_token"],
   "multica.read": ["multica_snapshot", "multica_app_url"],
   "remind.read": ["remind_list"],

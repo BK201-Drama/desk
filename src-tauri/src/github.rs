@@ -554,10 +554,21 @@ pub fn github_set_token(token: String) -> Result<(), String> {
     fs::write(p, s).map_err(|e| e.to_string())
 }
 
+/// 冷启动用：只读本地 cache，不触网、不跑 `gh auth`。
+#[tauri::command]
+pub fn github_cached() -> Option<GithubSnapshotDto> {
+    let mut c = load_cache()?;
+    c.cached = true;
+    Some(c)
+}
+
 /// Fetch live GitHub snapshot; on failure return last cache if any.
 #[tauri::command]
 pub async fn github_snapshot() -> Result<GithubSnapshotDto, String> {
-    let token = match resolve_token() {
+    let token = match tauri::async_runtime::spawn_blocking(resolve_token)
+        .await
+        .map_err(|e| e.to_string())?
+    {
         Ok(t) => t,
         Err(e) => {
             if let Some(mut c) = load_cache() {

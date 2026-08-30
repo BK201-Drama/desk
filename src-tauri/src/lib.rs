@@ -155,6 +155,7 @@ pub fn run() {
             autostart_set,
             multica::multica_app_url,
             multica::multica_snapshot,
+            github::github_cached,
             github::github_snapshot,
             github::github_set_token,
             remind::remind_list,

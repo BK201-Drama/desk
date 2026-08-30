@@ -147,6 +147,21 @@
             cached: true,
             error: null,
           };
+        case "github_cached":
+          return {
+            login: "mock",
+            name: "Mock",
+            bio: "",
+            avatar_url: "",
+            streak: 0,
+            year_total: 0,
+            weeks: [],
+            contrib_cells: [],
+            pins: [],
+            langs: [],
+            cached: true,
+            error: null,
+          };
         case "multica_snapshot":
           return {
             app_url: "http://localhost:18473",
