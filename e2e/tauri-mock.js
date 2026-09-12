@@ -14,6 +14,65 @@
     { id: "fence", name: "围栏", description: "仅围栏" },
   ];
 
+  // ── 样式审查 fixture（e2e/style-audit.spec.ts 的输入）────────────────────
+  // 这份数据决定看板围栏区的 DOM 形状，而 e2e/style-baseline.json 是从这个 DOM 录的。
+  // **改这里 = 基线全体失效**：必须同时 `UPDATE_STYLE_BASELINE=1 npm run test:style`
+  // 并逐行 review diff。
+  //
+  // 覆盖 styles.css 里所有有分支的形状：
+  //   游戏 / 工具  → --fence-rows: 3   (styles.css:1084-1086)
+  //   工作 / 系统  → --fence-rows: 1   (styles.css:1088-1090)
+  //   最近         → #fenceRecent:not([hidden])，4 列 1 行 (styles.css:1236-1244)
+  const FENCE_FIXTURE = [
+    {
+      name: "游戏",
+      items: [
+        { id: "d-lol-0", label: "英雄联盟", path: "C:\\Desktop\\英雄联盟.lnk", icon: null },
+        { id: "d-cs2-0", label: "counter-strike 2", path: "C:\\Desktop\\counter-strike 2.lnk", icon: null },
+        { id: "d-cf-0", label: "穿越火线", path: "C:\\Desktop\\穿越火线.lnk", icon: null },
+        { id: "d-dst-0", label: "饥荒联机版", path: "C:\\Desktop\\饥荒联机版.lnk", icon: null },
+        { id: "d-terraria-0", label: "Terraria", path: "C:\\Desktop\\Terraria.lnk", icon: null },
+      ],
+    },
+    {
+      name: "工具",
+      items: [
+        { id: "d-cursor-0", label: "Cursor", path: "C:\\Desktop\\Cursor.lnk", icon: null },
+        { id: "d-gitbash-0", label: "Git Bash", path: "C:\\Desktop\\Git Bash.lnk", icon: null },
+        { id: "d-pwsh-0", label: "PowerShell", path: "C:\\Desktop\\PowerShell.lnk", icon: null },
+        { id: "d-taskmgr-0", label: "任务管理器", path: "C:\\Desktop\\任务管理器.lnk", icon: null },
+      ],
+    },
+    {
+      name: "工作",
+      items: [
+        { id: "d-feishu-0", label: "飞书", path: "C:\\Desktop\\飞书.lnk", icon: null },
+        { id: "d-paper-0", label: "文献批量阅读助手", path: "C:\\Desktop\\文献批量阅读助手.lnk", icon: null },
+        { id: "d-yuque-0", label: "语雀", path: "C:\\Desktop\\语雀.lnk", icon: null },
+        { id: "d-obsidian-0", label: "Obsidian", path: "C:\\Desktop\\Obsidian.lnk", icon: null },
+      ],
+    },
+    {
+      name: "文件夹",
+      items: [
+        { id: "d-downloads-0", label: "下载", path: "C:\\Desktop\\下载", icon: null },
+        { id: "d-proj-0", label: "项目", path: "C:\\Desktop\\项目", icon: null },
+        { id: "d-shots-0", label: "截图", path: "C:\\Desktop\\截图", icon: null },
+      ],
+    },
+    {
+      name: "系统",
+      items: [
+        { id: "sys-recycle", label: "回收站", path: "shell:RecycleBinFolder", icon: null },
+        { id: "sys-pc", label: "此电脑", path: "shell:MyComputerFolder", icon: null },
+      ],
+    },
+  ];
+
+  // 最近：4 条，跨 工作 / 工具 / 游戏 三个围栏。不含 sys- —— recentItems() 会过滤掉
+  // （model.ts:105），过滤后不足 4 条 #fenceRecent 就不显示。
+  const RECENT_FIXTURE = ["d-feishu-0", "d-cursor-0", "d-lol-0", "d-obsidian-0"];
+
   let config = structuredClone(defaultConfig);
   let callbackId = 1;
 
@@ -198,9 +257,21 @@
         case "fence_list":
         case "fence_takeover":
         case "fence_save_order":
-          return [];
+          // 三个命令返回同一份数据是刻意的：useFences.ts:117-134 有冷启动双定时器，
+          // 250ms 走 fence_list、2500ms 走 fence_takeover 再覆盖一次。两边数据不一致
+          // 的话，样式审查会在两个状态之间随机飘。
+          return structuredClone(FENCE_FIXTURE);
         case "fence_snapshot":
-          return { fences: [], icons: [] };
+          return { fences: structuredClone(FENCE_FIXTURE), icons: [] };
+        case "recent_list":
+          return RECENT_FIXTURE.slice();
+        case "recent_push": {
+          const rid = args.id;
+          if (typeof rid === "string" && rid && !RECENT_FIXTURE.includes(rid)) {
+            RECENT_FIXTURE.unshift(rid);
+          }
+          return RECENT_FIXTURE.slice(0, 4);
+        }
         case "qqmusic_now_playing":
         case "qqmusic_status":
         case "qqmusic_snapshot":
