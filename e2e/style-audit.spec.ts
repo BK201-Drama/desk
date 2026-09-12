@@ -59,6 +59,50 @@ const PROPS = [
 const MIN_ELEMENTS = 40;
 
 /**
+ * 几何量白名单 —— 额外录 width / height。
+ *
+ * **为什么需要它**：computed style 里的 gap / padding 只覆盖「间距」，覆盖不了
+ * 「盒子自己多大」。`.face` 是 `width: 24px; height: 24px`（styles.css:1159-1161），
+ * 而网格列是 `1fr`（列宽由容器决定）—— 把 24px 改成 20px 不会传导到
+ * `grid-template-columns`，属性表一个值都不变，审计会全绿。这是纯属性快照的盲区。
+ *
+ * **为什么是白名单，而不是给所有元素录**：
+ *   - `.head-actions` 及其按钮不录：Task 5 要往工具栏加按钮，宽度合法地变。
+ *     录了它，Task 5 会产生一堆「本不该有」的 diff，把真漂移淹掉。
+ *   - `span.label` / `.fence-title` / `.fence-search-row-text` 不录：文字盒子的
+ *     宽度由 font metric 决定，跨 Chromium 版本会抖，容易误报。
+ *
+ * **只录 w / h，不录 x / y**：位置是 viewport 相对的，会把审查耦合到
+ * `.pane-fences` 之外的整个页面布局上（别的面板高一点这里就红）。间距本身已经由
+ * gap / padding / margin 覆盖了，位置是多余的。
+ *
+ * 注意 `#fences` 的**高度**间接依赖工具栏高度（它是 flex 剩下的那部分）。所以这里
+ * 隐含一条要求：Task 5 的按钮必须待在原来那一行里、不把工具栏撑高。
+ * 撑高了是真问题（计划里有「h2 未换行」的验收项），不算误报。
+ */
+const GEOMETRY = [
+  "#fences", // 围栏区整体：宽度 = 面板内宽，最基本的布局不变量
+  ".fence", // 单个围栏：高度反映 --fence-rows
+  ".fence-grid",
+  ".fence-app", // height: var(--fence-row)
+  ".face", // 24px —— 这就是当初的盲区
+  ".fence-search-list", // 搜索结果列表：高度 = 行数 × 行高 + gap
+  ".fence-search-row", // 搜索结果行
+].join(", ");
+
+/**
+ * ⚠️ `getBoundingClientRect()` 的数值比 CSS 里写的大 —— 别以为是错了。
+ *
+ * `html, body { zoom: var(--desk-zoom) }`（styles.css:30-39，`--desk-zoom: 1.28`），
+ * zoom 套在**两层**选择器上，复合成 1.28² = **1.6384**。所以：
+ *   `.fence-app .face` 写 `width: 24px` → 录到 `39.31px`
+ *   `.fence-search-row .face` 写 `32px`  → 录到 `52.42px`
+ *
+ * 这不影响审查（数值是确定的），但读 diff 时必须知道：**几何量是缩放后的**，
+ * 想反推 CSS 里的值要除以 1.6384。
+ */
+
+/**
  * 小数抹到 2 位：Chromium 升级带来的 font metric 抖动不算「观感变了」。
  * 正则要求小数点，所以 rgb(45, 106, 79) 里的整数不受影响。
  */
@@ -69,7 +113,7 @@ type Entry = { tag: string; cls: string; props: Record<string, string> };
 type Snapshot = Record<string, Entry>;
 
 async function snapshot(page: Page): Promise<Snapshot> {
-  return page.evaluate((props) => {
+  return page.evaluate(({ props, geometry }) => {
     const root = document.querySelector<HTMLElement>(".pane-fences");
     if (!root) return {};
     const out: Record<string, { tag: string; cls: string; props: Record<string, string> }> = {};
@@ -93,6 +137,15 @@ async function snapshot(page: Page): Promise<Snapshot> {
       const cs = getComputedStyle(el);
       const rec: Record<string, string> = {};
       for (const p of props) rec[p] = cs.getPropertyValue(p);
+      // 几何：白名单里的盒子额外录 w / h。见文件上方 GEOMETRY 的注释。
+      // 不渲染的元素（搜索态里 `#fences` 是 display:none）跳过 —— 否则会录一堆
+      // 0×0，看着有护栏其实是空的。跳过是安全的：键「从无到有」本身就是一处 diff，
+      // 所以某个元素该不该渲染，也在审查范围内。
+      if (el.matches(geometry) && el.getClientRects().length > 0) {
+        const r = el.getBoundingClientRect();
+        rec["rect-w"] = `${r.width}px`;
+        rec["rect-h"] = `${r.height}px`;
+      }
       out[key] = {
         tag: el.tagName.toLowerCase(),
         cls: typeof el.className === "string" ? el.className : "",
@@ -104,7 +157,7 @@ async function snapshot(page: Page): Promise<Snapshot> {
     };
     walk(root, ":root");
     return out;
-  }, PROPS as unknown as string[]);
+  }, { props: PROPS as unknown as string[], geometry: GEOMETRY });
 }
 
 function normalize(snap: Snapshot): Snapshot {
@@ -189,7 +242,10 @@ test.describe("样式审查（fence 重构护栏）", () => {
         HTMLInputElement.prototype,
         "value"
       )!.set!;
-      setter.call(input, "文献");
+      // 查询词挑「命中多行」的，不是挑好听的。只命中 1 行的话搜索态的几何量
+      // 只有 2 个值（1 行 + 1 个 .face），等于空护栏。固定 fixture 里含 "e" 的
+      // 标签有 5 个：counter-strike 2 / Terraria / Cursor / PowerShell / Obsidian。
+      setter.call(input, "e");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await page.waitForSelector(".fence-search-row", { state: "visible", timeout: 10_000 });
