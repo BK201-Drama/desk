@@ -1,5 +1,7 @@
 //! Desktop icon vault: icons live only in fences, not on the Windows desktop.
 
+pub(crate) mod hide;
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -157,58 +159,6 @@ fn safe_id(name: &str) -> String {
             }
         })
         .collect()
-}
-
-/// Hide all desktop icons (including Recycle Bin / This PC shell icons).
-fn set_desktop_icons_hidden(hidden: bool) -> Result<(), String> {
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        let value = if hidden { "1" } else { "0" };
-        let status = Command::new("reg")
-            .args([
-                "add",
-                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
-                "/v",
-                "HideIcons",
-                "/t",
-                "REG_DWORD",
-                "/d",
-                value,
-                "/f",
-            ])
-            .creation_flags(CREATE_NO_WINDOW)
-            .status()
-            .map_err(|e| e.to_string())?;
-        if !status.success() {
-            return Err("reg HideIcons failed".into());
-        }
-        // refresh desktop icons
-        let _ = Command::new("ie4uinit.exe")
-            .arg("-show")
-            .creation_flags(CREATE_NO_WINDOW)
-            .status();
-        let _ = Command::new("Rundll32.exe")
-            .args(["user32.dll,UpdatePerUserSystemParameters"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .status();
-        // Force explorer to re-read Advanced\HideIcons
-        let _ = Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                "(New-Object -ComObject Shell.Application).ToggleDesktop(); Start-Sleep -Milliseconds 200; (New-Object -ComObject Shell.Application).ToggleDesktop()",
-            ])
-            .creation_flags(CREATE_NO_WINDOW)
-            .status();
-        Ok(())
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = hidden;
-        Err("Windows only".into())
-    }
 }
 
 fn extract_icon_png(src: &Path, dest: &Path) -> bool {
@@ -481,7 +431,7 @@ pub fn fence_takeover() -> Result<Vec<FenceDto>, String> {
             meta.hide_icons_applied = true;
             save_meta(&meta)?;
             std::thread::spawn(|| {
-                if let Err(e) = set_desktop_icons_hidden(true) {
+                if let Err(e) = hide::set_desktop_icons_hidden(true) {
                     eprintln!("hide desktop icons bg: {e}");
                 }
             });
@@ -566,7 +516,7 @@ pub fn fence_takeover() -> Result<Vec<FenceDto>, String> {
         }
     }
 
-    set_desktop_icons_hidden(true)?;
+    hide::set_desktop_icons_hidden(true)?;
     meta.hide_icons_applied = true;
     save_meta(&meta)?;
     if !errors.is_empty() {
@@ -918,7 +868,7 @@ pub fn fence_restore() -> Result<(), String> {
 
     meta.items = remaining;
     if meta.items.is_empty() && meta.hide_icons_applied {
-        set_desktop_icons_hidden(false)?;
+        hide::set_desktop_icons_hidden(false)?;
         meta.hide_icons_applied = false;
     }
     save_meta(&meta)?;
