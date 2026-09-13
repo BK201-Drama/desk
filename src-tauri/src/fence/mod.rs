@@ -763,7 +763,14 @@ pub fn fence_restore() -> Result<serde_json::Value, String> {
     // 没按过逃生口的用户，desk 运行期间照旧替他把桌面图标收着（HideIcons 绑进程寿命，
     // 见 lib.rs 的退出钩子），看板靠新读源继续显示同一批图标，注册表不需要任何变化。
     if hide::user_wants_visible() {
-        let _ = hide::disable();
+        // **硬失败，不吞。**这一步失败的含义是：文件确实已经搬回真桌面了，但
+        // `HideIcons` 还是 1 —— 用户按的是「把图标还给我」，而他看着一个空桌面。
+        // 原来这里的 `let _ =` 会把这次失败扔掉、照样返回 Ok，前端于是弹
+        // 「已还原」，而桌面上一个图标都没有：报告成功、事实失败。
+        //
+        // 抛出去前端不用改：`FencePanel.tsx:196` 与 `:443` 两处调用点本来就是
+        // `try { await invoke("fence_restore") } catch { dialog.alert("还原失败") }`。
+        hide::disable()?;
     }
     Ok(serde_json::json!({ "moved": r.moved, "skipped": r.skipped }))
 }
