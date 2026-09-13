@@ -29,6 +29,8 @@ tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-single-instance = "2"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 sysinfo = "0.33"
+# 桌面目录监听（Task 13）。计划写的是 "6"，实测可得 8.2.0 —— 不为对齐计划锁旧版。
+notify = "8"
 
 [dev-dependencies]
 # 只给 index::tests 用：在临时目录里造一个假桌面，避免测试碰真桌面。

@@ -79,14 +79,54 @@
   let config = structuredClone(defaultConfig);
   let callbackId = 1;
 
+  // 给 fence-watch.spec.ts 用：拿一份**克隆**去改，改不到基线那份。
+  // 直接暴露数组引用的话，测试里一 push 就同时污染了 style-audit 的输入。
+  window.__FENCE_FIXTURE__ = function () {
+    return structuredClone(FENCE_FIXTURE);
+  };
+
+  // ── 事件送达 ────────────────────────────────────────────────────────────
+  // 真机上「后端 emit → 前端 listen 回调」是 Rust 注入的脚本干的
+  // （`window.__TAURI_INTERNALS__.runCallback(handlerId, eventData)`，
+  //  tauri-2.11.5/src/event/mod.rs 的 event_initialization_script）。mock 里
+  // 没有那个脚本，所以这几行是它的替代品 —— Task 13 起 `fence:changed` 要走
+  // 这条路进前端，之前 `plugin:event|listen` 直接 `return 1` 吞掉回调，
+  // 事件根本送不到。
+  //
+  // 改这里**不会**影响样式基线：只加回调登记，DOM 形状一个字节没动。
+  const callbacks = new Map();
+  const eventListeners = []; // { eventId, event, handlerId }
+  let eventIdSeq = 0;
+
   window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
     unregisterListener: function () {},
+  };
+
+  /**
+   * 模拟一次后端 emit。返回**实际送达的回调数** —— 测试断言它 ≥ 1，
+   * 这样「桥断了」会当场红，而不是安静地什么都没发生。
+   */
+  window.__deskEmit = function (event, payload) {
+    let n = 0;
+    for (const l of eventListeners.slice()) {
+      if (l.event !== event) continue;
+      const cb = callbacks.get(l.handlerId);
+      if (!cb) continue;
+      cb({ event: event, id: l.eventId, payload: payload });
+      n += 1;
+    }
+    return n;
   };
 
   window.__TAURI_INTERNALS__ = {
     transformCallback: function (cb) {
       callbackId += 1;
+      if (typeof cb === "function") callbacks.set(callbackId, cb);
       return callbackId;
+    },
+    runCallback: function (id, payload) {
+      const cb = callbacks.get(id);
+      if (cb) cb(payload);
     },
     convertFileSrc: function (path) {
       return path;
@@ -188,10 +228,22 @@
           return config;
         case "set_keyboard_input":
           return null;
-        case "plugin:event|listen":
-          return 1;
-        case "plugin:event|unlisten":
+        case "plugin:event|listen": {
+          eventIdSeq += 1;
+          eventListeners.push({
+            eventId: eventIdSeq,
+            event: args.event,
+            handlerId: args.handler,
+          });
+          return eventIdSeq;
+        }
+        case "plugin:event|unlisten": {
+          const i = eventListeners.findIndex(function (l) {
+            return l.eventId === args.eventId;
+          });
+          if (i >= 0) eventListeners.splice(i, 1);
           return null;
+        }
         case "remind_list":
           return [];
         case "github_snapshot":

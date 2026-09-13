@@ -69,6 +69,14 @@ export function bootstrapDesk(_bridge: DeskHostBridge): void {
     toggleEditing();
   });
 
+  // Task 13：真桌面在 desk 外面被改动 → 后端重扫完，把新看板推过来。
+  // 后端事件只到得了 `@tauri-apps/api`，到不了进程内总线 —— 在这里**桥一次**，
+  // 插件继续只用 `ctx.on`（插件不 import @tauri-apps/api，这是它们的分界线）。
+  // 将来的 ops 回执、右键菜单也走这一条，见 spec §4.2「单一更新路径」。
+  void listen<unknown>("fence:changed", (e) => {
+    emit("fence:changed", e.payload, "host");
+  });
+
   // GitHub cache 已在 main.tsx 预读；这里只挂插件
   const t0 = performance.now();
   void loadAll(bundledPlugins)

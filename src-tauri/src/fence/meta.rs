@@ -79,10 +79,16 @@ pub(crate) fn save(m: &FenceMeta) -> Result<(), String> {
 
 /// 清掉磁盘上已不存在的条目。返回清理数量。
 ///
-/// **目前没有调用点**（Task 12 删掉 vault 读源之后，读路径上没有任何人需要它）。
-/// 保留是因为它有**点名的**消费者：Task 13 的验收写着「真桌面删除 → 条目从看板消失，
-/// `fence.json` 对应条目被 `prune`」。所以这里是 `allow` 而不是删除 —— 删了会在
-/// 下一个任务里原样写回来，只是多一次搬运。
+/// **目前没有调用点。** 计划原本把它挂在 Task 13 的 watcher 上（「真桌面删除 →
+/// 条目被 `prune`」），**Task 13 决定不这么接**：它的入参 `present` 只能来自
+/// `scan_desktop()`，而那条路在 `read_dir` 失败时是**静默返回空列表**的
+/// （`index::scan_root`）—— 桌面目录一时读不到（权限、被别的进程锁、网络盘重连）
+/// 就会把整份 `fence.json` 清空。INV-4 说「只丢偏好不丢文件」，
+/// 而这是**连偏好一起丢**，属于不该装上去的那种自动化。
+///
+/// 它的下一个消费者是 Task 14 的 `fence_delete`：那里「哪个 key 没了」是调用方
+/// 自己刚做的事（`fs::rename` / 删除的正是它），精确、不会误伤，
+/// 且删除是**用户明确要求**的 —— 偏好跟着走才符合直觉。
 #[allow(dead_code)]
 pub(crate) fn prune(m: &mut FenceMeta, present: &HashSet<String>) -> usize {
     let before = m.entries.len();

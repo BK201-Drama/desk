@@ -296,6 +296,13 @@ pub fn run() {
                 }
             });
 
+            // 真桌面的变化监听（Task 13）：在 desk 外面新建 / 删除 / 改名之后，
+            // 看板要自己跟上，而不是干等重启 —— 没有它，看板就是冷启动那一刻的快照。
+            // 失败只记一笔：监听坏掉的后果是「退化回快照」，不该连累整个应用起不来。
+            if let Err(e) = fence::watch::start(app.handle().clone()) {
+                eprintln!("fence::watch::start: {e}");
+            }
+
             let edit_sc =
                 Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyD);
             if let Err(e) = app.global_shortcut().register(edit_sc) {

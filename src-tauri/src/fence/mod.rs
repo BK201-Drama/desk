@@ -5,6 +5,8 @@
 //! 见 `migrate.rs`），2026-09-13 已经跑完，再没有下一次。
 //!
 //! 读路径只有一条：`collect_fences()` → `scan_desktop()` → `index::build_fences()`。
+//! 桌面在 desk 外面被改（新建 / 删除 / 改名）时由 `watch.rs` 盯着，重扫一遍并把
+//! 新看板推给前端 —— 否则看板只是冷启动那一刻的快照。
 //! 过渡期的「桌面 + vault 合并读」随 Task 12 删除；`fence.json` 里的东西全是偏好，
 //! 删掉它只丢分类不丢文件（INV-4）。
 
@@ -12,6 +14,7 @@ pub(crate) mod hide;
 pub(crate) mod index;
 pub(crate) mod meta;
 pub(crate) mod migrate;
+pub(crate) mod watch;
 
 use serde::{Deserialize, Serialize};
 use std::fs;

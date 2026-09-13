@@ -70,6 +70,22 @@ export function useFences(ctx: HostContext) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 真桌面变了（在资源管理器里新建 / 删除 / 改名）→ 后端已经重扫完，把新看板推来。
+  // 这里**直接采用**，不再 invoke 一次：后端那一拍就是最新的，
+  // 再问一遍只会多一趟 IPC，还可能拿回比它更旧的一帧。
+  // 桥在 `bootstrap.ts`（后端事件 → 进程内总线），插件这一侧只看 `ctx.on`。
+  useEffect(() => {
+    return ctx.on("fence:changed", (ev) => {
+      const next = normalizeFences(ev.detail);
+      setFences(next);
+      setLoadError(null);
+      ctx.emit("fence:loaded", {
+        count: next.reduce((n, f) => n + f.items.length, 0),
+        phase: "watch",
+      });
+    });
+  }, [ctx]);
+
   return {
     fences,
     setFences,
