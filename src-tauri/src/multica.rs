@@ -4,10 +4,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
-
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MulticaIssueDto {
@@ -84,9 +80,8 @@ fn daemon_online() -> bool {
     };
     #[cfg(windows)]
     {
-        let output = Command::new("tasklist")
+        let output = crate::proc::command("tasklist")
             .args(["/FI", &format!("PID eq {pid}"), "/NH"])
-            .creation_flags(0x08000000)
             .output();
         match output {
             Ok(o) if o.status.success() => {

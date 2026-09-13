@@ -24,7 +24,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FenceItemDto {
@@ -153,8 +152,6 @@ fn with_bom(script: &str) -> Vec<u8> {
 fn extract_icon_png(src: &Path, dest: &Path) -> bool {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
         // ⚠️ 下面 `script` 里的内容**必须保持纯 ASCII**，包括注释和 C# 源码。
         //
         // 脚本由 `fs::write` 落盘，是 UTF-8 **无 BOM**；Windows PowerShell 5.1
@@ -323,7 +320,7 @@ if (-not $ok) {{ exit 1 }}
         if fs::write(&tmp, with_bom(&script)).is_err() {
             return false;
         }
-        let ok = Command::new("powershell")
+        let ok = crate::proc::command("powershell")
             .args([
                 "-NoProfile",
                 "-ExecutionPolicy",
@@ -331,7 +328,6 @@ if (-not $ok) {{ exit 1 }}
                 "-File",
                 &tmp.to_string_lossy(),
             ])
-            .creation_flags(CREATE_NO_WINDOW)
             .status()
             .map(|s| s.success())
             .unwrap_or(false);
@@ -349,8 +345,6 @@ if (-not $ok) {{ exit 1 }}
 fn extract_dll_icon(dll: &str, index: i32, dest: &Path) -> bool {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
         if dest.exists() {
             return true;
         }
@@ -403,7 +397,7 @@ if (-not [DeskPIcon]::Save('{dll_s}', {index}, 64, '{dest_s}')) {{ exit 1 }}
         if fs::write(&tmp, with_bom(&script)).is_err() {
             return false;
         }
-        let ok = Command::new("powershell")
+        let ok = crate::proc::command("powershell")
             .args([
                 "-NoProfile",
                 "-ExecutionPolicy",
@@ -411,7 +405,6 @@ if (-not [DeskPIcon]::Save('{dll_s}', {index}, 64, '{dest_s}')) {{ exit 1 }}
                 "-File",
                 &tmp.to_string_lossy(),
             ])
-            .creation_flags(CREATE_NO_WINDOW)
             .status()
             .map(|s| s.success())
             .unwrap_or(false);
@@ -713,11 +706,8 @@ pub fn fence_launch(path: String) -> Result<(), String> {
         use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
         if path.starts_with("shell:") {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-            Command::new("explorer")
+            crate::proc::command("explorer")
                 .arg(&path)
-                .creation_flags(CREATE_NO_WINDOW)
                 .spawn()
                 .map_err(|e| e.to_string())?;
             return Ok(());

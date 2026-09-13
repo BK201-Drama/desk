@@ -2,7 +2,6 @@
 //! 这是新版围栏唯一还碰系统的地方 —— 所有写入都收敛在本文件内。
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 const REG_PATH: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
 
@@ -30,10 +29,8 @@ fn parse_hide_icons(stdout: &str) -> Option<bool> {
 pub(crate) fn set_desktop_icons_hidden(hidden: bool) -> Result<(), String> {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
         let value = if hidden { "1" } else { "0" };
-        let status = Command::new("reg")
+        let status = crate::proc::command("reg")
             .args([
                 "add",
                 r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
@@ -45,29 +42,25 @@ pub(crate) fn set_desktop_icons_hidden(hidden: bool) -> Result<(), String> {
                 value,
                 "/f",
             ])
-            .creation_flags(CREATE_NO_WINDOW)
             .status()
             .map_err(|e| e.to_string())?;
         if !status.success() {
             return Err("reg HideIcons failed".into());
         }
         // refresh desktop icons
-        let _ = Command::new("ie4uinit.exe")
+        let _ = crate::proc::command("ie4uinit.exe")
             .arg("-show")
-            .creation_flags(CREATE_NO_WINDOW)
             .status();
-        let _ = Command::new("Rundll32.exe")
+        let _ = crate::proc::command("Rundll32.exe")
             .args(["user32.dll,UpdatePerUserSystemParameters"])
-            .creation_flags(CREATE_NO_WINDOW)
             .status();
         // Force explorer to re-read Advanced\HideIcons
-        let _ = Command::new("powershell")
+        let _ = crate::proc::command("powershell")
             .args([
                 "-NoProfile",
                 "-Command",
                 "(New-Object -ComObject Shell.Application).ToggleDesktop(); Start-Sleep -Milliseconds 200; (New-Object -ComObject Shell.Application).ToggleDesktop()",
             ])
-            .creation_flags(CREATE_NO_WINDOW)
             .status();
         Ok(())
     }
@@ -80,22 +73,19 @@ pub(crate) fn set_desktop_icons_hidden(hidden: bool) -> Result<(), String> {
 
 /// 当前 HideIcons 的值。`None` 表示该值在注册表里不存在（等价于未隐藏）。
 ///
-/// ⚠️ `CREATE_NO_WINDOW` 不是可有可无的美化。desk 是 **GUI 子系统**
-/// （`main.rs` 的 `windows_subsystem = "windows"`，实测 PE Subsystem=2），
-/// **自己没有控制台可继承**，而 `reg.exe` 是**控制台程序** —— 不带这个 flag，
-/// Windows 会给它**新分配一个控制台窗口**，界面上就是一个「黑窗一闪而过」。
+/// ⚠️ desk 是 **GUI 子系统**（`main.rs` 的 `windows_subsystem = "windows"`，
+/// 实测 PE Subsystem=2），**自己没有控制台可继承**，而 `reg.exe` 是**控制台程序** ——
+/// 父进程不带 `CREATE_NO_WINDOW` 时，Windows 会给它**新分配一个控制台窗口**，
+/// 界面上就是一个「黑窗一闪而过」。
 ///
 /// 2026-09-13 的真机缺陷就是漏在这里：这条命令经 `fence_icons_visible`
 /// （`mod.rs`）挂在围栏面板的 setup effect 里，于是**每次点围栏标题收起/展开都闪一次**。
-/// 护栏见 `src/lib/spawnFlags.test.ts`，它扫的就是这一段。
+/// 这个 flag 现在由 `crate::proc` 统一设置 —— 本文件不再自己带，也就不可能再漏。
 pub(crate) fn is_enabled() -> Result<Option<bool>, String> {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        let out = Command::new("reg")
+        let out = crate::proc::command("reg")
             .args(["query", REG_PATH, "/v", "HideIcons"])
-            .creation_flags(CREATE_NO_WINDOW)
             .output()
             .map_err(|e| format!("reg query 启动失败：{e}"))?;
         if !out.status.success() {

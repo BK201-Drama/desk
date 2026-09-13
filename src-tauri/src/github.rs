@@ -4,10 +4,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
-
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GithubPinDto {
@@ -115,13 +111,7 @@ fn resolve_token() -> Result<String, String> {
             }
         }
     }
-    #[cfg(windows)]
-    let output = Command::new("gh")
-        .args(["auth", "token"])
-        .creation_flags(0x08000000)
-        .output();
-    #[cfg(not(windows))]
-    let output = Command::new("gh").args(["auth", "token"]).output();
+    let output = crate::proc::command("gh").args(["auth", "token"]).output();
 
     match output {
         Ok(o) if o.status.success() => {

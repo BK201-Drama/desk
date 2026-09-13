@@ -133,10 +133,7 @@ fn unique_name(dir: &Path, name: &str) -> PathBuf {
 /// 而这里必然要带用户的中文路径。`-Command` 的命令行走 `CreateProcessW`，是 UTF-16，
 /// 中文安全。代价是得自己躲引号 —— 单引号字符串里的 `'` 写成 `''` 即可。
 fn run_ps(script: &str) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-    let out = std::process::Command::new("powershell")
+    let out = crate::proc::command("powershell")
         .args([
             "-NoProfile",
             "-NonInteractive",
@@ -145,7 +142,6 @@ fn run_ps(script: &str) -> Result<(), String> {
             "-Command",
             script,
         ])
-        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|e| format!("起 PowerShell 失败：{e}"))?;
 
@@ -571,15 +567,11 @@ pub fn fence_properties(path: String) -> Result<(), String> {
 /// 打开、根本不弹选择框）。`OpenAs_RunDLL` 才是这个对话框的实际入口。
 #[tauri::command]
 pub fn fence_open_with(path: String) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-
     let p = PathBuf::from(&path);
     gate(&p)?;
 
-    std::process::Command::new("rundll32.exe")
+    crate::proc::command("rundll32.exe")
         .args(["shell32.dll,OpenAs_RunDLL", &path])
-        .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("打开「打开方式」失败：{e}"))
@@ -588,15 +580,11 @@ pub fn fence_open_with(path: String) -> Result<(), String> {
 /// 在资源管理器中定位（选中该项）。
 #[tauri::command]
 pub fn fence_reveal(path: String) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-
     let p = PathBuf::from(&path);
     gate(&p)?;
 
-    std::process::Command::new("explorer")
+    crate::proc::command("explorer")
         .arg(format!("/select,{path}"))
-        .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("定位失败：{e}"))

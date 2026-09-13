@@ -3,6 +3,7 @@ mod fence;
 mod github;
 mod multica;
 mod plugins;
+mod proc;
 mod qqmusic;
 mod recent;
 mod remind;

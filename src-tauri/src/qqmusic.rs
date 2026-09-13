@@ -1,6 +1,5 @@
 use serde::Serialize;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -729,12 +728,8 @@ fn launch_quiet(foreground: bool) -> Result<&'static str, String> {
         }
         return Ok("started");
     }
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-    const DETACHED: u32 = 0x00000008;
-    Command::new("cmd")
+    crate::proc::detached("cmd")
         .args(["/C", "start", "", "qqmusic://"])
-        .creation_flags(CREATE_NO_WINDOW | DETACHED)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
