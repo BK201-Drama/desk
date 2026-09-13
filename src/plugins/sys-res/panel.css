@@ -1,5 +1,5 @@
 .sys-res {
-  padding: 4px 6px 5px;
+  padding: 2px 4px 2px;
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.38);
   border: 1px solid rgba(26, 35, 50, 0.1);
@@ -7,41 +7,41 @@
 
 .sys-res-row {
   display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 6px;
 }
 
 .sys-res-cell {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
   min-width: 0;
 }
 
 .sys-res-ring {
   position: relative;
-  width: 78px;
-  height: 78px;
+  width: 64px;
+  height: 64px;
 }
 
 .sys-res-ring svg {
-  width: 78px;
-  height: 78px;
+  width: 64px;
+  height: 64px;
   transform: rotate(-90deg);
 }
 
 .sys-res-seg {
   fill: none;
-  stroke-width: 9;
+  stroke-width: 7;
   stroke-linecap: butt;
   cursor: pointer;
   transition: opacity 0.15s ease, stroke-width 0.15s ease;
 }
 
 .sys-res-seg.is-hot {
-  stroke-width: 11;
+  stroke-width: 9;
   opacity: 1;
 }
 
@@ -49,31 +49,37 @@
   opacity: 0.35;
 }
 
+/* 环心只占空心内径，避免两行字叠到弧上 */
 .sys-res-center {
   position: absolute;
-  inset: 0;
+  inset: 11px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  overflow: hidden;
   font-family: "Cascadia Code", Consolas, ui-monospace, monospace;
   text-align: center;
-  line-height: 1.15;
-  padding: 0 4px;
+  line-height: 1.05;
+  padding: 0 1px;
 }
 
 .sys-res-pct {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sys-res-sub {
-  font-size: 8.5px;
+  font-size: 7.5px;
   color: rgba(26, 35, 50, 0.45);
-  max-width: 54px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -84,10 +90,54 @@
   font-weight: 600;
 }
 
-.sys-res-cap {
+.sys-res-net {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 72px;
+  padding: 2px 0 0;
+}
+
+.sys-res-spark {
+  width: 72px;
+  height: 28px;
+  display: block;
+}
+
+.sys-res-spark-dl {
+  stroke: #2d6a4f;
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.sys-res-spark-ul {
+  stroke: #52b788;
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.9;
+}
+
+.sys-res-net-rates {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   font-family: "Cascadia Code", Consolas, ui-monospace, monospace;
-  font-size: 9px;
-  color: rgba(26, 35, 50, 0.4);
+  font-size: 8px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.sys-res-net-rates .is-dl {
+  color: #2d6a4f;
+  font-weight: 600;
+}
+
+.sys-res-net-rates .is-ul {
+  color: rgba(45, 106, 79, 0.7);
 }
 
 .sys-res-empty,

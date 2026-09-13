@@ -11,6 +11,8 @@ export type SysResSnapshot = {
   memUsedBytes: number;
   memTotalBytes: number;
   cpuPct: number;
+  netDownBps: number;
+  netUpBps: number;
   apps: SysResApp[];
   fetchedAt: number;
 };
@@ -49,6 +51,8 @@ export function normalizeSnapshot(raw: unknown): SysResSnapshot {
       memUsedBytes: 0,
       memTotalBytes: 0,
       cpuPct: 0,
+      netDownBps: 0,
+      netUpBps: 0,
       apps: [],
       fetchedAt: 0,
     };
@@ -63,6 +67,8 @@ export function normalizeSnapshot(raw: unknown): SysResSnapshot {
     memUsedBytes: asNumber(o.mem_used_bytes ?? o.memUsedBytes),
     memTotalBytes: asNumber(o.mem_total_bytes ?? o.memTotalBytes),
     cpuPct: asNumber(o.cpu_pct ?? o.cpuPct),
+    netDownBps: asNumber(o.net_down_bps ?? o.netDownBps),
+    netUpBps: asNumber(o.net_up_bps ?? o.netUpBps),
     apps,
     fetchedAt: asNumber(o.fetched_at ?? o.fetchedAt),
   };
@@ -98,6 +104,39 @@ export function formatCpuPct(n: number): string {
   return `${Math.round(Math.max(0, n))}%`;
 }
 
+/** 网络速率：B/s → 紧凑字符串（如 1.2M、80K、120） */
+export function formatRate(bps: number): string {
+  if (!Number.isFinite(bps) || bps < 0) return "0";
+  if (bps < 1000) return `${Math.round(bps)}`;
+  if (bps < 1_000_000) {
+    const k = bps / 1000;
+    return k >= 10 ? `${Math.round(k)}K` : `${k.toFixed(1)}K`;
+  }
+  const m = bps / 1_000_000;
+  return m >= 10 ? `${Math.round(m)}M` : `${m.toFixed(1)}M`;
+}
+
+/** 折线 path：series 归一化到 viewBox h，y=0 在底部 */
+export function sparklinePath(
+  series: number[],
+  width: number,
+  height: number,
+  padY = 2
+): string {
+  if (series.length === 0) return "";
+  const max = Math.max(...series, 1);
+  const usable = Math.max(1, height - padY * 2);
+  const n = series.length;
+  const step = n <= 1 ? 0 : width / (n - 1);
+  return series
+    .map((v, i) => {
+      const x = n <= 1 ? width / 2 : i * step;
+      const y = height - padY - (Math.max(0, v) / max) * usable;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
 /** SVG circle circumference helper: r=16 → C≈100.53 */
 export function ringOffset(pct: number, circumference: number): number {
   const p = Math.min(100, Math.max(0, pct)) / 100;
@@ -114,12 +153,25 @@ function memSharePct(app: SysResApp, totalBytes: number): number {
   return (app.memBytes / totalBytes) * 100;
 }
 
-function cpuSharePcts(apps: SysResApp[], top: SysResApp[]): number[] {
-  const raw = top.map((a) => Math.max(0, a.cpuPct));
-  const sumAll = apps.reduce((s, a) => s + Math.max(0, a.cpuPct), 0);
-  if (sumAll <= 100) return raw;
-  const scale = 100 / sumAll;
-  return raw.map((p) => p * scale);
+/**
+ * CPU 环：绿弧总长 = 整机占用 global；段内按进程权重瓜分。
+ * 灰段 = 空闲 (100 - global)。避免「进程单核%累加」把环涂满。
+ */
+function cpuRingShares(
+  top: SysResApp[],
+  globalCpu: number
+): { appPcts: number[]; restPct: number } {
+  const global = Math.min(100, Math.max(0, globalCpu));
+  const restPct = Math.max(0, 100 - global);
+  const weights = top.map((a) => Math.max(0, a.cpuPct));
+  const wSum = weights.reduce((s, w) => s + w, 0);
+  if (global <= 0 || wSum <= 0) {
+    return { appPcts: top.map(() => 0), restPct: 100 };
+  }
+  return {
+    appPcts: weights.map((w) => (w / wSum) * global),
+    restPct,
+  };
 }
 
 /** Top `limit` apps by mem or cpu, plus a rest segment filling to 100. */
@@ -151,9 +203,9 @@ export function buildRingSegments(
     return segments;
   }
 
-  const pcts = cpuSharePcts(snap.apps, top);
+  const { appPcts, restPct } = cpuRingShares(top, snap.cpuPct);
   top.forEach((app, i) => {
-    const pct = pcts[i] ?? 0;
+    const pct = appPcts[i] ?? 0;
     segments.push({
       name: app.name,
       label: formatCpuPct(pct),
@@ -161,8 +213,6 @@ export function buildRingSegments(
       kind: "app",
     });
   });
-  const used = segments.reduce((s, seg) => s + seg.pct, 0);
-  const restPct = Math.max(0, 100 - used);
   segments.push({
     name: REST_NAME,
     label: formatCpuPct(restPct),

@@ -3,9 +3,11 @@ import {
   buildRingSegments,
   formatBytes,
   formatCpuPct,
+  formatRate,
   memPct,
   normalizeSnapshot,
   ringOffset,
+  sparklinePath,
   topApps,
 } from "./model";
 import type { SysResSnapshot } from "./model";
@@ -55,6 +57,21 @@ describe("format", () => {
     expect(formatBytes(1_500_000_000)).toMatch(/GB/);
     expect(formatCpuPct(12.34)).toBe("12%");
   });
+
+  it("formatRate", () => {
+    expect(formatRate(120)).toBe("120");
+    expect(formatRate(1500)).toBe("1.5K");
+    expect(formatRate(12_000)).toBe("12K");
+    expect(formatRate(1_500_000)).toBe("1.5M");
+  });
+});
+
+describe("sparklinePath", () => {
+  it("builds polyline", () => {
+    const p = sparklinePath([0, 50, 100], 100, 20, 0);
+    expect(p.startsWith("M")).toBe(true);
+    expect((p.match(/L/g) ?? []).length).toBe(2);
+  });
 });
 
 describe("memPct", () => {
@@ -77,6 +94,8 @@ describe("buildRingSegments", () => {
     memUsedBytes: 8_000_000_000,
     memTotalBytes: 16_000_000_000,
     cpuPct: 33,
+    netDownBps: 0,
+    netUpBps: 0,
     fetchedAt: 1,
     apps: [
       { name: "chrome", memBytes: 3_200_000_000, cpuPct: 12, processCount: 3 },
@@ -101,21 +120,25 @@ describe("buildRingSegments", () => {
     expect(sum).toBeCloseTo(100, 5);
   });
 
-  it("cpu mode: top 3 by cpu + rest to 100", () => {
+  it("cpu mode: green arc sums to global; gray is idle", () => {
     const segs = buildRingSegments(snap, "cpu", 3);
     expect(segs).toHaveLength(4);
     expect(segs[0].name).toBe("chrome");
-    expect(segs[0].pct).toBe(12);
-    expect(segs[1].pct).toBe(9);
-    expect(segs[2].pct).toBe(2);
+    const appSum = segs
+      .filter((s) => s.kind === "app")
+      .reduce((a, s) => a + s.pct, 0);
+    expect(appSum).toBeCloseTo(snap.cpuPct, 5);
     expect(segs[3].kind).toBe("rest");
-    expect(segs[3].pct).toBe(77);
-    expect(segs[0].label).toBe("12%");
+    expect(segs[3].pct).toBeCloseTo(100 - snap.cpuPct, 5);
+    // chrome 12 / (12+9+2) * 33 ≈ 17.22
+    expect(segs[0].pct).toBeCloseTo((12 / 23) * 33, 5);
+    expect(segs[0].label).toBe(formatCpuPct(segs[0].pct));
   });
 
-  it("cpu mode: scales when all app cpu sums over 100", () => {
+  it("cpu mode: high process weights still only paint global%", () => {
     const hot: SysResSnapshot = {
       ...snap,
+      cpuPct: 20,
       apps: [
         { name: "a", memBytes: 1, cpuPct: 50, processCount: 1 },
         { name: "b", memBytes: 1, cpuPct: 40, processCount: 1 },
@@ -127,14 +150,10 @@ describe("buildRingSegments", () => {
     const appSum = segs
       .filter((s) => s.kind === "app")
       .reduce((a, s) => a + s.pct, 0);
-    expect(appSum).toBeLessThanOrEqual(100);
-    expect(segs.find((s) => s.kind === "rest")!.pct).toBeGreaterThanOrEqual(0);
+    expect(appSum).toBeCloseTo(20, 5);
+    expect(segs.find((s) => s.kind === "rest")!.pct).toBeCloseTo(80, 5);
     const total = segs.reduce((a, s) => a + s.pct, 0);
     expect(total).toBeCloseTo(100, 5);
-    for (const seg of segs.filter((s) => s.kind === "app")) {
-      expect(seg.label).toBe(formatCpuPct(seg.pct));
-    }
-    expect(segs[0].label).not.toBe("50%");
   });
 
   it("defaults limit to 3", () => {
