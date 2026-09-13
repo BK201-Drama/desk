@@ -127,13 +127,17 @@ function makeStorage(pluginId: string) {
   return {
     async get<T = unknown>(key: string): Promise<T | null> {
       return tauriInvoke<T | null>("plugin_storage_get", {
-        plugin_id: pluginId,
+        // Tauri 的宏**无条件**把 Rust 的 `plugin_id` 映射成 camelCase 的 `pluginId`
+        // （`tauri-macros` 的 `WrapperAttributes` 默认 `ArgumentCase::Camel`，且没有
+        // snake_case 回退）。这里写 `plugin_id` 会得到 `missing required key pluginId` ——
+        // 而因为全仓还没有插件用过 `ctx.storage`，它一直是潜伏的、测试全绿的。
+        pluginId,
         key,
       });
     },
     async set(key: string, value: unknown): Promise<void> {
       await tauriInvoke("plugin_storage_set", {
-        plugin_id: pluginId,
+        pluginId,
         key,
         value,
       });
