@@ -152,15 +152,18 @@ pub(crate) fn recover_orphan_hidden_state() -> Result<bool, String> {
         return Ok(false);
     }
     // 用户明确按过「显示桌面图标」→ 这个 1 一定是残留，不用再看别的证据。
-    // 必须排在接管记录检查**前面**：`hide_icons_applied` 是过期的 true 时，
+    // 必须排在接管记录检查**前面**：`hide.owned` 是过期的 true 时，
     // 只看 meta 会把「用户要求显示」误判成「有主」，逃生口就失效了。
     if user_wants_visible() {
         disable()?;
         return Ok(true);
     }
-    // 有可解析的接管记录 → 这个 1 是有主人的，不动
-    if let Ok(meta) = crate::fence::load_meta() {
-        if !meta.items.is_empty() || meta.hide_icons_applied {
+    // fence.json 里有「这个 1 是我收的」这条认领记录 → 有主人，不动。
+    // v1 查的是 vault.json 的 items/hide_icons_applied；Task 12 之后接管不复存在，
+    // 认领记录只剩 `hide.owned` 一项（`hide_desktop_icons_on_start` / 逃生开关写它）。
+    // 读不到 fence.json（不存在 / 坏了）按「没有认领」处理，和 v1 的 `if let Ok` 一致。
+    if let Ok(m) = crate::fence::meta::load() {
+        if m.hide.owned {
             return Ok(false);
         }
     }

@@ -10,11 +10,63 @@
 //! Task 10 起生产入口 `run()` 已接到 `fence_restore` 上，本模块的
 //! `#![allow(dead_code)]` 也一并删掉了（Task 9 记的那笔债，这里还清）。
 
-use super::{vault_dir, VaultEntry, VaultMeta};
 use crate::fence::meta;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+
+// ── 旧架构的账本（vault.json）──────────────────────────────────────────────
+// Task 12 把这些类型从 `mod.rs` 搬到这里：**它们是只剩这一个使用者的历史格式** ——
+// 生产路径上唯一的用途就是「读旧账本、把文件搬回去、归档」。
+// 放在 `mod.rs` 会让人以为围栏还在用它们。
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(super) struct VaultMeta {
+    /// original desktop path -> vault relative name
+    pub items: Vec<VaultEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct VaultEntry {
+    pub id: String,
+    pub label: String,
+    pub vault_name: String,
+    pub fence: String,
+    pub original_name: String,
+    #[serde(default = "default_origin")]
+    pub origin: String,
+    #[serde(default)]
+    pub is_dir: bool,
+}
+
+fn default_origin() -> String {
+    "user".into()
+}
+
+pub(super) fn vault_dir() -> Result<PathBuf, String> {
+    let dir = super::app_data_dir()?.join("vault");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+pub(super) fn meta_path() -> Result<PathBuf, String> {
+    Ok(super::app_data_dir()?.join("vault.json"))
+}
+
+pub(super) fn load_meta() -> Result<VaultMeta, String> {
+    let p = meta_path()?;
+    if !p.exists() {
+        return Ok(VaultMeta::default());
+    }
+    let s = std::fs::read_to_string(&p).map_err(|e| e.to_string())?;
+    serde_json::from_str(&s).map_err(|e| e.to_string())
+}
+
+fn save_meta(meta: &VaultMeta) -> Result<(), String> {
+    let p = meta_path()?;
+    let s = serde_json::to_string_pretty(meta).map_err(|e| e.to_string())?;
+    std::fs::write(p, s).map_err(|e| e.to_string())
+}
 
 #[derive(Debug, Default, Serialize)]
 pub(crate) struct MigrateReport {
@@ -28,7 +80,7 @@ pub(crate) struct MigrateReport {
 /// 生产入口。迁移完成后再调用是空操作（vault.json 已被改名）。
 pub(crate) fn run() -> Result<MigrateReport, String> {
     let vault = vault_dir()?;
-    let old = super::load_meta()?;
+    let old = load_meta()?;
     let roots = super::desktop_roots()?;
 
     // vault.json 不存在 → 从没搬过图标，或者早就迁完了。直接返回，别碰任何东西。
@@ -61,13 +113,13 @@ pub(crate) fn run() -> Result<MigrateReport, String> {
 
     // 全部成功才把旧 meta 归档；有失败项则保留原样，下次启动自动重试
     if report.failed.is_empty() {
-        if let Ok(p) = super::meta_path() {
+        if let Ok(p) = meta_path() {
             let _ = std::fs::rename(&p, p.with_extension("json.migrated"));
         }
     } else {
         let mut remaining = old;
         remaining.items.retain(|e| report.failed.iter().any(|f| f.starts_with(&e.original_name)));
-        super::save_meta(&remaining)?;
+        save_meta(&remaining)?;
     }
 
     Ok(report)
@@ -167,7 +219,7 @@ fn file_name_of(dest: &Path, fallback: &VaultEntry) -> String {
 
 /// vault.json → vault.json.bak-{时间戳}。失败不算致命，但要告诉调用方。
 fn backup() -> Result<(), String> {
-    let p = super::meta_path()?;
+    let p = meta_path()?;
     if !p.exists() {
         return Ok(());
     }
@@ -220,7 +272,6 @@ pub(crate) fn unique_dest(desktop: &Path, original_name: &str, vault_name: &str)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fence::{VaultEntry, VaultMeta};
 
     fn scratch() -> tempfile::TempDir {
         tempfile::tempdir().unwrap()
@@ -257,7 +308,6 @@ mod tests {
                 entry("user-PVZ-0", "游戏", "PVZ.lnk", "user-PVZ-0.lnk"),
                 entry("user-报表-1", "工作", "报表.txt", "user-报表-1.txt"),
             ],
-            hide_icons_applied: true,
         };
         let roots = vec![("user".to_string(), desktop.clone())];
         let r = run_in(&vault, &roots, &old);
@@ -277,7 +327,6 @@ mod tests {
         let (_d, vault, desktop) = setup();
         let old = VaultMeta {
             items: vec![entry("user-PVZ-0", "游戏", "PVZ.lnk", "user-PVZ-0.lnk")],
-            hide_icons_applied: true,
         };
         let roots = vec![("user".to_string(), desktop.clone())];
 
@@ -302,7 +351,6 @@ mod tests {
                 entry("user-PVZ-0", "游戏", "PVZ.lnk", "user-PVZ-0.lnk"),
                 entry("user-报表-1", "工作", "报表.txt", "user-报表-1.txt"),
             ],
-            hide_icons_applied: true,
         };
         // 「上次跑到一半」的真实形态：PVZ 那一项**已经搬完**了 ——
         // move_path 成功就会删源，所以 vault 里那份已经不在了。报表 还没动。
@@ -336,7 +384,6 @@ mod tests {
         std::fs::write(desktop.join("PVZ.lnk"), b"already here").unwrap();
         let old = VaultMeta {
             items: vec![entry("user-PVZ-0", "游戏", "PVZ.lnk", "user-PVZ-0.lnk")],
-            hide_icons_applied: true,
         };
         let roots = vec![("user".to_string(), desktop.clone())];
         let r = run_in(&vault, &roots, &old);
@@ -366,7 +413,6 @@ mod tests {
         e.origin = "public".into();
         let old = VaultMeta {
             items: vec![e],
-            hide_icons_applied: true,
         };
 
         // 有公共桌面 → 落公共桌面
@@ -408,7 +454,6 @@ mod tests {
         e.origin = "public".into();
         let old = VaultMeta {
             items: vec![e],
-            hide_icons_applied: true,
         };
 
         // 让 public 这一侧**必然写不进去**：落点和兜底名都占成非空目录，
@@ -441,7 +486,6 @@ mod tests {
                 entry("user-PVZ-0", "游戏", "PVZ.lnk", "user-PVZ-0.lnk"),
                 entry("user-报表-1", "工作", "报表.txt", "user-报表-1.txt"),
             ],
-            hide_icons_applied: true,
         };
         // roots 是空的 —— 两个桌面目录都解析不出来
         let r = run_in(&vault, &[], &old);
@@ -466,8 +510,8 @@ mod tests {
     #[test]
     #[ignore] // 需要真实 vault.json / 桌面，只在真机手动跑
     fn real_vault_dry_run_is_read_only() {
-        let vault = crate::fence::vault_dir().unwrap();
-        let old = crate::fence::load_meta().unwrap();
+        let vault = vault_dir().unwrap();
+        let old = load_meta().unwrap();
         let roots = crate::fence::desktop_roots().unwrap();
         println!("vault 目录：{}", vault.display());
 

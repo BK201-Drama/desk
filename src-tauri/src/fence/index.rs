@@ -1,14 +1,8 @@
 //! 桌面目录 → 围栏 DTO。**全程只读**：本模块不移动、不创建、不删除任何文件。
 //! 这是与旧 fence_takeover 最本质的区别（INV-1）。
 
-// 和 meta.rs 同性质的一笔债：本模块的消费者是 **Task 10（切换读源）**，
-// 在那之前 lib 构建会报 7 条 dead_code（`ScannedItem` / `scan_root` / `build_fences`
-// / `fence_of` / `icon_file` / `ensure_icons` / `FENCE_ORDER`）。
-//
-// **和 meta.rs 的 `#![allow(dead_code)]` 一起，在 Task 12 删。**
-// 两处一并删除的理由：Task 10 一接线，「谁还在用」就稳定了，那时才是删的时机；
-// 分两次删只会多一次「删早了又要加回来」的机会。
-#![allow(dead_code)]
+// Task 12：和 meta.rs 一起删掉 `#![allow(dead_code)]`（读源只剩桌面，本模块全部
+// 成员都在生产路径上，没有「为将来预留」的死代码了）。
 
 use super::guess_fence;
 use super::meta::{key as meta_key, FenceMeta};
@@ -19,12 +13,18 @@ use std::time::UNIX_EPOCH;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ScannedItem {
+    /// `{origin}:{文件名}` —— 既是 `fence.json` 的 entry key，也是看板上的 item id。
+    /// Task 12 把两边的口径统一到这个 key 上，所以**不需要**单独的 `origin` 字段：
+    /// 要判断一个项属于哪个桌面根，看 key 的前缀即可。
     pub key: String,
-    pub origin: String,
     pub file_name: String,
     pub label: String,
     pub path: PathBuf,
     pub is_dir: bool,
+    /// 抽取图标那一刻的文件时间。设计 §「icons」要求「`mtime` 不一致则重抽」，
+    /// 但**这条还没接线**（`ensure_icons` 目前只看 png 在不在）—— 所以它暂时没有读者。
+    /// 留着是因为补上这条比较正是 Task 16 要记的规格偏离之一，删了就得从 git 里捞回来。
+    #[allow(dead_code)]
     pub mtime: i64,
 }
 
@@ -79,7 +79,6 @@ pub(crate) fn scan_root(origin: &str, root: &Path) -> Vec<ScannedItem> {
             .unwrap_or(0);
         out.push(ScannedItem {
             key: meta_key(origin, &file_name),
-            origin: origin.to_string(),
             file_name,
             label,
             path,
@@ -262,55 +261,50 @@ mod tests {
 
     /// 真机验证 —— `cargo test real_icons -- --ignored --nocapture` 手动跑。
     ///
-    /// **为什么不照计划原文直接扫桌面**：本机 `HideIcons=0x1` 且 desk 已接管，
-    /// 两个桌面目录（user / public）里各只剩一个 `desktop.ini`，
-    /// 扫出来是 0 项 —— 那个测试会「通过」，但一个图标都没抽，
-    /// 等于拿空集证明了「抽取没问题」。**这就是计划 Step 6 原样照抄会踩的坑。**
+    /// **这个方法换过一次抽取来源，理由值一看。** Task 10 刚切读源时本机
+    /// `HideIcons=0x1`、34 项还锁在 `vault/` 里，两个桌面目录都是空的 ——
+    /// 照计划原文扫桌面会扫出 0 项，测试照样「通过」，等于**拿空集证明抽取没问题**。
+    /// 那时真正的风险集是 vault/ 里那 34 个条目（「这一步不过，迁移后就是 34 个空白
+    /// 方块」说的就是它们），所以临时把它们当只读的文件来源用。
+    /// Task 11 迁移之后它们就在桌面上了，这里于是换回**真桌面**：
+    /// 风险集没变（同一批文件），来源变正了。
     ///
-    /// 真正的风险集是 vault/ 里那 34 个条目：它们就是迁移后围栏的全部内容，
-    /// 「这一步不过，迁移后就是 34 个空白方块」说的是它们，不是空桌面。
-    /// 所以这里把 vault/ 当**只读的文件来源**（只取 path，不碰 vault 的语义），
-    /// 逐个丢给 `extract_icon_png`，抽到临时目录里 —— 不污染线上图标缓存。
+    /// 抽取结果写到临时目录，不污染线上图标缓存。
     ///
-    /// 注意要连**目录**一起测：34 个条目里 `user-_____-33/` 是目录，不是文件。
-    /// 第一版我只测 `is_file()`，33 个全过，看着挺好 —— 而漏掉的那个目录条目
-    /// 恰恰是唯一会失败的（目录要另走 SHGetFileInfo，见 extract_icon_png 的注释）。
+    /// 注意要连**目录**一起测：34 个条目里有目录。第一版我只测 `is_file()`，
+    /// 33 个全过，看着挺好 —— 而漏掉的那个目录条目恰恰是唯一会失败的
+    /// （目录要另走 `SHGetFileInfo`，见 `extract_icon_png` 的注释）。
     #[test]
     #[ignore]
     fn real_icons_extract_from_real_files() {
-        // 1) 真桌面（当前为空，如实打印，不假装验过）
-        let desktop = crate::fence::desktop_dir().unwrap();
-        let items = scan_root("user", &desktop);
-        println!("[desktop] {} 项（本机已隐藏图标，预期 0）", items.len());
+        // 抽取源 = 两个桌面根上的全部真项。用 `desktop_roots()` 而不是 `desktop_dir()`：
+        // 迁移时公共桌面写不进去会退回用户桌面，只盯一个根可能一个文件都扫不到。
+        let mut targets: Vec<(String, PathBuf)> = Vec::new();
+        for (origin, root) in crate::fence::desktop_roots().unwrap() {
+            for it in scan_root(&origin, &root) {
+                targets.push((it.label, it.path));
+            }
+        }
+        println!("[desktop] 共 {} 项", targets.len());
 
-        // 2) vault：迁移后围栏的全部内容，按只读来源用
-        let vault = crate::fence::app_data_dir().unwrap().join("vault");
-        let Ok(rd) = std::fs::read_dir(&vault) else {
-            println!("[vault] 读不到 {}，跳过", vault.display());
-            return;
-        };
         let dest_dir = tempfile::tempdir().unwrap();
-        let mut total = 0usize;
         let mut dirs = 0usize;
         let mut failed: Vec<String> = Vec::new();
         let mut thin: Vec<String> = Vec::new();
         let mut sizes: Vec<u64> = Vec::new();
-        for (i, ent) in rd.flatten().enumerate() {
-            let path = ent.path();
-            total += 1;
+        for (i, (name, path)) in targets.iter().enumerate() {
             if path.is_dir() {
                 dirs += 1;
             }
-            let name = ent.file_name().to_string_lossy().to_string();
             let dest = dest_dir.path().join(format!("{i}.png"));
-            if !crate::fence::extract_icon_png(&path, &dest) {
-                failed.push(name);
+            if !crate::fence::extract_icon_png(path, &dest) {
+                failed.push(name.clone());
                 continue;
             }
             // 返回 true 只说明「写盘成功」，不说明写出来的是真图标。
             // 尺寸是最省的像素代理，阈值**实测标定过**：
             //   用同一套 System.Drawing 编码器生成 64×64 全透明 PNG → **146 B**
-            //   本机 34 个真图标 → 最小 406 B / 中位 3929 B（2026-09-13 实测）
+            //   迁移前那 34 个真图标 → 最小 406 B / 中位 3929 B（2026-09-13 实测）
             // 取 400 B：离空图 2.7 倍，离最瘦的真图标还留了一点裕度。
             let len = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
             sizes.push(len);
@@ -320,7 +314,7 @@ mod tests {
         }
         sizes.sort_unstable();
         println!(
-            "[vault] 共 {total} 个条目（其中目录 {dirs} 个），抽取失败 {} 个",
+            "[desktop] 其中目录 {dirs} 个，抽取失败 {} 个",
             failed.len()
         );
         println!(
@@ -336,8 +330,13 @@ mod tests {
         for f in &thin {
             println!("   疑似空白: {f}");
         }
-        assert_eq!(total, 34, "vault 条目数变了，下面的断言口径要跟着改");
-        assert!(failed.is_empty(), "有条目抽不出图标 → 迁移后是空白方块");
-        assert!(thin.is_empty(), "png 太小，多半是全透明空图 → 迁移后是空白方块");
+        // 这里刻意**不硬编码 34**：桌面是活的，用户随手放一个文件就该是 35 ——
+        // 硬编码会变成一个假失败。要守的是那个真实踩过的坑：**空集不能算通过**。
+        assert!(
+            !targets.is_empty(),
+            "真桌面上一个项都没扫到 —— 这条测试会「通过」，但它什么都没验"
+        );
+        assert!(failed.is_empty(), "有条目抽不出图标 → 看板上是空白方块");
+        assert!(thin.is_empty(), "png 太小，多半是全透明空图 → 看板上是空白方块");
     }
 }

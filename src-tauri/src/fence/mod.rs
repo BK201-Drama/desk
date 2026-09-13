@@ -1,11 +1,12 @@
 //! 围栏 = **真桌面的只读索引**（INV-1）。
 //!
 //! 图标就住在 Windows 桌面上，desk 只是把它们分组显示出来 —— 不搬、不藏、不复制。
-//! 唯一会移动文件的路径是一次性的 `migrate`（把旧 vault 里的 33 项搬回桌面，
-//! 见 `migrate.rs`），跑完就再没有下一次。
+//! 唯一会移动文件的路径是一次性的 `migrate`（把旧 vault 里的 34 项搬回桌面，
+//! 见 `migrate.rs`），2026-09-13 已经跑完，再没有下一次。
 //!
-//! ⚠️ 过渡期：`vault.json` / `list_fences_inner` 这条旧读路径还在（Task 10 保留，
-//! Task 12 删），为的是从旧架构切过来的过程中，用户的图标一刻都不会消失。
+//! 读路径只有一条：`collect_fences()` → `scan_desktop()` → `index::build_fences()`。
+//! 过渡期的「桌面 + vault 合并读」随 Task 12 删除；`fence.json` 里的东西全是偏好，
+//! 删掉它只丢分类不丢文件（INV-4）。
 
 pub(crate) mod hide;
 pub(crate) mod index;
@@ -37,45 +38,15 @@ pub struct FenceLayoutDto {
     pub ids: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-struct VaultMeta {
-    /// original desktop path -> vault relative name
-    items: Vec<VaultEntry>,
-    hide_icons_applied: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct VaultEntry {
-    id: String,
-    label: String,
-    vault_name: String,
-    fence: String,
-    original_name: String,
-    #[serde(default = "default_origin")]
-    origin: String,
-    #[serde(default)]
-    is_dir: bool,
-}
-
-fn default_origin() -> String {
-    "user".into()
-}
-
 /// Installer / manual setup may drop `desk.lnk` on the desktop — never vault it.
 fn is_self_desk_shortcut(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     lower == "desk.lnk" || lower == "desk.url" || lower == "desk.lnk.lnk"
 }
 
-fn app_data_dir() -> Result<PathBuf, String> {
+pub(super) fn app_data_dir() -> Result<PathBuf, String> {
     let base = dirs::data_local_dir().ok_or("no local app data")?;
     let dir = base.join("desk");
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir)
-}
-
-fn vault_dir() -> Result<PathBuf, String> {
-    let dir = app_data_dir()?.join("vault");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
@@ -84,25 +55,6 @@ fn icons_dir() -> Result<PathBuf, String> {
     let dir = app_data_dir()?.join("icons");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
-}
-
-fn meta_path() -> Result<PathBuf, String> {
-    Ok(app_data_dir()?.join("vault.json"))
-}
-
-fn load_meta() -> Result<VaultMeta, String> {
-    let p = meta_path()?;
-    if !p.exists() {
-        return Ok(VaultMeta::default());
-    }
-    let s = fs::read_to_string(&p).map_err(|e| e.to_string())?;
-    serde_json::from_str(&s).map_err(|e| e.to_string())
-}
-
-fn save_meta(meta: &VaultMeta) -> Result<(), String> {
-    let p = meta_path()?;
-    let s = serde_json::to_string_pretty(meta).map_err(|e| e.to_string())?;
-    fs::write(p, s).map_err(|e| e.to_string())
 }
 
 fn desktop_dir() -> Result<PathBuf, String> {
@@ -465,16 +417,20 @@ fn hide_unless_user_wants_visible() {
 
 /// 启动路径的隐藏：**同步记下意图，后台真去隐藏**（取代旧 `fence_takeover` 里那两处调用）。
 ///
-/// 记账不能省（INV-3）：`hide_icons_applied` 不落盘的话，下次启动的孤儿自检会把
-/// 这个 `HideIcons=1` 判成无主、自己清掉 —— 用户会看到桌面图标在两次启动之间闪回来。
+/// 记账不能省（INV-3）：`hide.owned` 不落盘的话，下次启动的孤儿自检会把这个
+/// `HideIcons=1` 判成无主、自己清掉 —— 用户会看到桌面图标在两次启动之间闪回来。
+///
+/// Task 12 之前这本账记在 `vault.json` 里，迁移后那个文件已被归档 ——
+/// 于是**每次启动都会凭空造一个新的空 `vault.json`**（真机实测：一天内两次）。
+/// 现在记进 `fence.json` 的 `hide.owned`，v2 早就为此留好了字段。
 ///
 /// 隐藏本身不能同步做：`reg add` 之后还要刷 Explorer，同步跑会卡住首屏
 /// （旧 takeover 的冷启动快路径就是为了这个才把隐藏丢后台的）。
 fn hide_desktop_icons_on_start() {
-    if let Ok(mut meta) = load_meta() {
-        if !meta.hide_icons_applied {
-            meta.hide_icons_applied = true;
-            if let Err(e) = save_meta(&meta) {
+    if let Ok(mut m) = meta::load() {
+        if !m.hide.owned {
+            m.hide.owned = true;
+            if let Err(e) = meta::save(&m) {
                 eprintln!("mark hide intent: {e}");
             }
         }
@@ -493,53 +449,22 @@ fn scan_desktop() -> Result<Vec<index::ScannedItem>, String> {
 
 /// 现在的真相源是「真桌面」（INV-1）。**全程只读** —— 本函数不移动任何文件。
 ///
-/// 迁移（Task 11）完成前，vault 里的项也一并列出：用户的图标在切换读源的
-/// 过程中一刻都不会消失。
+/// Task 12 起这里**只有**桌面一条读路径：`vault.json` / `list_fences_inner` /
+/// `merge_fences` 那条过渡期支线已随迁移完成一起删除。
 fn collect_fences() -> Result<Vec<FenceDto>, String> {
     let items = scan_desktop()?;
 
     // 图标不在这里抽 —— 每缺一个就是一次 PowerShell，会把首屏卡死。
     // 由 fence_list / fence_rescan 决定前台还是后台，见 refresh_icons_once。
-    let mut fences = index::build_fences(&items, &meta::load()?);
-
-    let mut meta_old = load_meta()?;
-    if !meta_old.items.is_empty() {
-        // vault 里还有东西（旧架构遗留）→ 先修补账本，再并进读源。
-        // 这两步只是在维护旧账本，Task 12 删掉 vault 读路径时一并消失。
-        let mut dirty = purge_self_desk_entries(&mut meta_old)?;
-        dirty |= reconcile_orphan_vault_files(&mut meta_old)?;
-        if dirty {
-            save_meta(&meta_old)?;
-        }
-        merge_fences(&mut fences, list_fences_inner(&meta_old)?);
-    }
-    Ok(fences)
+    Ok(index::build_fences(&items, &meta::load()?))
 }
 
-/// 把 vault 读出来的围栏并进桌面读出来的围栏：同名围栏合到一起，
-/// vault 项追加在桌面项之后，**按 id 去重**。
-///
-/// 去重是必须的：迁移跑到一半时同一项两边都在（桌面已搬回一份、账本还没记完），
-/// 不去重就会画两遍。
-fn merge_fences(dst: &mut Vec<FenceDto>, src: Vec<FenceDto>) {
-    for f in src {
-        match dst.iter().position(|d| d.name == f.name) {
-            Some(i) => {
-                for it in f.items {
-                    if !dst[i].items.iter().any(|e| e.id == it.id) {
-                        dst[i].items.push(it);
-                    }
-                }
-            }
-            None => dst.push(f),
-        }
-    }
-}
-
-/// 补齐图标缓存：桌面项按需抽取，旧 vault 项走 marker 驱动的刷新。
+/// 补齐图标缓存：桌面项按需抽取（`index::ensure_icons`，缺什么补什么）。
 ///
 /// 旧实现是在 `fence_takeover` 搬文件时顺手 `extract_icon_png` 的；takeover 没了之后
-/// 抽取变成索引的附属步骤（`index::ensure_icons`，缺什么补什么，对迁移后的新 key 自愈）。
+/// 抽取变成索引的附属步骤 —— 缓存是按 key 命名的，所以文件换了位置也能自愈。
+/// 旧 vault 项的 png 缓存重建（`refresh_icon_cache_if_needed` + `ICON_CACHE_VER`）
+/// 已随 vault 读路径在 Task 12 一起删除。
 ///
 /// 一次调用可能起 30+ 次 PowerShell（迁移后的第一次启动就是「全缺」），
 /// 所以耗时上不封顶 —— **前台还是后台由调用方决定**（下面两个包装各是一种）。
@@ -552,13 +477,6 @@ fn refresh_icons_once() {
             }
         }
         Err(e) => eprintln!("scan for icons: {e}"),
-    }
-    // marker 在时是一次 exists() 就返回；缺了才重建（旧 vault 项的 png）。
-    // Task 12 之后 vault 读路径整个消失，这里就只剩 ensure_icons。
-    if let Ok(m) = load_meta() {
-        if let Err(e) = refresh_icon_cache_if_needed(&m) {
-            eprintln!("icon cache: {e}");
-        }
     }
 }
 
@@ -584,190 +502,6 @@ pub fn fence_list() -> Result<Vec<FenceDto>, String> {
 pub fn fence_rescan() -> Result<Vec<FenceDto>, String> {
     refresh_icons_once();
     collect_fences()
-}
-
-/// Re-attach vault files that exist on disk but are missing from vault.json.
-fn reconcile_orphan_vault_files(meta: &mut VaultMeta) -> Result<bool, String> {
-    let vault = vault_dir()?;
-    let icons = icons_dir()?;
-    let known: std::collections::HashSet<String> =
-        meta.items.iter().map(|e| e.vault_name.clone()).collect();
-    let mut changed = false;
-    let entries = match fs::read_dir(&vault) {
-        Ok(e) => e,
-        Err(_) => return Ok(false),
-    };
-    for ent in entries.flatten() {
-        let path = ent.path();
-        let name = ent.file_name().to_string_lossy().to_string();
-        if name.eq_ignore_ascii_case("desktop.ini") || known.contains(&name) {
-            continue;
-        }
-        let is_dir = path.is_dir();
-        let stem = path
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| name.clone());
-        let (origin, label, id) = parse_vault_stem(&stem);
-        let original_name = if is_dir {
-            label.clone()
-        } else {
-            let ext = path
-                .extension()
-                .map(|e| format!(".{}", e.to_string_lossy()))
-                .unwrap_or_default();
-            format!("{label}{ext}")
-        };
-        let icon_path = icons.join(format!("{id}.png"));
-        if !icon_path.exists() {
-            let _ = extract_icon_png(&path, &icon_path);
-        }
-        meta.items.push(VaultEntry {
-            id,
-            label: label.clone(),
-            vault_name: name,
-            fence: if is_dir {
-                "文件夹".into()
-            } else {
-                guess_fence(&original_name).to_string()
-            },
-            original_name,
-            origin,
-            is_dir,
-        });
-        changed = true;
-    }
-    Ok(changed)
-}
-
-/// `user-PVZ-15` / `public-Foo_Bar-3` → (origin, label, id)
-fn parse_vault_stem(stem: &str) -> (String, String, String) {
-    let id = stem.to_string();
-    if let Some(rest) = stem.strip_prefix("user-") {
-        if let Some((label_raw, _)) = rest.rsplit_once('-') {
-            if !label_raw.is_empty()
-                && rest
-                    .rsplit_once('-')
-                    .map(|(_, n)| n.chars().all(|c| c.is_ascii_digit()))
-                    .unwrap_or(false)
-            {
-                let label = label_raw.replace('_', " ");
-                return ("user".into(), label, id);
-            }
-        }
-        return ("user".into(), rest.replace('_', " "), id);
-    }
-    if let Some(rest) = stem.strip_prefix("public-") {
-        if let Some((label_raw, _)) = rest.rsplit_once('-') {
-            if !label_raw.is_empty()
-                && rest
-                    .rsplit_once('-')
-                    .map(|(_, n)| n.chars().all(|c| c.is_ascii_digit()))
-                    .unwrap_or(false)
-            {
-                let label = label_raw.replace('_', " ");
-                return ("public".into(), label, id);
-            }
-        }
-        return ("public".into(), rest.replace('_', " "), id);
-    }
-    ("user".into(), stem.replace('_', " "), id)
-}
-
-/// Drop vaulted installer shortcuts to desk itself (and their icon caches).
-fn purge_self_desk_entries(meta: &mut VaultMeta) -> Result<bool, String> {
-    let vault = vault_dir()?;
-    let icons = icons_dir()?;
-    let before = meta.items.len();
-    meta.items.retain(|e| {
-        if is_self_desk_shortcut(&e.original_name)
-            || (e.label.eq_ignore_ascii_case("desk")
-                && e.vault_name.to_ascii_lowercase().ends_with(".lnk"))
-        {
-            let _ = fs::remove_file(vault.join(&e.vault_name));
-            let _ = fs::remove_file(icons.join(format!("{}.png", e.id)));
-            false
-        } else {
-            true
-        }
-    });
-    Ok(meta.items.len() != before)
-}
-
-/// v2 = extract from .lnk target (no Windows shortcut-arrow overlay).
-/// v3 = 图标文件名随 meta key 改为「origin_文件名」的转义形式（index.rs::icon_file）。
-///      旧名 `user-PVZ-0.png` 和新名对不上，所以这里必须升版；否则 refresh 会以为
-///      缓存还在、直接跳过，迁移后就是一堆空白方块。旧文件留着无害。
-const ICON_CACHE_VER: &str = "3";
-
-fn refresh_icon_cache_if_needed(meta: &VaultMeta) -> Result<(), String> {
-    let marker = app_data_dir()?.join(format!("icon-cache-v{ICON_CACHE_VER}"));
-    if marker.exists() {
-        return Ok(());
-    }
-    let vault = vault_dir()?;
-    let icons = icons_dir()?;
-    for e in &meta.items {
-        let src = vault.join(&e.vault_name);
-        if !src.exists() {
-            continue;
-        }
-        let dest = icons.join(format!("{}.png", e.id));
-        let _ = fs::remove_file(&dest);
-        let _ = extract_icon_png(&src, &dest);
-    }
-    let _ = fs::write(&marker, ICON_CACHE_VER.as_bytes());
-    Ok(())
-}
-
-fn list_fences_inner(meta: &VaultMeta) -> Result<Vec<FenceDto>, String> {
-    let vault = vault_dir()?;
-    let icons = icons_dir()?;
-    let order = ["游戏", "工具", "工作", "文件夹", "其它"];
-    let mut map: std::collections::BTreeMap<String, Vec<FenceItemDto>> =
-        std::collections::BTreeMap::new();
-
-    for e in &meta.items {
-        let path = vault.join(&e.vault_name);
-        if !path.exists() {
-            continue;
-        }
-        let icon_file = icons.join(format!("{}.png", e.id));
-        let icon = if icon_file.exists() {
-            Some(icon_file.to_string_lossy().to_string())
-        } else {
-            None
-        };
-        map.entry(e.fence.clone()).or_default().push(FenceItemDto {
-            id: e.id.clone(),
-            label: e.label.clone(),
-            path: path.to_string_lossy().to_string(),
-            icon,
-        });
-    }
-
-    // ensure system fence with shell items (only visible in board; desktop icons hidden)
-    let mut fences: Vec<FenceDto> = Vec::new();
-    for name in order {
-        if let Some(items) = map.remove(name) {
-            if !items.is_empty() {
-                fences.push(FenceDto {
-                    name: name.to_string(),
-                    items,
-                });
-            }
-        }
-    }
-    for (name, items) in map {
-        if !items.is_empty() {
-            fences.push(FenceDto { name, items });
-        }
-    }
-    fences.push(FenceDto {
-        name: "系统".into(),
-        items: system_shell_items(&icons),
-    });
-    Ok(fences)
 }
 
 /// Persist custom icon order (and optional cross-fence moves). System fence is ignored.
@@ -807,9 +541,9 @@ pub fn fence_save_order(layout: Vec<FenceLayoutDto>) -> Result<Vec<FenceDto>, St
         }
     }
     meta::save(&m)?;
-    // 返回的是**合并读源**（桌面 + vault），不是 `list_fences_inner(&meta)`。
-    // 拖一下图标就只回吐 vault 那一半的话，桌面项的图标会当场从看板上消失 ——
-    // 前端 persistOrder 是拿这个返回值直接 setFences 的。
+    // 返回值必须和 `fence_list` 走**同一条读路径**（`collect_fences`，即真桌面）。
+    // 前端 `persistOrder` 是拿这个返回值直接 setFences 的 —— 回吐一份口径不同的列表
+    // （比如只回吐 meta 里记过账的那些）会让一批项的图标当场从看板上消失。
     collect_fences()
 }
 
@@ -875,13 +609,14 @@ pub fn fence_restore() -> Result<serde_json::Value, String> {
     }
     Ok(serde_json::json!({ "moved": r.moved, "skipped": r.skipped }))
 }
+/// 围栏的诊断信息。**没有前端消费者**（只在 `host/api.ts` 的读权限白名单里），
+/// 所以 Task 12 直接把 v1 的字段（`count` = vault 项数、`vault` 路径）换成了 v2 的。
 #[tauri::command]
 pub fn fence_status() -> Result<serde_json::Value, String> {
-    let meta = load_meta()?;
+    let m = meta::load()?;
     Ok(serde_json::json!({
-        "count": meta.items.len(),
-        "hide_icons": meta.hide_icons_applied,
-        "vault": vault_dir()?.to_string_lossy(),
+        "count": m.entries.len(),
+        "hide_icons": m.hide.owned,
     }))
 }
 
@@ -896,9 +631,12 @@ pub fn fence_icons_visible() -> Result<bool, String> {
 /// 除切换注册表外还要维护两处本地状态，缺一个都会让「用户的选择」跟
 /// 别的机制打架：
 ///   - 标志文件 `icons-visible`：让 `fence_list` 的启动隐藏路径不再动 `HideIcons`。
-///   - `meta.hide_icons_applied`：让启动时的孤儿自检知道这个 `HideIcons` 有主。
-///     只置位不清除的话，「visible=true 但 hide_icons_applied 仍是 true」这条
-///     过期记录会把孤儿自检的判据带偏。
+///     **这个文件是逃生口的唯一权威** —— 它必须独立于 desk 进程健康与注册表状态
+///     存在（设计 §6.2 第 3 条），所以哪怕 `fence.json` 坏了也不影响它被读到。
+///   - `fence.json` 的 `hide.owned`：让启动时的孤儿自检知道这个 `HideIcons` 有主。
+///     只置位不清除的话，「visible=true 但 owned 仍是 true」这条过期记录会把
+///     孤儿自检的判据带偏。（v1 里这是 `vault.json` 的 `hide_icons_applied`，
+///     Task 12 随 vault 读路径搬到了 `meta::HideState`。）
 #[tauri::command]
 pub fn fence_set_icons_visible(visible: bool) -> Result<bool, String> {
     if visible {
@@ -908,96 +646,21 @@ pub fn fence_set_icons_visible(visible: bool) -> Result<bool, String> {
     }
     hide::set_user_wants_visible(visible)?;
 
-    let mut meta = load_meta()?;
-    if meta.hide_icons_applied != !visible {
-        meta.hide_icons_applied = !visible;
-        save_meta(&meta)?;
+    let mut m = meta::load()?;
+    if m.hide.owned != !visible {
+        m.hide.owned = !visible;
+        meta::save(&m)?;
     }
     Ok(visible)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{merge_fences, FenceDto, FenceItemDto};
-
-    fn item(id: &str, path: &str) -> FenceItemDto {
-        FenceItemDto {
-            id: id.into(),
-            label: id.into(),
-            path: path.into(),
-            icon: None,
-        }
-    }
-
-    fn fence(name: &str, ids: &[&str]) -> FenceDto {
-        FenceDto {
-            name: name.into(),
-            items: ids.iter().map(|i| item(i, &format!("p/{i}"))).collect(),
-        }
-    }
-
-    fn shape(dst: &[FenceDto]) -> Vec<(String, Vec<String>)> {
-        dst.iter()
-            .map(|f| (f.name.clone(), f.items.iter().map(|i| i.id.clone()).collect()))
-            .collect()
-    }
-
-    #[test]
-    fn merge_appends_vault_items_after_desktop_ones() {
-        // 桌面项在前、vault 项在后：顺序稳定，用户看到的既有排列不会因为合并而跳
-        let mut dst = vec![fence("工具", &["user:a.lnk"])];
-        merge_fences(&mut dst, vec![fence("工具", &["old-a"])]);
-        assert_eq!(
-            shape(&dst),
-            vec![("工具".to_string(), vec!["user:a.lnk".into(), "old-a".into()])]
-        );
-    }
-
-    #[test]
-    fn merge_dedupes_items_present_on_both_sides() {
-        // 迁移跑到一半的真实形态：文件已经搬回桌面（新 key 能扫到），
-        // vault.json 里那条旧记录还没销账 → 两边都在。必须只画一次。
-        let mut dst = vec![fence("工具", &["user:a.lnk", "user:b.lnk"])];
-        merge_fences(&mut dst, vec![fence("工具", &["user:a.lnk"])]);
-        assert_eq!(
-            shape(&dst),
-            vec![(
-                "工具".to_string(),
-                vec!["user:a.lnk".into(), "user:b.lnk".into()]
-            )]
-        );
-    }
-
-    #[test]
-    fn merge_keeps_fences_only_the_vault_side_has() {
-        // 迁移未完成时 vault 那边独有的围栏（还一项都没搬）不能被丢掉，
-        // 否则那一组图标会从看板上整组消失。
-        let mut dst = vec![fence("工具", &["user:a.lnk"])];
-        merge_fences(&mut dst, vec![fence("游戏", &["old-game"])]);
-        assert_eq!(
-            shape(&dst),
-            vec![
-                ("工具".to_string(), vec!["user:a.lnk".into()]),
-                ("游戏".to_string(), vec!["old-game".into()]),
-            ]
-        );
-    }
-
-    #[test]
-    fn merge_into_empty_is_a_copy() {
-        // 迁移完成后（vault 空）走的就是这条：fence_list 直接是桌面读源
-        let mut dst: Vec<FenceDto> = Vec::new();
-        merge_fences(&mut dst, vec![fence("系统", &["sys-pc"])]);
-        assert_eq!(shape(&dst), vec![("系统".to_string(), vec!["sys-pc".into()])]);
-    }
-}
-
-/// 真机验收（默认 `#[ignore]`）：读**真实桌面 + 真实 vault**。
+/// 真机验收（默认 `#[ignore]`）：读**真实桌面**。
 ///
 /// 跑法：`cargo test -- --ignored real_machine`
 ///
 /// ⚠️ 其中 `real_machine_migrate_vault_to_desktop` 是**不可逆**的那一条，必须**单独**跑
 /// （`cargo test -- --ignored real_machine_migrate`）：它搬真实文件，和别的真机测试并行会互相打架。
+/// 迁移（Task 11）已经跑过了，所以现在走的是它的幂等分支 —— 只读、可重复，不再搬任何东西。
 ///
 /// 计划 Task 10 Step 7 的四条手工验收，要的都是「读一次真数据看看」——
 /// 那就没必要非得开 `tauri dev` 用眼睛看：这里直接调生产函数 `collect_fences()`，
@@ -1038,7 +701,7 @@ mod real_machine_tests {
     }
 
     #[test]
-    #[ignore = "真机：读真实桌面 + 真实 vault"]
+    #[ignore = "真机：读真实桌面"]
     fn real_machine_desktop_file_is_indexed_left_in_place_and_gone_after_delete() {
         // 一条测试走完整个生命周期，而不是拆成两条 —— 拆开的话两个 test 线程会
         // 同时往桌面写同名探针，`read_dir` 计数当场互相打架（实测踩过）。
@@ -1089,7 +752,9 @@ mod real_machine_tests {
     #[test]
     #[ignore = "真机：读真实桌面"]
     fn real_machine_no_item_comes_from_vault() {
-        let vault = vault_dir().expect("vault dir");
+        // 路径手工拼，**刻意不调 `migrate::vault_dir()`** —— 那个函数带 `create_dir_all`，
+        // 在一条只读验收里凭空造出一个空 vault 目录就本末倒置了。
+        let vault = desk_file("vault");
         let listing = |d: &PathBuf| -> Vec<String> {
             let mut v: Vec<String> = std::fs::read_dir(d)
                 .unwrap()
@@ -1113,6 +778,13 @@ mod real_machine_tests {
         assert!(
             from_vault.is_empty(),
             "迁移（Task 11）之后读源只剩桌面，这些项却还从 vault 来：{from_vault:?}"
+        );
+        // 迁移完 vault 层就该整个空掉/不存在 —— Task 12 删掉读源之后，这一层再没有任何
+        // 生产用途（只剩 `migrate` 的回滚路径认得它）。有东西 = 有旧构建在往回吸。
+        assert!(
+            before.is_empty(),
+            "vault 目录里还有 {} 项，迁移之后它应该永远是空的：{before:?}",
+            before.len()
         );
     }
 
@@ -1273,11 +945,11 @@ mod real_machine_tests {
     #[test]
     #[ignore = "真机：不可逆，把 vault 里的文件搬回真桌面"]
     fn real_machine_migrate_vault_to_desktop() {
-        let vault = vault_dir().expect("vault dir");
-        let meta_p = meta_path().expect("meta path");
+        let vault = migrate::vault_dir().expect("vault dir");
+        let meta_p = migrate::meta_path().expect("meta path");
 
         // ① 先取快照 —— 只能在 run() 之前，跑完 vault.json 就改名了，真相只剩这份内存里的
-        let before = load_meta().expect("vault meta").items;
+        let before = migrate::load_meta().expect("vault meta").items;
 
         if before.is_empty() {
             // 幂等分支：上一次已经迁完（或从没搬过图标）。**不重跑** —— `run()` 本来也是
@@ -1286,27 +958,18 @@ mod real_machine_tests {
             // 但"不重跑"不等于"少验收"：旧账本 `vault.json.migrated` **还在盘上**，
             // 迁移前每一项的 (origin, 文件名, 围栏) 都能从它读回来。于是重跑这条测试
             // 依然能做**逐项**复核 —— 而且是只读的，可以随便多跑几遍。
-            // `vault.json` 会被**每次启动**重新创建出来 —— `hide_desktop_icons_on_start`
-            // 还在往它里面写 `hide_icons_applied`（Task 12 要连这块记账一起搬走，
-            // 见完成记录里那条「第三个写者」）。所以这里不硬断言「文件不存在」，
-            // 而是断言**危险的形状不存在**：一个非空的 items 才是真出事 ——
-            // 那意味着有旧构建把桌面重新吸回 vault 了。
-            if meta_p.exists() {
-                let residual = load_meta().expect("读残留的 vault.json");
-                assert!(
-                    residual.items.is_empty(),
-                    "vault.json 里出现了 {} 条接管记录 —— 桌面被重新吸回 vault 了：{:?}",
-                    residual.items.len(),
-                    residual
-                        .items
-                        .iter()
-                        .map(|e| e.original_name.as_str())
-                        .collect::<Vec<_>>()
-                );
-                eprintln!(
-                    "注意：vault.json 被重新创建为空账本（hide 记账仍在写它，Task 12 搬走）"
-                );
-            }
+            //
+            // Task 12 之前这里只能断言「危险的形状不存在」（items 非空 = 有旧构建把桌面
+            // 吸回 vault 了），因为 `hide_desktop_icons_on_start` 每次启动都会往 vault.json
+            // 里写 `hide_icons_applied`，把归档掉的账本重新造出来（真机实测：一天内两次）。
+            // Task 12 把那笔 hide 记账搬进 `fence.json` 之后，**v2 的生产路径上再没有
+            // 任何 vault.json 的写者**，所以这里收紧成最直接的断言：文件不该存在。
+            assert!(
+                !meta_p.exists(),
+                "{} 又出现了 —— 已经归档的旧账本被重新创建，v2 不该再有它的写者：{}",
+                meta_p.display(),
+                std::fs::read_to_string(&meta_p).unwrap_or_else(|e| format!("<读不到：{e}>"))
+            );
             let archived = meta_p.with_extension("json.migrated");
             assert!(
                 archived.exists(),
@@ -1315,7 +978,7 @@ mod real_machine_tests {
             assert_eq!(count_entries(&vault), 0, "vault 目录里还有残留");
 
             let s = std::fs::read_to_string(&archived).expect("读归档账本");
-            let old: VaultMeta =
+            let old: migrate::VaultMeta =
                 serde_json::from_str(&s).expect("解析 vault.json.migrated（归档的是原始 JSON）");
             let expected: Vec<(String, String, String)> = old
                 .items

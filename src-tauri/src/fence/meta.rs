@@ -1,14 +1,8 @@
 //! fence.json v2 —— 只存偏好（围栏归属 / 排序 / 可见性），**不存文件**。
 //! 文件永远住在真桌面上（INV-1）；删掉本文件只丢偏好，不丢文件（INV-4）。
 
-// 本模块是有意建在使用者前面的：类型和函数先按 v2 的最终形态定义好，
-// Task 7（index.rs）才开始读 Entry/FenceMeta，Task 9–12 才用到 load/save/prune/rename_key。
-// 在那之前，lib 构建会有 10 条 dead_code。
-//
-// 这是**债**，不是设计 —— 和 Task 2 的 `#![allow(dead_code)]` 同性质，那次在 Task 3
-// 接线后已经删掉了。这里同样：Task 12 删完 vault 读源、meta.rs 成为唯一读源时，
-// 这行必须回来删掉，让编译器重新盯着它。
-#![allow(dead_code)]
+// Task 12 已按约删掉 `#![allow(dead_code)]` —— vault 读源没了，`fence.json` 是唯一
+// 读源，这个模块的每个类型/函数都有了确定的使用者（或已被编译器指出来没有）。
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
@@ -84,6 +78,12 @@ pub(crate) fn save(m: &FenceMeta) -> Result<(), String> {
 }
 
 /// 清掉磁盘上已不存在的条目。返回清理数量。
+///
+/// **目前没有调用点**（Task 12 删掉 vault 读源之后，读路径上没有任何人需要它）。
+/// 保留是因为它有**点名的**消费者：Task 13 的验收写着「真桌面删除 → 条目从看板消失，
+/// `fence.json` 对应条目被 `prune`」。所以这里是 `allow` 而不是删除 —— 删了会在
+/// 下一个任务里原样写回来，只是多一次搬运。
+#[allow(dead_code)]
 pub(crate) fn prune(m: &mut FenceMeta, present: &HashSet<String>) -> usize {
     let before = m.entries.len();
     m.entries.retain(|k, _| present.contains(k));
@@ -91,6 +91,10 @@ pub(crate) fn prune(m: &mut FenceMeta, present: &HashSet<String>) -> usize {
 }
 
 /// 文件改名时把条目迁移过去，保留 fence / order。返回是否迁移成功。
+///
+/// 同 `prune`：没有调用点的理由只是**还没轮到** —— Task 14 的 `fence_rename` 就是
+/// `fs::rename` + 本函数，验收写着「改名后围栏归属不变」。
+#[allow(dead_code)]
 pub(crate) fn rename_key(m: &mut FenceMeta, from: &str, to: &str) -> bool {
     match m.entries.remove(from) {
         Some(e) => {
