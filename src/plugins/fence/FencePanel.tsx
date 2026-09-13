@@ -57,6 +57,8 @@ export function FencePanel({ ctx }: PluginComponentProps) {
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState(-1);
   const [autostartOn, setAutostartOn] = useState(false);
+  const [iconsVisible, setIconsVisible] = useState(true);
+  const [iconsError, setIconsError] = useState<string | null>(null);
   const [editingOn, setEditingOn] = useState(() => ctx.editing());
   const searchRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -101,6 +103,12 @@ export function FencePanel({ ctx }: PluginComponentProps) {
     };
     shell?.registerFocusFenceSearch(focusSearch);
     void ctx.invoke<boolean>("autostart_get").then(setAutostartOn).catch(() => {});
+    // 读失败**不算**「图标已隐藏」—— 两者含义完全不同。分开存，
+    // 否则一次 IPC 抖动会把按钮画成「已隐藏」，比不显示更误导。
+    void ctx
+      .invoke<boolean>("fence_icons_visible")
+      .then(setIconsVisible)
+      .catch((e) => setIconsError(String(e)));
 
     const keyHandler = (e: KeyboardEvent) => {
       const cmdkOpen = document.querySelector('[data-plugin="cmdk"].show');
@@ -316,6 +324,48 @@ export function FencePanel({ ctx }: PluginComponentProps) {
                 />
               </svg>
             </button>
+            {/* 逃生口：崩溃/异常后一键把桌面图标要回来（spec §6.2 第 3 条）。
+                刻意放最后，不动现有 4 个按钮的相对顺序。
+                复用 .icon-btn / .icon-btn.on，本任务不新增任何样式。 */}
+            <button
+              type="button"
+              className={`icon-btn${iconsVisible ? " on" : ""}`}
+              title={
+                iconsVisible ? "桌面图标：显示中（点击隐藏）" : "桌面图标：已隐藏（点击显示）"
+              }
+              aria-label="显示桌面图标"
+              onClick={() => {
+                void (async () => {
+                  try {
+                    const next = !iconsVisible;
+                    await ctx.invoke("fence_set_icons_visible", { visible: next });
+                    setIconsVisible(next);
+                    setIconsError(null);
+                  } catch (e) {
+                    setIconsError(String(e));
+                  }
+                })();
+              }}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path
+                  d="M1.6 8s2.4-4.2 6.4-4.2S14.4 8 14.4 8s-2.4 4.2-6.4 4.2S1.6 8 1.6 8z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                />
+                <circle cx="8" cy="8" r="1.9" fill="none" stroke="currentColor" strokeWidth="1.4" />
+                {!iconsVisible ? (
+                  <path
+                    d="M3 13 13 3"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                ) : null}
+              </svg>
+            </button>
           </div>
         </div>
         <input
@@ -339,6 +389,15 @@ export function FencePanel({ ctx }: PluginComponentProps) {
           }}
         />
       </div>
+
+      {/* 桌面图标开关的读写失败提示。spec §8：HideIcons 写失败不许阻塞启动，
+          所以失败以这条横条呈现，而不是把整个看板变成错误态。
+          只有「读写这个开关本身出错」才显示 —— 图标正常处于隐藏态不是错误。 */}
+      {iconsError ? (
+        <div className="fence-warn" role="status">
+          桌面图标开关读写失败：{iconsError}
+        </div>
+      ) : null}
 
       {q ? (
         <div className="fence-search-results">

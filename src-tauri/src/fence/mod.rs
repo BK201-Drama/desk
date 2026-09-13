@@ -418,8 +418,32 @@ fn desktop_has_vaultable_items() -> Result<bool, String> {
     Ok(false)
 }
 
+/// 隐藏桌面图标 —— **唯一的隐藏出口**。
+///
+/// 逃生口是硬约束（spec §6.2 第 3 条）：用户按过「显示桌面图标」之后，
+/// 任何路径都不得再把它盖回去。把这个判断收在一个函数里，而不是散在各个
+/// 调用点，是为了「以后新增的隐藏路径默认就是安全的」。
+///
+/// 失败只 `eprintln!` 不返回 Err：spec §8 要求 `HideIcons` 写失败**不阻塞启动**
+/// （reg + powershell 刷 Explorer 在有些机器上会卡）。
+fn hide_unless_user_wants_visible() {
+    if hide::user_wants_visible() {
+        return;
+    }
+    if let Err(e) = hide::set_desktop_icons_hidden(true) {
+        eprintln!("hide desktop icons: {e}");
+    }
+}
+
 #[tauri::command]
 pub fn fence_takeover() -> Result<Vec<FenceDto>, String> {
+    // 逃生口：用户按过「显示桌面图标」→ 不隐藏，也不再搬文件。
+    // 「不再搬文件」是必须的：只不隐藏但仍把图标吸进 vault 的话，
+    // 用户的桌面会莫名其妙变空 —— 那比隐藏更糟。
+    if hide::user_wants_visible() {
+        return list_fences_inner(&load_meta()?);
+    }
+
     let vault = vault_dir()?;
     let icons = icons_dir()?;
     let mut meta = load_meta()?;
@@ -430,11 +454,7 @@ pub fn fence_takeover() -> Result<Vec<FenceDto>, String> {
             // 标记意图后后台藏图标，避免首次安装后 list/takeover 同步卡主线程
             meta.hide_icons_applied = true;
             save_meta(&meta)?;
-            std::thread::spawn(|| {
-                if let Err(e) = hide::set_desktop_icons_hidden(true) {
-                    eprintln!("hide desktop icons bg: {e}");
-                }
-            });
+            std::thread::spawn(hide_unless_user_wants_visible);
         }
         return list_fences_inner(&meta);
     }
@@ -516,7 +536,7 @@ pub fn fence_takeover() -> Result<Vec<FenceDto>, String> {
         }
     }
 
-    hide::set_desktop_icons_hidden(true)?;
+    hide_unless_user_wants_visible();
     meta.hide_icons_applied = true;
     save_meta(&meta)?;
     if !errors.is_empty() {
@@ -890,4 +910,35 @@ pub fn fence_status() -> Result<serde_json::Value, String> {
         "hide_icons": meta.hide_icons_applied,
         "vault": vault_dir()?.to_string_lossy(),
     }))
+}
+
+/// 当前桌面图标是否可见（= `HideIcons` 为 0 或未设置）。
+#[tauri::command]
+pub fn fence_icons_visible() -> Result<bool, String> {
+    Ok(hide::is_enabled()? != Some(true))
+}
+
+/// 逃生开关：立即切换桌面图标可见性，并记住这个选择（重启 desk 不反弹）。
+///
+/// 除切换注册表外还要维护两处本地状态，缺一个都会让「用户的选择」跟
+/// 别的机制打架：
+///   - 标志文件 `icons-visible`：让 `fence_takeover` 不再隐藏、不再搬文件。
+///   - `meta.hide_icons_applied`：让启动时的孤儿自检知道这个 `HideIcons` 有主。
+///     只置位不清除的话，「visible=true 但 hide_icons_applied 仍是 true」这条
+///     过期记录会把孤儿自检的判据带偏。
+#[tauri::command]
+pub fn fence_set_icons_visible(visible: bool) -> Result<bool, String> {
+    if visible {
+        hide::disable()?;
+    } else {
+        hide::enable()?;
+    }
+    hide::set_user_wants_visible(visible)?;
+
+    let mut meta = load_meta()?;
+    if meta.hide_icons_applied != !visible {
+        meta.hide_icons_applied = !visible;
+        save_meta(&meta)?;
+    }
+    Ok(visible)
 }

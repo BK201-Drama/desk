@@ -253,4 +253,31 @@ test.describe("样式审查（fence 重构护栏）", () => {
     expect(Object.keys(snap).length).toBeGreaterThan(MIN_ELEMENTS);
     check("search", snap);
   });
+
+  /**
+   * 警告态 —— Task 5 新增的 UI。它不在重构前那两个状态里，必须单开一个状态录，
+   * 否则 `.fence-warn` 会永远待在护栏外面（GOAL §4.5）。
+   *
+   * 触发方式：让 mock 的 `fence_icons_visible` 抛错。这是**唯一**能让这条横条出现的
+   * 条件（图标正常处于隐藏态不算错误），所以录到的就是真实观感。
+   *
+   * addInitScript 的执行顺序 = 注册顺序，所以在 beforeEach 的 MOCK_PATH 之后再挂一个
+   * 只设标志的脚本即可 —— mock 里的 invoke 是运行时才读这个标志的。
+   */
+  test("警告态（桌面图标开关读写失败）", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __MOCK_ICONS_VISIBLE_THROWS__?: boolean })
+        .__MOCK_ICONS_VISIBLE_THROWS__ = true;
+    });
+    await openBoard(page);
+    await expect(page.locator(".fence-warn")).toBeVisible();
+    const snap = await snapshot(page);
+    expect(Object.keys(snap).length).toBeGreaterThan(MIN_ELEMENTS);
+    // 这个状态存在的意义就是那条横条。录不到它 = 录了个假的警告态。
+    expect(
+      Object.keys(snap).some((k) => k.includes("fence-warn")),
+      "警告条没进快照，warn 态等于空护栏"
+    ).toBe(true);
+    check("warn", snap);
+  });
 });

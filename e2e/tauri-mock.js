@@ -263,6 +263,19 @@
           return structuredClone(FENCE_FIXTURE);
         case "fence_snapshot":
           return { fences: structuredClone(FENCE_FIXTURE), icons: [] };
+        // 桌面图标开关。`__MOCK_ICONS_VISIBLE_THROWS__` 让测试能主动制造
+        // 「开关读写失败」—— `warn` 态基线就是靠它触发的。默认 falsy，
+        // 所以默认态 / 搜索态仍然是「一切正常」。
+        case "fence_icons_visible":
+          if (window.__MOCK_ICONS_VISIBLE_THROWS__) {
+            throw new Error("mock: 读写桌面图标开关失败");
+          }
+          return true;
+        case "fence_set_icons_visible":
+          if (window.__MOCK_ICONS_VISIBLE_THROWS__) {
+            throw new Error("mock: 读写桌面图标开关失败");
+          }
+          return !!args.visible;
         case "recent_list":
           return RECENT_FIXTURE.slice();
         case "recent_push": {

@@ -184,6 +184,8 @@ pub fn run() {
             fence::fence_launch,
             fence::fence_restore,
             fence::fence_status,
+            fence::fence_icons_visible,
+            fence::fence_set_icons_visible,
             fence::fence_save_order,
             recent::recent_list,
             recent::recent_push,

@@ -1,6 +1,7 @@
 //! Windows「显示桌面图标」全局开关（HKCU\...\Explorer\Advanced\HideIcons）的生命周期管理。
 //! 这是新版围栏唯一还碰系统的地方 —— 所有写入都收敛在本文件内。
 
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const REG_PATH: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
@@ -89,14 +90,57 @@ pub(crate) fn is_enabled() -> Result<Option<bool>, String> {
     Ok(parse_hide_icons(&String::from_utf8_lossy(&out.stdout)))
 }
 
-// 调用方在 Task 5 的看板「显示桌面图标」开关；在那之前没有使用者。
-#[allow(dead_code)]
 pub(crate) fn enable() -> Result<(), String> {
     set_desktop_icons_hidden(true)
 }
 
 pub(crate) fn disable() -> Result<(), String> {
     set_desktop_icons_hidden(false)
+}
+
+// ── 逃生口的持久化标志 ──────────────────────────────────────────────────────
+// spec §6.2 第 3 条：不依赖 desk 进程健康、不依赖注册表状态，只要用户能看见看板
+// 就能一键把桌面图标要回来。标志文件存在 = 用户明确要求「显示桌面图标」。
+//
+// 用独立文件而不是 fence.json，是为了让本功能独立于 Task 6 的 meta v2 上线。
+//
+// 读写拆成「纯函数收路径」+「薄封装解析真路径」两层：下面两个纯函数能拿临时目录
+// 单测，**不会去碰真实的 %LOCALAPPDATA%\desk\icons-visible** ——
+// 单测里误建那个文件会让 desk 以为用户要求显示图标，是个很隐蔽的副作用。
+
+fn flag_exists_at(p: &Path) -> bool {
+    p.exists()
+}
+
+fn set_flag_at(p: &Path, v: bool) -> Result<(), String> {
+    if v {
+        if let Some(parent) = p.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(p, b"1").map_err(|e| e.to_string())
+    } else {
+        match std::fs::remove_file(p) {
+            Ok(()) => Ok(()),
+            // 不存在 = 已经是目标状态，不算错
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+}
+
+fn visible_flag_path() -> Result<PathBuf, String> {
+    let base = dirs::data_local_dir().ok_or("no local app data")?;
+    Ok(base.join("desk").join("icons-visible"))
+}
+
+/// 用户是否明确要求「显示桌面图标」。
+/// 读不到路径 / 文件不存在都算「没要求」—— 逃生口的默认值是「不干预」。
+pub(crate) fn user_wants_visible() -> bool {
+    visible_flag_path().map(|p| flag_exists_at(&p)).unwrap_or(false)
+}
+
+pub(crate) fn set_user_wants_visible(v: bool) -> Result<(), String> {
+    set_flag_at(&visible_flag_path()?, v)
 }
 
 /// INV-3 兜底：注册表里是 1，但本地没有任何认领它的接管记录 → 说明上次异常退出
@@ -106,6 +150,13 @@ pub(crate) fn disable() -> Result<(), String> {
 pub(crate) fn recover_orphan_hidden_state() -> Result<bool, String> {
     if is_enabled()? != Some(true) {
         return Ok(false);
+    }
+    // 用户明确按过「显示桌面图标」→ 这个 1 一定是残留，不用再看别的证据。
+    // 必须排在接管记录检查**前面**：`hide_icons_applied` 是过期的 true 时，
+    // 只看 meta 会把「用户要求显示」误判成「有主」，逃生口就失效了。
+    if user_wants_visible() {
+        disable()?;
+        return Ok(true);
     }
     // 有可解析的接管记录 → 这个 1 是有主人的，不动
     if let Ok(meta) = crate::fence::load_meta() {
@@ -119,7 +170,7 @@ pub(crate) fn recover_orphan_hidden_state() -> Result<bool, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_hide_icons;
+    use super::{flag_exists_at, parse_hide_icons, set_flag_at};
 
     #[test]
     fn parse_empty_is_none() {
@@ -143,5 +194,25 @@ mod tests {
         // 同一个 key 下还有别的 DWORD；必须只认 HideIcons 这一行
         let out = "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\r\n    HideFileExt    REG_DWORD    0x1\r\n";
         assert_eq!(parse_hide_icons(out), None);
+    }
+
+    /// 逃生口标志的读写契约。全程只碰临时目录，不碰真实的 icons-visible。
+    #[test]
+    fn flag_round_trip() {
+        let dir = std::env::temp_dir().join(format!("desk-flag-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let p = dir.join("nested").join("icons-visible");
+
+        // 缺省 = 没要求（连父目录都不存在时也必须安全返回 false）
+        assert!(!flag_exists_at(&p));
+        // 置位要顺手建父目录，否则首次点击会失败
+        set_flag_at(&p, true).expect("set true");
+        assert!(flag_exists_at(&p));
+        set_flag_at(&p, false).expect("set false");
+        assert!(!flag_exists_at(&p));
+        // 幂等：重复清一个不存在的标志不算错（卸载/重复点击都会走到）
+        set_flag_at(&p, false).expect("clear twice");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -1,0 +1,19 @@
+/* fence 插件自己的样式。只有这个插件会长出来的东西才写在这里，
+   全局的围栏样式仍在 src/styles.css —— Task 17 才把后者拆过来。
+
+   选择器一律带 .pane-fences 前缀：本文件是懒加载 chunk，进 <head> 比
+   styles.css 晚，平手时后者赢。加前缀把优先级抬上去，不依赖加载顺序。 */
+
+/* 桌面图标开关读写失败的提示条（FencePanel.tsx，spec §8）。
+   刻意做得克制：它是个降级提示，不该抢围栏本身的注意力。 */
+.pane-fences .fence-warn {
+  margin: 0 0 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background-color: rgba(196, 92, 74, 0.14);
+  border: 1px solid rgba(196, 92, 74, 0.35);
+  color: #b5533f;
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-all;
+}
