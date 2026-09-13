@@ -1,7 +1,5 @@
 {
   "id": "cmdk",
-  "name": "Command Palette",
-  "version": "0.1.0",
   "slot": "overlay",
   "entry": "./panel.tsx",
   "permissions": [

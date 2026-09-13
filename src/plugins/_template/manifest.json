@@ -1,7 +1,5 @@
 {
   "id": "my-panel",
-  "name": "My Panel",
-  "version": "0.1.0",
   "slot": "left",
   "entry": "./panel.tsx",
   "permissions": ["host.log"],

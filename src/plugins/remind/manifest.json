@@ -1,7 +1,5 @@
 {
   "id": "remind",
-  "name": "Reminders",
-  "version": "0.1.0",
   "slot": "left",
   "entry": "./panel.tsx",
   "permissions": ["remind.read", "remind.write", "host.window", "host.log"],

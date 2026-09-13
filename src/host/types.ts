@@ -23,10 +23,13 @@ export type PluginPermission =
   | "cursor.read"
   | "sys-res.read";
 
+/**
+ * 没有 `name` / `version`：两者从插件宿主第一天起就**没有任何读取者**（面板标题走
+ * `PLUGIN_LABEL` 或 id），2026-09-14 用户裁决删掉、需要时再加。旧 manifest 里若还留着
+ * 这两个键不会报错（serde 与 `import.meta.glob` 都直接忽略多余字段）。
+ */
 export type PluginManifest = {
   id: string;
-  name: string;
-  version: string;
   slot: PluginSlot;
   entry: string;
   permissions: PluginPermission[];

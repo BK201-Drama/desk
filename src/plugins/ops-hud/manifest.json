@@ -1,7 +1,5 @@
 {
   "id": "ops-hud",
-  "name": "Ops HUD",
-  "version": "0.1.0",
   "slot": "overlay",
   "entry": "./panel.tsx",
   "permissions": ["host.plugins", "host.log"],

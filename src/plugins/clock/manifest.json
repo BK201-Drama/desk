@@ -1,7 +1,5 @@
 {
   "id": "clock",
-  "name": "Clock",
-  "version": "0.1.0",
   "slot": "left",
   "entry": "./panel.tsx",
   "permissions": ["host.log"],

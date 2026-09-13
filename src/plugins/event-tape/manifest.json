@@ -1,7 +1,5 @@
 {
   "id": "event-tape",
-  "name": "Event Tape",
-  "version": "0.1.0",
   "slot": "overlay",
   "entry": "./panel.tsx",
   "permissions": ["host.log"],

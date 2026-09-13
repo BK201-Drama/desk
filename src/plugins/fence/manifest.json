@@ -1,7 +1,5 @@
 {
   "id": "fence",
-  "name": "Fences",
-  "version": "0.1.0",
   "slot": "right",
   "entry": "./panel.tsx",
   "permissions": [

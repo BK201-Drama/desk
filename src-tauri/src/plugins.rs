@@ -6,8 +6,6 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginManifest {
     pub id: String,
-    pub name: String,
-    pub version: String,
     pub slot: String,
     pub entry: String,
     #[serde(default)]
@@ -250,8 +248,6 @@ fn seed_hello_plugin(user_dir: &PathBuf) -> Result<(), String> {
     fs::create_dir_all(&hello).map_err(|e| e.to_string())?;
     let manifest = r#"{
   "id": "hello",
-  "name": "Hello",
-  "version": "0.1.0",
   "slot": "left",
   "entry": "./panel.js",
   "permissions": ["host.log"],
