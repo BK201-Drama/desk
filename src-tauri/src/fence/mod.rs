@@ -1,6 +1,7 @@
 //! Desktop icon vault: icons live only in fences, not on the Windows desktop.
 
 pub(crate) mod hide;
+pub(crate) mod meta;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
