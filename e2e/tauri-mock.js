@@ -18,7 +18,8 @@
   // **改这里 = e2e/style-baseline.json 全体失效**：必须同时 `UPDATE_STYLE_BASELINE=1
   // npm run test:style` 并逐行 review diff。规则在 panel.css，照选择器去搜（**别写行号**）。
   // `collapsed` / `rows` **参与渲染**（`.is-collapsed` / `.fence-grid.rows-N`），默认值必须是
-  // 「不收起 + 自动」才录得出纯新增的基线 —— 想录别的状态用 `__MOCK_SAVE_UI__` 现改，**别改默认值**。
+  // 「不收起 + 自动」才录得出纯新增的基线 —— 想录别的状态用 `__MOCK_UI_PRESET__` 现改
+  // （用法见下面那个钩子的定义），**别改默认值**。
   const FENCE_FIXTURE = [
     {
       name: "游戏",

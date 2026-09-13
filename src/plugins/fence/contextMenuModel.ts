@@ -46,7 +46,7 @@ export type MenuIo = {
   open: (path: string, id: string) => void;
   openWith: (path: string) => void;
   reveal: (path: string) => void;
-  /** 空白处的新建。只给 folder / txt —— `lnk` 需要一个目标，而空白处没有（见 `newMenu`）。 */
+  /** 空白处的新建。只给 folder / txt —— `lnk` 需要一个目标，而空白处没有（见 `blankMenu`）。 */
   newItem: (kind: "folder" | "txt") => void;
   clipboard: (path: string, cut: boolean) => void;
   paste: () => void;
