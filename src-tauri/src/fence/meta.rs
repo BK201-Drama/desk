@@ -57,7 +57,7 @@ pub(crate) struct UiState {
     /// 收起（只留标题条）的围栏名。
     #[serde(default)]
     pub collapsed: BTreeSet<String>,
-    /// 自定义行数。**缺键 = 自动**（用 `styles.css` 里那份默认）。
+    /// 自定义行数。**缺键 = 自动**（用 `fence/panel.css` 里 `--fence-rows` 那份默认）。
     /// 上界由 `index::ROWS_MAX` 在读取时夹住 —— 前端只发 1..=ROWS_MAX，
     /// 但手改过的 json 也得收敛到一个存在的 CSS 类上。
     #[serde(default)]
