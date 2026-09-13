@@ -12,7 +12,7 @@
   // 从前三条都漏了 `builtin`，而 `PresetInfo` 声明它是必填：任何 `p.builtin` 分支
   // 在 mock 下都会静默走 falsy，测出来的行为跟真机不是一回事。
   const presets = [
-    { id: "coder", name: "程序员", description: "时钟 + GitHub + Multica + 待办 + 围栏（你的默认）", builtin: true },
+    { id: "coder", name: "程序员", description: "GitHub + Token 胶囊 + Multica + 待办 + 围栏（你的默认）", builtin: true },
     { id: "minimal", name: "极简", description: "时钟 + 围栏", builtin: true },
     { id: "fence", name: "仅围栏", description: "只要桌面图标", builtin: true },
   ];

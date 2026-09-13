@@ -386,7 +386,11 @@ pub fn plugin_list_presets() -> Result<Vec<PresetInfo>, String> {
         PresetInfo {
             id: "coder".into(),
             name: "程序员".into(),
-            description: "时钟 + GitHub + Multica + 待办 + 围栏（你的默认）".into(),
+            // ⚠️ 这句是**用户可见文案**（`CmdkPanel` 把它当 hint 渲染），必须与
+            // 上面 `coder_disabled()` 对得上。曾经写着「时钟 + …」—— 而 `clock` 恰恰
+            // 是明确 disabled 的那个（理由见 `coder_disabled` 上的注释），
+            // 同时又漏了启用着的 `token-capsule`。改预设组成时连着改这里。
+            description: "GitHub + Token 胶囊 + Multica + 待办 + 围栏（你的默认）".into(),
             builtin: true,
         },
         PresetInfo {
