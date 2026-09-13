@@ -128,6 +128,18 @@ fn guess_fence(name: &str) -> &'static str {
     "工具"
 }
 
+/// 落盘前给 PowerShell 脚本加 **UTF-8 BOM**。两个抽取函数都必须经它。
+///
+/// 完整因果写在 `extract_icon_png` 里那段 ⚠️ 注释，这里只说结论：
+/// **无 BOM 的 `.ps1` 会被 Windows PowerShell 5.1 按 ANSI 解码**（本机实测代码页 936），
+/// 于是插值进脚本的中文路径变成乱码 —— 抽取静默失败，看板上留一个空方块。
+fn with_bom(script: &str) -> Vec<u8> {
+    let mut body = Vec::with_capacity(script.len() + 3);
+    body.extend_from_slice("\u{feff}".as_bytes());
+    body.extend_from_slice(script.as_bytes());
+    body
+}
+
 fn extract_icon_png(src: &Path, dest: &Path) -> bool {
     #[cfg(windows)]
     {
@@ -281,7 +293,24 @@ if (-not $ok) {{ exit 1 }}
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| "x".into())
         ));
-        if fs::write(&tmp, &script).is_err() {
+        // ⚠️ 这个 BOM **不是装饰**：少了它，名字带非 ASCII 的项一个都抽不出图标（实测）。
+        //
+        // `fs::write` 写的是 UTF-8 **无 BOM**，而 `powershell.exe` 是 **5.1**：读无 BOM
+        // 文件时按 **ANSI** 解码（本机 cp936 / gb2312）。上面那条「脚本必须保持纯 ASCII」
+        // 的规矩管住了**脚本文本**，却管不住**插值进 `$src` / `$dest` 的路径** ——
+        // 而 Task 10 把读源换成真桌面之后（INV-1），路径头一回带上了真中文名：
+        // `C:\...\Desktop\微信.lnk` 的 6 个 UTF-8 字节被劈成 3 个乱码字，
+        // `Test-Path` 当场为假 → 脚本 `exit 1` → 看板上永远是一个空方块。
+        //
+        // 量过的对照（同一份脚本，只差 BOM）：无 BOM → `exists=False`、名字解成
+        // 3 个乱码字；带 BOM → `exists=True`、码点 `24494,20449` = 「微信」。
+        // 真机全量：修前 `real_icons_extract_from_real_files` 失败 14 / 成功 24，
+        // 失败的 14 个**全是中文名**，成功的 24 个**全是 ASCII 名**。
+        //
+        // 旧 vault 时代这颗雷是睡着的 —— 那时喂进来的是 `vault_name`
+        // （`user-________-23.lnk`，**纯 ASCII 下划线**，中文只留在 `original_name` 里）。
+        // vault 层一直在替这条路径挡中文，拆掉它才露出来。
+        if fs::write(&tmp, with_bom(&script)).is_err() {
             return false;
         }
         let ok = Command::new("powershell")
@@ -358,7 +387,10 @@ if (-not [DeskPIcon]::Save('{dll_s}', {index}, 64, '{dest_s}')) {{ exit 1 }}
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| "x".into())
         ));
-        if fs::write(&tmp, &script).is_err() {
+        // 同样要 BOM，理由见 `with_bom`。（这里当前的输入 `imageres.dll` 与
+        // `sys-*.png` 都是 ASCII，所以这颗雷在这个函数里还没响过 —— 但**同一个坑**，
+        // 谁把 dest 换成带中文的名字就会中。一并堵上，免得下一个人照抄走错的那半。）
+        if fs::write(&tmp, with_bom(&script)).is_err() {
             return false;
         }
         let ok = Command::new("powershell")
