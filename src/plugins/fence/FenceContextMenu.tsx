@@ -318,15 +318,12 @@ export function useMenuIo(
           call("fence_rename", { path, newName: name });
         });
       },
-      // 多一层确认是**故意**偏离资源管理器的（它不弹）：desk 的删除对象是用户的真文件，
-      // 而这里没有 Ctrl+Z。进回收站虽然可还原，但用户得先知道它去哪了。
-      // 同文件 `fence_restore` 已有同样的先例（`FencePanel.tsx:117`）。
-      remove: (path) => {
-        void withKeyboard(() => {
-          if (!confirm(`删除「${baseName(path)}」？\n会进回收站，可以还原。`)) return;
-          call("fence_delete", { path });
-        });
-      },
+      // **不弹确认框**（2026-09-13 用户裁决）：「我删除内容，不要弹窗，这增加了
+      // 不必要的交互」。原先这里有一层 `confirm`，理由是「desk 没有 Ctrl+Z」——
+      // 用户否掉了那个理由：删除**本来就进回收站**（`fence_delete` 带 `FOF_ALLOWUNDO`），
+      // 还原的路一直在那儿，弹窗只是每次都拦一下。资源管理器也不弹。
+      // 于是这条也**从偏离表里划掉**了 —— 它不再偏离。
+      remove: (path) => call("fence_delete", { path }),
       sendTo: (path) => call("fence_send_to", { path }),
       compress: (path) => call("fence_compress", { path }),
       properties: (path) => call("fence_properties", { path }),

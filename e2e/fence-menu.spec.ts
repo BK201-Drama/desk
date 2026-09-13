@@ -312,26 +312,35 @@ test("重命名：prompt 的初值是 path 的文件名，提交时补回扩展�
   expect(seen[0].defaultValue).toBe("Cursor.lnk");
 });
 
-test("删除：确认了才调，取消一次都不调", async ({ page }) => {
+/**
+ * 删除**不弹确认框**（2026-09-13 用户裁决：「我删除内容，不要弹窗，这增加了
+ * 不必要的交互」）。原先这里有一层 `confirm`，理由是「desk 没有 Ctrl+Z」——
+ * 被否掉了：删除本来就进回收站（`FOF_ALLOWUNDO`），还原的路一直在。
+ *
+ * 这条的**主要断言是「一个对话框都没有」**，不是「命令发出去了」——
+ * 只断言后者的话，留着那个 `confirm` 也能过（用户点确认就是了）。
+ * 挂一个 `dialog` 监听把两件事一起钉住：命令到了，而且没有任何框弹出来。
+ */
+test("删除：不弹任何对话框，直接发命令", async ({ page }) => {
   await openBoard(page);
 
-  // 取消
-  page.once("dialog", (d) => void d.dismiss());
-  await rightClick(page, app("d-yuque-0"), 900, 300);
-  await clickMenu(page, "delete");
-  await closeMenu(page);
-  // 等一拍，给「万一真的发了」留出被看见的机会
-  await page.waitForTimeout(200);
-  expect(await callsTo(page, "fence_delete"), "取消后不该发命令").toEqual([]);
+  const dialogs: string[] = [];
+  page.on("dialog", (d) => {
+    dialogs.push(d.type());
+    void d.dismiss(); // 万一真弹了，别让 page 停在框上
+  });
 
-  // 确认
-  page.once("dialog", (d) => void d.accept());
   await rightClick(page, app("d-yuque-0"), 900, 300);
   await clickMenu(page, "delete");
   await closeMenu(page);
   await expect
     .poll(async () => callsTo(page, "fence_delete"))
     .toEqual([{ path: "C:\\Desktop\\语雀.lnk" }]);
+
+  // 命令是同步发的，框若存在会**先**被上面的监听收到 —— 所以这一拍是给「万一」
+  // 留的，不是必须等的。断言放在最后，顺序上更严格。
+  await page.waitForTimeout(200);
+  expect(dialogs, "删除不该弹任何对话框").toEqual([]);
 });
 
 /**
@@ -341,7 +350,8 @@ test("删除：确认了才调，取消一次都不调", async ({ page }) => {
  * desk 的窗口是 `WS_EX_NOACTIVATE` 的（桌面看板刻意不抢焦点，`win_zorder.rs`），
  * 于是**原生对话框也抢不到键盘**：框照常画出来，敲进去的字进不去。
  * 修法是把搜索框那条路复用一遍 —— 菜单开着时借键盘、关掉时还，
- * 要弹对话框的动作（重命名 / 删除 / alert）再自己借一次。
+ * 要弹对话框的动作（重命名 / alert）再自己借一次。（删除原先也在这条路上，
+ * 后来那个 `confirm` 被用户撤掉了，见下面那条测试。）
  *
  * 这条测的是**顺序**，因为顺序就是正确性本身：
  *   · 借必须发生在对话框**弹出之前**（`withKeyboard` 里是 `await` 完才跑 `fn`）
