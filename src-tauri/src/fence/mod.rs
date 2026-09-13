@@ -3,6 +3,7 @@
 pub(crate) mod hide;
 pub(crate) mod index;
 pub(crate) mod meta;
+pub(crate) mod migrate;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -838,32 +839,8 @@ pub fn fence_save_order(layout: Vec<FenceLayoutDto>) -> Result<Vec<FenceDto>, St
     list_fences_inner(&meta)
 }
 
-fn move_path(src: &Path, dest: &Path) -> Result<(), std::io::Error> {
-    match fs::rename(src, dest) {
-        Ok(()) => Ok(()),
-        Err(_) => {
-            if src.is_dir() {
-                // directories: copy tree is heavy; rename already failed — surface error
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::PermissionDenied,
-                    "无法移动文件夹（权限不足）",
-                ));
-            }
-            fs::copy(src, dest)?;
-            fs::remove_file(src)?;
-            Ok(())
-        }
-    }
-}
-
-fn unique_dest(desktop: &Path, original_name: &str, vault_name: &str) -> PathBuf {
-    let dest = desktop.join(original_name);
-    if dest.exists() {
-        desktop.join(vault_name)
-    } else {
-        dest
-    }
-}
+// move_path / unique_dest 已迁到 migrate.rs（Task 9）——
+// 新架构下「搬动文件」只发生在那一处一次性迁移里，本模块不再自己搬东西。
 
 #[tauri::command]
 pub fn fence_launch(path: String) -> Result<(), String> {
@@ -923,14 +900,18 @@ pub fn fence_restore() -> Result<(), String> {
         } else {
             user_desktop.clone()
         };
-        let dest = unique_dest(&preferred, &e.original_name, &e.vault_name);
+        // move_path / unique_dest 已迁进 migrate.rs（Task 9）。这里先跟着改限定路径 ——
+        // **行为一字未改**，fence_restore 仍是老的「还原」语义。
+        // Task 10 才把它整个换成 migrate::run()（迁移入口）。分两步是为了让 Task 9
+        // 只有「搬代码」这一个变量，出问题时能立刻定位。
+        let dest = migrate::unique_dest(&preferred, &e.original_name, &e.vault_name);
 
-        match move_path(&src, &dest) {
+        match migrate::move_path(&src, &dest) {
             Ok(()) => {}
             Err(_public_denied) if e.origin == "public" => {
                 // 公共桌面常需管理员；回退到用户桌面，避免整批失败
-                let fallback = unique_dest(&user_desktop, &e.original_name, &e.vault_name);
-                if let Err(err2) = move_path(&src, &fallback) {
+                let fallback = migrate::unique_dest(&user_desktop, &e.original_name, &e.vault_name);
+                if let Err(err2) = migrate::move_path(&src, &fallback) {
                     errors.push(format!("{}: {err2}", e.original_name));
                     remaining.push(e);
                 }
