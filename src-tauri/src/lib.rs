@@ -187,6 +187,18 @@ pub fn run() {
             fence::fence_icons_visible,
             fence::fence_set_icons_visible,
             fence::fence_save_order,
+            // Task 14：右键菜单的文件操作。这是全仓**唯一**会动用户文件的命令组，
+            // 每个入口先过 `ops::locate`（只放行桌面根的直接子项）。
+            fence::ops::fence_create,
+            fence::ops::fence_rename,
+            fence::ops::fence_delete,
+            fence::ops::fence_properties,
+            fence::ops::fence_open_with,
+            fence::ops::fence_reveal,
+            fence::ops::fence_clipboard,
+            fence::ops::fence_paste,
+            fence::ops::fence_send_to,
+            fence::ops::fence_compress,
             recent::recent_list,
             recent::recent_push,
             plugins::plugin_list_user,

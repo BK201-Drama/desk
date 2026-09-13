@@ -79,17 +79,21 @@ pub(crate) fn save(m: &FenceMeta) -> Result<(), String> {
 
 /// 清掉磁盘上已不存在的条目。返回清理数量。
 ///
-/// **目前没有调用点。** 计划原本把它挂在 Task 13 的 watcher 上（「真桌面删除 →
-/// 条目被 `prune`」），**Task 13 决定不这么接**：它的入参 `present` 只能来自
-/// `scan_desktop()`，而那条路在 `read_dir` 失败时是**静默返回空列表**的
-/// （`index::scan_root`）—— 桌面目录一时读不到（权限、被别的进程锁、网络盘重连）
-/// 就会把整份 `fence.json` 清空。INV-4 说「只丢偏好不丢文件」，
-/// 而这是**连偏好一起丢**，属于不该装上去的那种自动化。
+/// **唯一的调用点是冷启动的 `fence_list`，且必须在「每个桌面根都读成功」时才调。**
+/// 入参 `present` 只能来自一次扫描，而扫描有两种失败法：
 ///
-/// 它的下一个消费者是 Task 14 的 `fence_delete`：那里「哪个 key 没了」是调用方
-/// 自己刚做的事（`fs::rename` / 删除的正是它），精确、不会误伤，
-/// 且删除是**用户明确要求**的 —— 偏好跟着走才符合直觉。
-#[allow(dead_code)]
+/// - `read_dir` 失败（权限 / 被进程占用 / 网络盘重连）—— Task 13 为此**驳回了**
+///   「watcher 上挂 prune」：那时的 `index::scan_root` 读失败会**静默返回空列表**，
+///   于是「桌面一时读不到」和「桌面真的空了」长得一样，一次读失败就清空整份偏好。
+/// - 只读到一个根 —— 公共桌面读不到时它的项一个都扫不到，同样会误清。
+///
+/// 现在两条都有解了：`scan_root` 改成 `Result`（失败**说出来**）、
+/// `scan_desktop_checked` 多返回一个「每个根都读成功吗」，调用方拿它当闸。
+/// 于是这里是「用户主动启动 desk 时的一次权威扫描」，而不是「随时可能读失败的
+/// 某一拍」—— 这就是它和 watcher 那条路的区别。
+///
+/// 单键删除（`fence_delete`）**不用**它：那里「刚删的是谁」是调用方自己拿的 key，
+/// 不需要也不该靠一次扫描去反推。`ops.rs` 用 `m.entries.remove(&key)`。
 pub(crate) fn prune(m: &mut FenceMeta, present: &HashSet<String>) -> usize {
     let before = m.entries.len();
     m.entries.retain(|k, _| present.contains(k));
@@ -98,9 +102,9 @@ pub(crate) fn prune(m: &mut FenceMeta, present: &HashSet<String>) -> usize {
 
 /// 文件改名时把条目迁移过去，保留 fence / order。返回是否迁移成功。
 ///
-/// 同 `prune`：没有调用点的理由只是**还没轮到** —— Task 14 的 `fence_rename` 就是
-/// `fs::rename` + 本函数，验收写着「改名后围栏归属不变」。
-#[allow(dead_code)]
+/// 调用点是 `ops::fence_rename`，它保证**先调本函数落盘、再 `fs::rename`** ——
+/// 反过来的话 watcher 可能先看到改名、把新名字按 `guess_fence` 猜一个围栏推给前端，
+/// 而那一帧之后指纹就稳定了，第二拍（只管图标）不会来纠。顺序的理由写在 `ops.rs`。
 pub(crate) fn rename_key(m: &mut FenceMeta, from: &str, to: &str) -> bool {
     match m.entries.remove(from) {
         Some(e) => {

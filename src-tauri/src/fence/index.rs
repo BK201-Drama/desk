@@ -48,10 +48,18 @@ pub(crate) fn icon_file(key: &str) -> PathBuf {
 }
 
 /// 枚举一个桌面根目录。纯读操作。跳过 desktop.ini 与 desk 自身的快捷方式。
-pub(crate) fn scan_root(origin: &str, root: &Path) -> Vec<ScannedItem> {
-    let Ok(rd) = std::fs::read_dir(root) else {
-        return Vec::new();
-    };
+///
+/// **读不到根目录是 `Err`，不是空列表。** 旧签名直接 `return Vec::new()`，
+/// 于是「这个桌面一时读不到」和「这个桌面是空的」在调用方眼里长得一样 ——
+/// Task 13 驳回「watcher 上挂 `meta::prune`」就是因为这一点：一次读失败会清空整份
+/// 分类偏好（`fence.json` 里的条目，`build_fences` 只遍历扫到的项，所以清掉之后
+/// 那一栏的分类**不会自己回来**）。现在调用方能区分了，`mod.rs` 的
+/// `scan_desktop_checked` 才有条件说「每个根都读成功，所以没扫到的 key 是真的没了」。
+///
+/// 条目级的读失败（`rd.flatten()` 丢掉的）依然静默跳过：一个坏项不该让整次扫描失败。
+pub(crate) fn scan_root(origin: &str, root: &Path) -> Result<Vec<ScannedItem>, String> {
+    let rd = std::fs::read_dir(root)
+        .map_err(|e| format!("读不到桌面目录 {}：{e}", root.display()))?;
     let mut out = Vec::new();
     for ent in rd.flatten() {
         let file_name = ent.file_name().to_string_lossy().to_string();
@@ -86,7 +94,7 @@ pub(crate) fn scan_root(origin: &str, root: &Path) -> Vec<ScannedItem> {
             mtime,
         });
     }
-    out
+    Ok(out)
 }
 
 /// 归属判定：meta 里有记录就用记录，否则用 guess_fence 兜底。
@@ -197,7 +205,7 @@ mod tests {
         let d = scratch();
         std::fs::write(d.path().join("desktop.ini"), b"").unwrap();
         std::fs::write(d.path().join("a.txt"), b"hi").unwrap();
-        let items = scan_root("user", d.path());
+        let items = scan_root("user", d.path()).unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].file_name, "a.txt");
     }
@@ -207,7 +215,7 @@ mod tests {
         let d = scratch();
         std::fs::write(d.path().join("报表.xlsx"), b"").unwrap();
         std::fs::create_dir(d.path().join("项目资料")).unwrap();
-        let items = scan_root("user", d.path());
+        let items = scan_root("user", d.path()).unwrap();
         let by = |n: &str| items.iter().find(|i| i.file_name == n).unwrap();
         assert_eq!(by("报表.xlsx").label, "报表");
         assert!(!by("报表.xlsx").is_dir);
@@ -219,7 +227,7 @@ mod tests {
     fn scan_key_carries_origin() {
         let d = scratch();
         std::fs::write(d.path().join("x.lnk"), b"").unwrap();
-        let items = scan_root("public", d.path());
+        let items = scan_root("public", d.path()).unwrap();
         assert_eq!(items[0].key, "public:x.lnk");
     }
 
@@ -228,7 +236,7 @@ mod tests {
         let d = scratch();
         std::fs::write(d.path().join("PVZ.lnk"), b"").unwrap();
         std::fs::write(d.path().join("未知物.xyz"), b"").unwrap();
-        let items = scan_root("user", d.path());
+        let items = scan_root("user", d.path()).unwrap();
 
         let mut m = FenceMeta::default();
         m.entries.insert(
@@ -281,7 +289,7 @@ mod tests {
         // 迁移时公共桌面写不进去会退回用户桌面，只盯一个根可能一个文件都扫不到。
         let mut targets: Vec<(String, PathBuf)> = Vec::new();
         for (origin, root) in crate::fence::desktop_roots().unwrap() {
-            for it in scan_root(&origin, &root) {
+            for it in scan_root(&origin, &root).unwrap_or_default() {
                 targets.push((it.label, it.path));
             }
         }

@@ -9,14 +9,19 @@
 //! 新看板推给前端 —— 否则看板只是冷启动那一刻的快照。
 //! 过渡期的「桌面 + vault 合并读」随 Task 12 删除；`fence.json` 里的东西全是偏好，
 //! 删掉它只丢分类不丢文件（INV-4）。
+//!
+//! 写路径（Task 14）只有一条：`ops.rs` 的右键菜单命令。它是本模块唯一会动**用户文件**
+//! 的地方，所以每个入口都先过 `ops::locate` 那道闸（只放行桌面根的**直接**子项）。
 
 pub(crate) mod hide;
 pub(crate) mod index;
 pub(crate) mod meta;
 pub(crate) mod migrate;
+pub(crate) mod ops;
 pub(crate) mod watch;
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -441,13 +446,48 @@ fn hide_desktop_icons_on_start() {
     std::thread::spawn(hide_unless_user_wants_visible);
 }
 
-/// 桌面上的全部项（用户桌面 + 公共桌面）。**纯读**：不移动、不创建、不删除。
-fn scan_desktop() -> Result<Vec<index::ScannedItem>, String> {
+/// 扫两个桌面根，返回 `(项, 是不是每个根都读成功了)`。
+///
+/// 那个布尔值是给 `meta::prune` 用的判据：**只有「每个根都读成功」的那一次扫描
+/// 才有资格说「这个 key 没了」**。公共桌面一时读不到（权限 / 被占用 / 网络盘重连）时
+/// 它的项一个都扫不到，拿这个结果去 prune 就会把公共桌面那一栏的偏好全清掉 ——
+/// 那正是 Task 13 驳回「watcher 上挂 prune」的同一条理由，只不过换了个时机。
+///
+/// 用户桌面读不到则**整个失败**：看板本来就是用户桌面的索引，读不到它，
+/// 「返回一个空看板」是撒谎（用户会以为文件没了）。
+fn scan_desktop_checked() -> Result<(Vec<index::ScannedItem>, bool), String> {
+    let roots = desktop_roots()?;
     let mut items: Vec<index::ScannedItem> = Vec::new();
-    for (origin, root) in desktop_roots()? {
-        items.extend(index::scan_root(&origin, &root));
+    let mut all_ok = true;
+    let mut user_ok = false;
+
+    for (origin, root) in &roots {
+        match index::scan_root(origin, root) {
+            Ok(v) => {
+                if origin == "user" {
+                    user_ok = true;
+                }
+                items.extend(v);
+            }
+            Err(e) => {
+                all_ok = false;
+                eprintln!("desk: {e}");
+            }
+        }
     }
-    Ok(items)
+
+    if !user_ok {
+        return Err("读不到用户桌面目录".into());
+    }
+    Ok((items, all_ok))
+}
+
+/// 桌面上的全部项（用户桌面 + 公共桌面）。**纯读**：不移动、不创建、不删除。
+///
+/// 尽力而为：公共桌面读不到时只显示能读到的那些。**别拿它判断「哪些项没了」** ——
+/// 要那个判断请用 `scan_desktop_checked` 并检查第二个返回值。
+fn scan_desktop() -> Result<Vec<index::ScannedItem>, String> {
+    Ok(scan_desktop_checked()?.0)
 }
 
 /// 现在的真相源是「真桌面」（INV-1）。**全程只读** —— 本函数不移动任何文件。
@@ -491,7 +531,23 @@ fn refresh_icons_in_background() {
 #[tauri::command]
 pub fn fence_list() -> Result<Vec<FenceDto>, String> {
     // 冷启动主路径：**先给列表，再做重活**。隐藏桌面图标与抽图标都在后台。
-    let fences = collect_fences()?;
+    let (items, all_ok) = scan_desktop_checked()?;
+
+    // 顺手收掉 `fence.json` 里的孤儿条目（Task 14 §1.6）—— 用户上次运行期间在
+    // 资源管理器里删掉的东西，它的分类偏好没有理由继续留着：留着的后果是同名文件
+    // 以后再出现时会**静默继承**上一次的分类和排序。
+    //
+    // 只在 `all_ok` 时做。`fence_delete` 那一条路不需要这个判断（它删的是谁是自己
+    // 拿的 key），而这里必须靠一次扫描反推，所以必须确认扫描是完整的。
+    let mut m = meta::load()?;
+    if all_ok {
+        let present: HashSet<String> = items.iter().map(|i| i.key.clone()).collect();
+        if meta::prune(&mut m, &present) > 0 {
+            meta::save(&m)?;
+        }
+    }
+
+    let fences = index::build_fences(&items, &m);
     hide_desktop_icons_on_start();
     refresh_icons_in_background();
     Ok(fences)
@@ -1079,5 +1135,153 @@ mod real_machine_tests {
             }
         }
         eprintln!("最近：{recent_before:?} → {recent_after:?}");
+    }
+
+    /// 看板上 `label` 这一项落在哪个围栏。「系统」围栏排除在外 ——
+    /// 那几个 shell 项的 label 是写死的，同名碰撞只会让断言说谎。
+    fn fence_of_label(label: &str) -> Option<String> {
+        collect_fences()
+            .expect("collect_fences")
+            .into_iter()
+            .find(|f| f.name != "系统" && f.items.iter().any(|i| i.label == label))
+            .map(|f| f.name)
+    }
+
+    /// Task 14 的真机验收：新建 → 改名 → 删除，全走**真实桌面**上的生产入口
+    /// （`ops::fence_create` / `fence_rename` / `fence_delete` 就是右键菜单点下去调的那三个）。
+    ///
+    /// 计划 Task 14 §4 的手工验收里，有三条是「在真机上看结果」，这里把它们变成断言：
+    /// 文件夹真的出现在用户桌面上（落在**看板的读源**里，而不只是"某个地方"）/
+    /// 改名后**围栏归属不变** —— 这一条是 §1.5「先写 meta 再动文件」那个顺序的
+    /// 唯一可测形式 / 删除后账实两清、`fence.json` 不多不少回到原样。
+    /// 剩下一条（剪贴板与资源管理器**双向**）只能留给手：剪贴板是全局资源，
+    /// 机器跑一遍会踩掉用户当时正拿着的东西。
+    ///
+    /// 跑法：`cargo test -- --ignored real_machine_ops --nocapture`
+    #[test]
+    #[ignore = "真机：在真实桌面上建/改名/删一个探针文件夹"]
+    fn real_machine_ops_create_rename_delete() {
+        /// 探针文件夹。`Drop` 用**裸 `remove_dir_all`**、不用 `fence_delete` ——
+        /// 兜底那一手不能依赖被测代码本身：它要是坏了，兜底也跟着坏，
+        /// 探针就永远留在用户桌面上。
+        struct DirProbe {
+            paths: Vec<PathBuf>,
+        }
+
+        impl Drop for DirProbe {
+            fn drop(&mut self) {
+                for p in &self.paths {
+                    let _ = std::fs::remove_dir_all(p);
+                    let _ = std::fs::remove_file(p);
+                }
+            }
+        }
+
+        let entries_before = meta::load().expect("fence.json").entries.len();
+        let root = desktop_dir().expect("desktop dir");
+
+        // ① 新建 —— 右键「新建文件夹」
+        let name = "__desk_task14_probe__";
+        let path = PathBuf::from(
+            ops::fence_create(name.into(), "folder".into(), None).expect("fence_create"),
+        );
+        // 新名字先算出来推进兜底清单，再动文件：这样从改名**那一刻**起两个路径
+        // 都在兜底范围内，中间不留窗口。
+        let renamed = root.join(format!("{name}_renamed"));
+        // `_probe` 只为它的 `Drop` 活着（`let _ = …` 会当场析构，那就不兜底了）。
+        let _probe = DirProbe {
+            paths: vec![path.clone(), renamed.clone()],
+        };
+
+        assert!(path.is_dir(), "新建的文件夹没落到盘上：{}", path.display());
+        assert_eq!(
+            path.parent(),
+            Some(root.as_path()),
+            "新建的东西不在用户桌面上（看板读的是 {}）",
+            root.display()
+        );
+        // 它得同时过得了护栏 —— 建得出来却删不掉会是个很闷的 bug。
+        assert!(
+            ops::gate(&path).is_ok(),
+            "刚建出来的项自己过不了护栏：{}",
+            path.display()
+        );
+
+        // ② 给它记一笔偏好：「工具」。选这个围栏是**故意的** —— 目录没有 meta 时
+        //    `fence_of` 兜到「文件夹」，所以「落在工具里」和「没落任何围栏」不会长得一样。
+        let old_key = meta::key("user", name);
+        {
+            let mut m = meta::load().expect("fence.json");
+            m.entries.insert(
+                old_key.clone(),
+                meta::Entry {
+                    fence: "工具".into(),
+                    order: 0,
+                    mtime: 0,
+                },
+            );
+            meta::save(&m).expect("save fence.json");
+        }
+        assert_eq!(
+            fence_of_label(name).as_deref(),
+            Some("工具"),
+            "记了偏好的项没落在「工具」围栏里"
+        );
+
+        // ③ 改名 —— 围栏归属必须跟着走（spec §11-3）
+        let new_name = format!("{name}_renamed");
+        let returned = ops::fence_rename(path.to_string_lossy().to_string(), new_name.clone())
+            .expect("fence_rename");
+
+        assert!(!path.exists(), "改名后旧路径还在：{}", path.display());
+        assert!(renamed.is_dir(), "改名后新路径不存在：{}", renamed.display());
+        assert_eq!(
+            Path::new(&returned),
+            renamed.as_path(),
+            "fence_rename 返回的路径和盘上的对不上"
+        );
+
+        let m = meta::load().expect("fence.json");
+        let new_key = meta::key("user", &new_name);
+        assert!(
+            !m.entries.contains_key(&old_key),
+            "改名后旧 key 还留在 fence.json 里：{old_key}"
+        );
+        assert_eq!(
+            m.entries.get(&new_key).map(|e| e.fence.as_str()),
+            Some("工具"),
+            "改名把围栏归属弄丢了（fence.json 这一侧）—— meta::rename_key 没生效"
+        );
+        assert_eq!(
+            fence_of_label(&new_name).as_deref(),
+            Some("工具"),
+            "改名后项跳到了别的围栏（看板这一侧）—— 用户看得见的错分栏，且不会自己回来"
+        );
+
+        // ④ 删除 —— 进回收站（可撤销），账实两清
+        ops::fence_delete(renamed.to_string_lossy().to_string()).expect("fence_delete");
+        assert!(!renamed.exists(), "删完还在盘上：{}", renamed.display());
+        assert!(
+            !meta::load().expect("fence.json").entries.contains_key(&new_key),
+            "删完还剩一条 meta —— 下次冷启动会被 prune 收走，但眼下它是个孤儿 {new_key}"
+        );
+        assert_eq!(
+            fence_of_label(&new_name),
+            None,
+            "删完看板上还留着这一项"
+        );
+
+        // ⑤ 账目回到原样：这一趟没在 fence.json 里留下任何痕迹
+        assert_eq!(
+            meta::load().expect("fence.json").entries.len(),
+            entries_before,
+            "fence.json 的条目数没回到起点，这一趟留下了残留"
+        );
+
+        eprintln!(
+            "新建 → 改名 → 删除 全程通过；探针文件夹现在在**回收站**里（可撤销），\
+             fence.json {} 条（与开始时一致）",
+            entries_before
+        );
     }
 }

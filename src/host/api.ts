@@ -22,6 +22,19 @@ const PERM_COMMANDS: Record<PluginPermission, string[]> = {
     "fence_restore",
     "fence_save_order",
     "fence_set_icons_visible",
+    // Task 14 的右键文件操作。**刻意不新开一个权限位**：`fence.write` 现在的含义
+    // 已经包含比删除更重的动作（`fence_restore` 就是迁移 34 个真文件），
+    // 再切一层 `fence.ops` 只会让三处各长一截，而权限边界一点没变。
+    "fence_create",
+    "fence_rename",
+    "fence_delete",
+    "fence_properties",
+    "fence_open_with",
+    "fence_reveal",
+    "fence_clipboard",
+    "fence_paste",
+    "fence_send_to",
+    "fence_compress",
   ],
   "fence.launch": ["fence_launch"],
   "recent.read": ["recent_list"],
