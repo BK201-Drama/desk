@@ -1,6 +1,7 @@
 import { convertFileSrc, invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { openUrl as tauriOpenUrl } from "@tauri-apps/plugin-opener";
 import { emit, on } from "./events";
+import type { CommandName } from "../generated/commands";
 import { isEditing, onEditChange } from "./edit";
 import type {
   HostCommand,
@@ -9,8 +10,11 @@ import type {
   PluginPermission,
 } from "./types";
 
-/** permission → allowed Tauri command names */
-const PERM_COMMANDS: Record<PluginPermission, string[]> = {
+/** permission → allowed Tauri command names
+ *
+ * 值的类型是 `CommandName`（由 `src-tauri/build.rs` 从 Rust 注册表生成），
+ * 不是 `string` —— 所以在这里写一个后端不存在的命令名是 `tsc` 错误。 */
+const PERM_COMMANDS: Record<PluginPermission, CommandName[]> = {
   "github.read": ["github_snapshot", "github_cached"],
   "github.write": ["github_set_token"],
   "multica.read": ["multica_snapshot", "multica_app_url"],
@@ -151,7 +155,7 @@ export function createHostContext(manifest: PluginManifest): HostContext {
   return {
     pluginId,
     permissions,
-    async invoke<T = unknown>(cmd: string, args?: Record<string, unknown>) {
+    async invoke<T = unknown>(cmd: CommandName, args?: Record<string, unknown>) {
       if (!allowed.has(cmd)) {
         emit(
           "invoke:denied",

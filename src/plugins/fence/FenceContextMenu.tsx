@@ -20,6 +20,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { HostContext } from "../../host/types";
+import type { CommandName } from "../../generated/commands";
 import type { FenceDialogApi } from "./FenceDialog";
 import {
   baseName,
@@ -295,7 +296,7 @@ export function useMenuIo(
   }
 ): MenuIo {
   const call = useCallback(
-    (cmd: string, args?: Record<string, unknown>) => {
+    (cmd: CommandName, args?: Record<string, unknown>) => {
       // 失败一律说出来。报错原文交给 `detail` —— 后端那句中文（含路径）比
       // 「操作失败」四个字有用得多，而标题栏只有这样才不会被撑成一条竖线。
       void ctx

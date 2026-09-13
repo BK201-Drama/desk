@@ -1,0 +1,82 @@
+/**
+ * ⚠️ **生成物 —— 不要手改。**
+ *
+ * 由 `src-tauri/build.rs` 从 `src-tauri/src/lib.rs` 的 `generate_handler![...]`
+ * 解析而来（解析器在 `src-tauri/cmd_manifest.rs`）。手改会在下一次 cargo 构建时
+ * 被原样覆盖。
+ *
+ * ## 为什么要有这个文件
+ *
+ * 命令名原先散在三处手写清单里 —— Rust 的注册表、`src/host/api.ts` 的
+ * `PERM_COMMANDS`、`e2e/tauri-mock.js` 的 `case` —— 三者之间没有任何校验，
+ * 漏一处只在**运行时**才炸（`permission denied` / mock 静默返回空）。
+ *
+ * 现在注册表是唯一真相：拼错命令名在这里是 `tsc` 错误，不是线上故障。
+ */
+
+export const COMMANDS = [
+  "set_click_through",
+  "set_keyboard_input",
+  "set_cursor",
+  "boot_mark",
+  "autostart_get",
+  "autostart_set",
+  "multica_app_url",
+  "multica_snapshot",
+  "github_cached",
+  "github_snapshot",
+  "github_set_token",
+  "remind_list",
+  "remind_add",
+  "remind_toggle",
+  "remind_remove",
+  "fence_rescan",
+  "fence_list",
+  "fence_launch",
+  "fence_restore",
+  "fence_status",
+  "fence_icons_visible",
+  "fence_set_icons_visible",
+  "fence_save_order",
+  "fence_save_ui",
+  "fence_create",
+  "fence_rename",
+  "fence_delete",
+  "fence_properties",
+  "fence_open_with",
+  "fence_reveal",
+  "fence_clipboard",
+  "fence_paste",
+  "fence_send_to",
+  "fence_compress",
+  "recent_list",
+  "recent_push",
+  "plugin_list_user",
+  "plugin_get_config",
+  "plugin_set_disabled",
+  "plugin_set_order",
+  "plugin_list_presets",
+  "plugin_apply_preset",
+  "plugin_apply_scheme",
+  "plugin_create_scheme",
+  "plugin_update_scheme",
+  "plugin_delete_scheme",
+  "plugin_save_custom",
+  "plugin_discard_custom_draft",
+  "plugin_storage_get",
+  "plugin_storage_set",
+  "qqmusic_status",
+  "qqmusic_now_playing",
+  "qqmusic_ensure_running",
+  "qqmusic_launch",
+  "qqmusic_toggle",
+  "qqmusic_next",
+  "qqmusic_prev",
+  "stock_cached",
+  "stock_quotes",
+  "cursor_cached",
+  "cursor_usage",
+  "sys_res_snapshot",
+] as const;
+
+export type CommandName = (typeof COMMANDS)[number];

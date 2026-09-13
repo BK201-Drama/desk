@@ -11,6 +11,10 @@ mod stock;
 mod sys_res;
 #[cfg(windows)]
 mod win_zorder;
+// 命令清单解析器的自校验测试。解析器本身在 `src-tauri/cmd_manifest.rs`，
+// 由 `build.rs` 与这里 `include!` 共享（不复制第二份）。
+#[cfg(test)]
+mod manifest_tests;
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

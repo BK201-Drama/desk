@@ -148,10 +148,11 @@
   /**
    * 每个 `invoke` 的记录，形如 `[{ cmd, args }]`。
    *
-   * 为什么 e2e 需要它：`default:` 分支返回 `{}`，**命令名写错也会「成功」**，
-   * 光看界面根本分不出来。而「Tauri 2 的参数是 camelCase」这条约束更是
-   * 只有断言 args 才拦得住（写成 `new_name` 在真机上会 invalid args，
-   * 在 mock 里却一切正常）。
+   * 为什么 e2e 需要它：**命令名**写错这件事，2026-09-14 起由 `default:` 的
+   * `throw` 自己兜住了（以前那里 `return {}`，写错也会「成功」）。但**参数名**
+   * 写错仍然看不出来 —— mock 只按命令名分发，根本不看 args。而「Tauri 2 的命令
+   * 参数默认是 camelCase」这条约束只有断言 args 才拦得住：写成 `new_name` 在真机上
+   * 会 invalid args，在 mock 里一切正常。`e2e/fence-menu.spec.ts` 就是为这个断的。
    */
   const mockCalls = [];
   window.__MOCK_CALLS__ = mockCalls;
@@ -225,6 +226,44 @@
         throw new Error("mock: " + cmd + " 故意失败");
       }
       switch (cmd) {
+        // ── 宿主基础命令（2026-09-14 补）────────────────────────────────────
+        // 这四条原先**一条 case 都没有**，全靠 `default` 兜底静默返回。各条的后果
+        // 都不一样，且都不响：
+        //   · `autostart_get` 拿到 `{}` —— JS 里 **truthy**，于是「开机自启」按钮
+        //     在 e2e 里永远是「开」；样式基线把 `{}` 这个谎话录成了 `.icon-btn.on`。
+        //   · `boot_mark` 拿到 `{}`（真机是 null），冷启动埋点等于没测。
+        //   · `sys_res_snapshot` 拿到 `{}`，被 `normalizeSnapshot` 兜成一张全 0 空表。
+        case "boot_mark":
+          // Rust: `Result<(), String>` —— 成功就是 null。
+          return null;
+        case "autostart_get":
+          // Rust: `app.autolaunch().is_enabled()` → bool。
+          // 取 `true` 不是随手挑的：**真机就是 true** —— `lib.rs` 启动 3 秒后
+          // 无条件 `mgr.enable()` 重新登记（除非用户写了 autostart-off 标志）。
+          // 顺带保住 `.icon-btn.on` 这条样式分支的基线覆盖：改成 false 会让 8 份
+          // 基线全红，而且 `.on` 从此没有任何基线在看。
+          return true;
+        case "autostart_set":
+          // Rust: 改完回读 `is_enabled()`，返回**新状态**（不是入参）。
+          return !!args.enabled;
+        case "sys_res_snapshot":
+          // Rust `SysResSnapshotDto`（`sys_res.rs:17`）**没有 serde rename**，
+          // 所以字段就是 snake_case。这里给一张**有内容**的表，不用全 0 空表：
+          // 全 0 正是 `normalizeSnapshot(undefined)` 的输出，画出来和「没接通」一样，
+          // 等于换个方式继续糊。
+          return {
+            mem_used_bytes: 12884901888,
+            mem_total_bytes: 34359738368,
+            cpu_pct: 23.5,
+            net_down_bps: 1250000,
+            net_up_bps: 84000,
+            apps: [
+              { name: "chrome", mem_bytes: 3221225472, cpu_pct: 8.2, process_count: 14 },
+              { name: "Code", mem_bytes: 2147483648, cpu_pct: 5.1, process_count: 9 },
+              { name: "desk", mem_bytes: 268435456, cpu_pct: 1.4, process_count: 1 },
+            ],
+            fetched_at: 1759000000000,
+          };
         case "plugin_get_config":
           return config;
         case "plugin_list_user":
@@ -466,8 +505,6 @@
           });
           return structuredClone(liveFixture);
         }
-        case "fence_snapshot":
-          return { fences: structuredClone(liveFixture), icons: [] };
         // 显示偏好（收起 / 高度，2026-09-13）。与 `fence_save_order` 一样，
         // **返回一帧新看板**而不是 null —— 真机上这条链是
         // 「前端乐观改 → invoke → 用返回值对齐」，返回 null 的话
@@ -581,7 +618,6 @@
         }
         case "qqmusic_now_playing":
         case "qqmusic_status":
-        case "qqmusic_snapshot":
           return {
             active: false,
             app_id: "",
@@ -598,10 +634,24 @@
             hint: "mock",
           };
         default:
-          // Prefer empty collections over null so vanilla plugins don't NPE in E2E
-          if (/_list$/.test(cmd)) return [];
-          if (/_snapshot$/.test(cmd)) return {};
-          return {};
+          // ⚠️ **不许有兜底返回值。**
+          //
+          // 这里原先按 `/_list$/ → []`、`/_snapshot$/ → {}`、其余 `{}` 静默返回。
+          // 后果是：「这条命令没被 mock」与「这条命令真返回了空」在 e2e 里**完全一样** ——
+          // 面板拿着一个后端永远不会产生的形状去渲染，测试照样绿。
+          // 排查时看不出，加命令时也不会有人想起来补。
+          //
+          // 现在未覆盖就炸，把静默失败变成响亮失败。两条出路：
+          //   · 这是前端真会调的命令 → 在下面补一个 `case`，**写出真实形状**；
+          //   · 这条命令根本不该被调 → 那是前端的 bug，让它炸出来。
+          throw new Error(
+            "mock 未覆盖命令: " +
+              cmd +
+              "\n它不在 e2e/tauri-mock.js 的任何 case 里。" +
+              "若前端确实会调用它，请在此补一个 case 并写出真实返回值形状" +
+              "（不要用 `return {}` 糊过去 —— 那正是这次要消掉的沉默）。" +
+              "\n命令清单见 src/generated/commands.ts。"
+          );
       }
     },
   };

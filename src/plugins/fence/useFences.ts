@@ -135,9 +135,14 @@ export function useFences(ctx: HostContext) {
    * document keydown 的摘挂，全都变成「每渲染一次一轮」。
    *
    * 实测（2026-09-13，`e2e/fence-interactions.spec.ts` 的静止断言）：这个不稳的
-   * 引用配上 mock 里 `autostart_get` 落到 `default: return {}`（每次新对象，
+   * 引用配上**当时** mock 里 `autostart_get` 落到 `default: return {}`（每次新对象，
    * React 无法 bail out），闭环之后看板**静止不动**也在每秒打两万多次 IPC。
    * 真机上那是每秒两万多次注册表读。
+   *
+   * ⚠️ 2026-09-14：mock 补了 `autostart_get` 的 case，返回真机那个 `true`（原始值，
+   * React 会 bail out）。**放大器因此没了** —— 再把字面量箭头塞回依赖数组，那条
+   * 静止断言未必还会红。护栏只剩「依赖数组本身必须 stable」这一条，所以改这里时
+   * 不能只看 e2e 绿不绿。
    */
   const rescan = useCallback(() => loadFences("fence_rescan"), [loadFences]);
 

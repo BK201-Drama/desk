@@ -1,3 +1,5 @@
+import type { CommandName } from "../generated/commands";
+
 export type PluginSlot = "left" | "right" | "overlay";
 
 export type PluginPermission =
@@ -46,7 +48,9 @@ export type HostStorage = {
 export type HostContext = {
   pluginId: string;
   permissions: ReadonlySet<string>;
-  invoke: <T = unknown>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+  /** `cmd` 是 `src/generated/commands.ts` 里的联合类型，不是 `string` ——
+      拼错命令名在这里就是 `tsc` 错误，而不是运行时的 `permission denied`。 */
+  invoke: <T = unknown>(cmd: CommandName, args?: Record<string, unknown>) => Promise<T>;
   openUrl: (url: string) => Promise<void>;
   convertFileSrc: (path: string) => string;
   editing: () => boolean;

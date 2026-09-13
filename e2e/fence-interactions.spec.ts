@@ -503,11 +503,16 @@ async function dragAppVia(page: Page, fromSel: string, viaSel: string, toSel: st
  * `fence_icons_visible`。它们的语义是「进面板时读一次」，不是「每次渲染读一次」。
  *
  * 实测（2026-09-13）：依赖数组里放了 `useFences` 每次渲染新建的 `loadFences`
- * 箭头 → effect 每次渲染都重跑；而 mock 的 `autostart_get` 没有 case、落到
+ * 箭头 → effect 每次渲染都重跑；而**当时** mock 的 `autostart_get` 没有 case、落到
  * `default: return {}`，**每次都是一个新对象** → `setAutostartOn({})` 无法让 React
  * bail out → 再渲染 → effect 再跑。闭环成立之后看板静止不动也在**每秒四万多次**
  * 地打 IPC（实测 5 秒累计 22.4 万条，`autostart_get` 与 `fence_icons_visible`
  * 各 11.2 万，严格 1:1）。真机上那是每秒四万多次注册表读。
+ *
+ * ⚠️ 2026-09-14：mock 补了 `autostart_get` 的 case、返回真机的 `true`（原始值）。
+ * 那个「每次新对象」的**放大器没了** —— 这条断言从此只拦得住「依赖数组不稳 +
+ * 另有东西持续触发渲染」的组合，单靠它发现不了依赖数组退化。改 `useFences` /
+ * `FencePanel` 的依赖数组时别只信这条测试。
  *
  * 断言的是**这两条不再增长**，不是「总调用数不变」—— 别的插件有合法的定时轮询
  * （`sys_res_snapshot` 就会自己涨），拿总数断言会变成一个假失败。
