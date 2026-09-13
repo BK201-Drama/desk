@@ -5,7 +5,7 @@ export type FenceItem = {
   label: string;
   path: string;
   icon: string | null;
-  /** 是不是目录。后端算好的（`index.rs:73` → DTO 的 `is_dir`）——
+  /** 是不是目录。后端算好的（`index.rs` 的 `is_dir`）——
       前端**不能**自己猜：`label` 里文件的扩展名已经被后端去掉了，
       而目录名带点是常事，`path` 后缀和 `label` 两条猜法都会错。
       必填（不是可选）：生产端只有 `normalizeFenceItem` 一个构造点，
@@ -38,8 +38,8 @@ export type FenceLayout = {
     「点一下图标会不会误判成拖」的唯一防线 —— 所以**不许下调**。 */
 export const DRAG_THRESHOLD_PX = 6;
 
-/** 自定义高度的行数范围。**上界必须和 `index.rs` 的 `ROWS_MAX` 一致** ——
-    两边各写一遍是没办法的事（常量过不去 IPC），所以两边都留了注释互指。
+/** 自定义高度的行数范围。与 `index.rs` 的 `ROWS_MAX`、`panel.css` 的 `.rows-N` 三者一致，
+    由 `index.rs` 的 `rows_max_matches_frontend` 钉住 —— 改一处就得三处一起改。
     对不上的症状：设了 N 行却画成默认的 2 行（`.fence-grid.rows-N` 这个类不存在）。 */
 export const ROWS_MAX = 5;
 

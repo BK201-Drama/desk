@@ -880,7 +880,8 @@
    `overflow-y: auto` 必须跟着一起写：`工作` / `系统` 的存量是 `hidden`，只调行数不改它的话，
    多出来的行会被**裁掉**而不是滚动。
 
-   行数上限 ROWS_MAX = 5 是**前后端各写一遍**的常量（另一份在 `src/fence/index.rs`）。 */
+   `ROWS_MAX` 在下面这几条、`model.ts`、`index.rs` 三处各写一遍，一致性由
+   `index.rs` 的 `rows_max_matches_frontend` 钉住 —— 加一条 `.rows-N` 就得三处一起改。 */
 .pane-fences #fences .fence-grid.rows-1 { --fence-rows: 1; overflow-y: auto; }
 .pane-fences #fences .fence-grid.rows-2 { --fence-rows: 2; overflow-y: auto; }
 .pane-fences #fences .fence-grid.rows-3 { --fence-rows: 3; overflow-y: auto; }

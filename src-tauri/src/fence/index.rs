@@ -25,9 +25,11 @@ pub(crate) struct ScannedItem {
 /// 围栏显示顺序。改动会让用户的既有布局换位置。
 const FENCE_ORDER: [&str; 5] = ["游戏", "工具", "工作", "文件夹", "其它"];
 
-/// 自定义高度的上界（行）。**必须和前端 `model.ts` 的 `ROWS_MAX` 一致**（Rust 常量过不去线，
-/// 两边各写一遍是没办法的事）—— 前端的行数是**类名**（`.fence-grid.rows-N`），放出界就会指向
-/// 一个不存在的类。这里在**读取时**夹住，手改过的 `fence.json` 也收敛得回来。
+/// 自定义高度的上界（行）。前端的行数是**类名**（`.fence-grid.rows-N`），放出界就会指向一个
+/// 不存在的类。这里在**读取时**夹住，手改过的 `fence.json` 也收敛得回来。
+///
+/// 这个数在三处各写一遍（这里 / `model.ts` / `panel.css`），抄错不报错、只默默画歪 ——
+/// 一致性由 `rows_max_matches_frontend` 钉住，改一处就得三处一起改。
 pub(crate) const ROWS_MAX: u32 = 5;
 
 /// 一个围栏在 `ui` 里的显示偏好。读时就地收敛：`rows` 超界夹到 `ROWS_MAX`，0 与缺键同义。
@@ -317,6 +319,83 @@ mod tests {
         assert!(!by("工具").collapsed, "收的是游戏，不是工具");
         assert_eq!(by("工具").rows, 3);
         assert_eq!(by("系统").rows, ROWS_MAX, "越界行数在读取时被夹住");
+    }
+
+    /// 把 `.rows-N { --fence-rows: N }` 解析成 `(N, N)`。CSS 里这些规则各占一行；
+    /// 若将来有人把类名和变量拆到两行，这里给 `None`，上层**报错而不是静默放过**。
+    fn rows_rule(line: &str) -> Option<(u32, u32)> {
+        let digits = |s: &str| -> Option<u32> {
+            s.trim_start()
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>()
+                .parse()
+                .ok()
+        };
+        Some((
+            digits(line.split(".rows-").nth(1)?)?,
+            digits(line.split("--fence-rows:").nth(1)?)?,
+        ))
+    }
+
+    /// `ROWS_MAX` 在三个地方各写一遍：这里（读取时夹住）、`model.ts`（生成菜单项）、
+    /// `panel.css`（`.rows-N` 类）。漂移的症状是**静默的** —— 菜单多出一项，点下去产出一个
+    /// 不存在的类名，高度悄悄回落默认值，`tsc` 与全部测试都不响。
+    ///
+    /// CSS 是**约束源**（`.rows-N` 才真正决定画几行），所以先钉它：必须正好覆盖 `1..=ROWS_MAX`。
+    #[test]
+    fn rows_max_matches_frontend() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let read = |p: &str| {
+            std::fs::read_to_string(root.join(p)).unwrap_or_else(|e| panic!("读不到 {p}：{e}"))
+        };
+        let css = read("src/plugins/fence/panel.css");
+        let ts = read("src/plugins/fence/model.ts");
+
+        let rules: Vec<(u32, u32)> = css
+            .lines()
+            .filter(|l| l.contains(".rows-") && l.contains("--fence-rows:"))
+            .map(|l| rows_rule(l).unwrap_or_else(|| panic!("这行像 `.rows-N` 规则却解析不出：{l}")))
+            .collect();
+
+        let mut got: Vec<u32> = rules.iter().map(|(n, _)| *n).collect();
+        got.sort_unstable();
+        assert_eq!(
+            got,
+            (1..=ROWS_MAX).collect::<Vec<u32>>(),
+            "panel.css 的 `.rows-N` 必须正好覆盖 1..={ROWS_MAX}"
+        );
+
+        for (n, m) in &rules {
+            assert_eq!(
+                n, m,
+                "`.rows-{n}` 把 `--fence-rows` 设成了 {m} —— 类名与高度不同号，比整个类缺失更难查"
+            );
+        }
+
+        // ⚠️ 必须卡词法边界：单纯 `starts_with("export const ROWS_MAX")` 会让
+        // `ROWS_MAX_X` 也命中，于是「改名」被当成「没改名」，测试静默通过。
+        let line = ts
+            .lines()
+            .find(|l| {
+                l.trim_start()
+                    .strip_prefix("export const ROWS_MAX")
+                    .is_some_and(|rest| {
+                        !rest.starts_with(|c: char| c.is_alphanumeric() || c == '_')
+                    })
+            })
+            .unwrap_or_else(|| {
+                panic!("model.ts 里找不到 `export const ROWS_MAX` —— 改了名就得同步改这条测试")
+            });
+        let ts_max: u32 = line
+            .split('=')
+            .nth(1)
+            .and_then(|s| s.trim().trim_end_matches(';').trim().parse().ok())
+            .unwrap_or_else(|| panic!("model.ts 的 ROWS_MAX 解析不出数字：{line}"));
+        assert_eq!(
+            ts_max, ROWS_MAX,
+            "model.ts 的 ROWS_MAX 与本文件的 ROWS_MAX 不一致"
+        );
     }
 
     /// 真机验证 —— `cargo test real_icons -- --ignored --nocapture` 手动跑。
