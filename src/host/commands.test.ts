@@ -28,6 +28,13 @@ function mockCases(): string[] {
  * 后端注册了、mock 却没有 case 的命令 —— **这不是免 mock 的许可证，是一张待办清单**：
  * 值必须写清为什么可以不 mock（下面有断言）；补上真实形状的 case 就把它删掉。
  * 只写文件名，**不写行号** —— 行号一改就漂，写在这儿等于埋假信息。
+ *
+ * ⚠️ 值的语义**到此为止**：它回答「e2e 为什么不碰它」，不回答「它对不对」。
+ * 这两句话在 `plugin_storage_get` / `plugin_storage_set` 上重合过一次 —— 理由
+ * 「全仓无插件用 `ctx.storage`」一字不假，而命令自己把实参写成了 `plugin_id`
+ * （Tauri 只认 `pluginId`），有插件一用就是 `missing required key`。
+ * **「没被调用」不等于「没问题」**。这类实参名的对错现在由 `tauri-args.test.ts`
+ * 全量兜着（全仓 47 个调用点），所以那 7 条「全仓无调用点」也**不是**免检区。
  */
 const KNOWN_UNMOCKED: Record<string, string> = {
   set_cursor: "FencePanel.tsx 悬停围栏时换光标；e2e 不产生悬停光栅结果",
