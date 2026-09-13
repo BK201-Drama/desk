@@ -16,6 +16,7 @@ import { fenceIconStyle, highlightLabelParts } from "./iconStyle";
 import { useFenceDnD } from "./useFenceDnD";
 import { useRecents, RecentRow } from "./recent";
 import { FenceContextMenu, useMenuIo } from "./FenceContextMenu";
+import { useFenceDialogs } from "./FenceDialog";
 import { targetFor, type MenuTarget } from "./contextMenuModel";
 
 function AppButton({
@@ -111,36 +112,18 @@ export function FencePanel({ ctx }: PluginComponentProps) {
   );
 
   /**
-   * 弹原生对话框前先「借键盘」，用完再还。
+   * 弹窗：`dialog.prompt / confirm / alert` 是 `await` 一个答案的命令通道，
+   * `node` 是它的渲染出口（必须挂在下面面板根里，理由见 `FenceDialog.tsx`）。
    *
-   * **为什么非这样不可**：desk 的窗口是 `WS_EX_NOACTIVATE` 的（`win_zorder.rs:16`
-   * 起整份文件都在讲这件事）—— 桌面看板刻意不抢焦点。代价是**原生对话框也抢不到
-   * 键盘**：`prompt()` 的框会照常画出来，但敲进去的字进不去（Task 15 真机症状：
-   * 「重命名无法输入内容」）；`confirm` / `alert` 同理，只剩鼠标能点按钮。
-   *
-   * `set_keyboard_input(true)` 会清掉那个扩展位再 `setFocus()`（`lib.rs:63`）——
-   * 就是搜索框打字用的那条路，这里复用同一条。
-   *
-   * ⚠️ 借的动作必须在**弹框之前完成**，所以 `fn` 是 `await` 之后才跑的：
-   * IPC 没回来就弹框，框还是落在一个不可激活的窗口上，症状一模一样。
+   * 这里**不再有** `withKeyboard(fn)` 那个包装 —— 键盘租约搬进了弹窗自己：
+   * 「租约到手才渲染」比「租约到手再弹原生框」更严。完整因果（以及为什么非得
+   * 借键盘不可）写在 `FenceDialog.tsx` 文件头，这里只留一句路标。
    */
-  const withKeyboard = useCallback(
-    async <T,>(fn: () => T): Promise<T> => {
-      await setKeyboard(true);
-      try {
-        return fn();
-      } finally {
-        // 还的时候要避让文本框：搜索框聚焦时把键盘收走，用户就没法打字了。
-        // 与搜索框 `onBlur` 那条守卫同源（下面 `<input>` 那一处）。
-        if (!isTextField(document.activeElement)) void setKeyboard(false);
-      }
-    },
-    [setKeyboard]
-  );
+  const { dialog, node: dialogNode } = useFenceDialogs(setKeyboard);
 
   // 菜单的命令通道。`open` 接的就是上面那个 doLaunch —— 于是「从右键菜单打开」
   // 与「点图标打开」走的是同一条路（含「记进最近」）。
-  const menuIo = useMenuIo(ctx, doLaunch, withKeyboard);
+  const menuIo = useMenuIo(ctx, doLaunch, dialog);
   /**
    * 关菜单**并还键盘**。
    *
@@ -148,9 +131,9 @@ export function FencePanel({ ctx }: PluginComponentProps) {
    * 不还的话看板从此变成「点一下就把焦点从别的程序抢过来」的窗口，而那正是它
    * 一开始就被设计成不做的事。
    *
-   * 与「选中一项后弹对话框」不冲突：`pick()` 是**先关菜单、再跑动作**
-   * （`FenceContextMenu.tsx` 的 `pick`），而对话框那几步自己会再借一次
-   * （`withKeyboard`）。两次 IPC 有先后无重叠，最后落在「借」上。
+   * 与「选中一项后弹窗」不冲突：`pick()` 是**先关菜单、再跑动作**
+   * （`FenceContextMenu.tsx` 的 `pick`），而弹窗在挂载时自己会再借一次
+   * （`FenceDialog.tsx` 的租约 effect）。两次 IPC 有先后无重叠，最后落在「借」上。
    */
   const closeMenu = useCallback(() => {
     setMenu(null);
@@ -173,9 +156,18 @@ export function FencePanel({ ctx }: PluginComponentProps) {
         id: "restore",
         title: "还原图标到桌面",
         group: "围栏",
+        // `run` 是同步签名，所以这里只能起一个 IIFE 把 `await` 关在里面。
+        // 问句与按钮文字沿用原来的措辞，一个字没改 —— 换的是框，不是话。
         run: () => {
-          if (!confirm("把图标还原回系统桌面？")) return;
-          void ctx.invoke("fence_restore").then(() => loadFences());
+          void (async () => {
+            if (!(await dialog.confirm({ title: "把图标还原回系统桌面？", okLabel: "还原" }))) return;
+            try {
+              await ctx.invoke("fence_restore");
+              await loadFences();
+            } catch (e) {
+              await dialog.alert({ title: "还原失败", detail: String(e) });
+            }
+          })();
         },
       }),
       // 桌面推来新的一帧 → 关掉菜单。条目可能已经不在了（刚被删掉的那个），
@@ -242,7 +234,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
       document.removeEventListener("keydown", keyHandler);
       shell?.registerFocusFenceSearch(null);
     };
-  }, [ctx, doLaunch, launch, loadFences, setKeyboard, shell]);
+  }, [ctx, doLaunch, dialog, launch, loadFences, setKeyboard, shell]);
 
   useEffect(() => {
     const host = document.querySelector<HTMLElement>('[data-plugin="fence"]');
@@ -330,7 +322,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
                     await ctx.invoke("autostart_set", { enabled: !cur });
                     setAutostartOn(!cur);
                   } catch (e) {
-                    alert(String(e));
+                    await dialog.alert({ title: "开机自启设置失败", detail: String(e) });
                   }
                 })();
               }}
@@ -358,11 +350,19 @@ export function FencePanel({ ctx }: PluginComponentProps) {
               title="还原到系统桌面"
               aria-label="还原到系统桌面"
               onClick={() => {
-                if (!confirm("把图标还原回系统桌面？")) return;
-                void ctx
-                  .invoke("fence_restore")
-                  .then(() => loadFences())
-                  .catch((e) => alert(String(e)));
+                // 与工具栏上方那个 `registerCommand("restore")` 是**同一个动作**，
+                // 措辞也一致。两处都在，是因为一个给命令面板、一个给按钮 ——
+                // 别为了去重把其中一个删掉：命令面板里的那句是给人搜的。
+                void (async () => {
+                  if (!(await dialog.confirm({ title: "把图标还原回系统桌面？", okLabel: "还原" })))
+                    return;
+                  try {
+                    await ctx.invoke("fence_restore");
+                    await loadFences();
+                  } catch (e) {
+                    await dialog.alert({ title: "还原失败", detail: String(e) });
+                  }
+                })();
               }}
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -631,6 +631,12 @@ export function FencePanel({ ctx }: PluginComponentProps) {
           onClose={closeMenu}
         />
       ) : null}
+
+      {/* 弹窗。挂在面板根里 = 落在 `.pane-fences` 子树内 —— 样式审查扫的就是那棵
+          子树，挂到根外面它会永远待在护栏之外（`FenceDialog.tsx` 的注释）。
+          它在菜单**之后**渲染只是顺序上的巧合：两者能不能同时出现由层叠决定
+          （遮罩 z-index 60 > 菜单 40），不靠 DOM 先后。 */}
+      {dialogNode}
     </div>
   );
 }

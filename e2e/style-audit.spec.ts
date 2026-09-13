@@ -88,6 +88,17 @@ const GEOMETRY = [
   ".face", // 24px —— 这就是当初的盲区
   ".fence-search-list", // 搜索结果列表：高度 = 行数 × 行高 + gap
   ".fence-search-row", // 搜索结果行
+  // 弹窗。**这里是对上面那条「尺寸是内容驱动的」的刻意例外**：
+  // `.fence-menu` 的宽度由菜单项字数决定，所以它不在白名单里；弹窗反过来 ——
+  // 它是块固定尺寸的卡片（panel.css 里写死 288px），宽高都不该跟着标题字数走。
+  // 不录的话，「把 288px 改成 320px」在属性表里一个值都不变（padding / font-size
+  // 都没动），正是 `.face` 那个盲区的翻版。
+  //
+  // 代价认下来：`rect-h` 里含输入框的**固有高度**，那是 font metric 派生的 ——
+  // 将来升 Playwright（连带 Chromium）时这里可能出现 1~2px 的假红。
+  // 看到时先量一遍真机观感，别直接重录基线：宽高都在这一条里，`rect-w` 那半边
+  // 正是要守的东西，整条删掉就把它一起丢了。
+  ".fence-dialog",
 ].join(", ");
 
 /**
@@ -364,5 +375,36 @@ test.describe("样式审查（fence 重构护栏）", () => {
       "子菜单没进快照，menu-sub 态等于空护栏"
     ).toBe(true);
     check("menu-sub", snap);
+  });
+
+  /**
+   * 重命名弹窗态 —— 2026-09-13 新增的 UI（用户裁决：「优化一下弹窗的样式」）。
+   * 它取代了原生 `prompt`，所以必须单开一个状态录（GOAL §4.5），
+   * 否则那套 padding / border / background 全在护栏之外。
+   *
+   * 触发方式就是真人的那两下：右键一个文件条目 → 点「重命名」。**此时菜单已经关了**
+   * （`pick` 是先关菜单再跑动作），所以这个状态里只有弹窗，没有菜单 ——
+   * 两个都想要的话得再开一个状态，而那样录到的组合真机上不存在。
+   *
+   * 录到的是**输入框已自动聚焦并全选**的样子：那是这个界面唯一可能出现的形态。
+   * 聚焦态只改 `outline`（不在 PROPS 里），所以基线对「文档有没有焦点」不敏感 ——
+   * 这是 panel.css 里那条 ⚠️ 的用意。
+   */
+  test("重命名弹窗态", async ({ page }) => {
+    await openBoard(page);
+    await openContextMenu(page);
+    await page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>('[data-menu-id="rename"]');
+      if (!el) throw new Error("菜单里没有 rename");
+      el.click();
+    });
+    await expect(page.locator('[data-testid="fence-dialog"]')).toBeVisible();
+    const snap = await snapshot(page);
+    expect(Object.keys(snap).length).toBeGreaterThan(MIN_ELEMENTS);
+    expect(
+      Object.keys(snap).some((k) => k.includes("fence-dialog")),
+      "弹窗没进快照，dialog 态等于空护栏"
+    ).toBe(true);
+    check("dialog", snap);
   });
 });

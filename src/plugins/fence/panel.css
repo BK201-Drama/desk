@@ -140,3 +140,159 @@
   border: 1px solid var(--menu-line);
   box-shadow: var(--menu-shadow);
 }
+
+/* ── 弹窗（2026-09-13）─────────────────────────────────────────────────────
+   原生 `alert` / `confirm` / `prompt` 的替身，由 `FenceDialog.tsx` 渲染。
+   起因是用户的「优化一下弹窗的样式」—— 那三个框由 WebView2 自己画，
+   页面 CSS 够不到，所以「换掉」是唯一的路（完整因果见 FenceDialog 文件头）。
+
+   结构和 class 名被三方依赖，改名前先看：`FenceDialog.tsx`、
+   `e2e/fence-dialog.spec.ts`、`e2e/style-baseline.dialog.json`。
+
+     .fence-dialog-overlay            遮罩，fixed，flex 居中
+       .fence-dialog                  框（固定 288px）
+         .fence-dialog-title
+         .fence-dialog-detail         可选，长错误在这上面滚
+         .fence-dialog-input          只有 prompt 有
+         .fence-dialog-actions
+           .fence-dialog-btn[.primary]
+
+   三条与 `.fence-menu` 对照着读的约束：
+
+   1. 居中用 flex，**不用** `left: 50% + transform: translate(-50%, -50%)`。
+      今天框里没有 fixed 后代，但那条规矩（`.fence-menu` 约束 2：`transform`
+      会改包含块）值得一以贯之地守 —— 而且居中本来也不需要 transform。
+   2. 背景**不透明**，不做毛玻璃。理由同 `.fence-menu` 约束 2，外加一条：
+      遮罩本身已经在压暗整个看板，再糊一层只有性能开销，没有观感收益。
+   3. 不写任何坐标。遮罩是 `inset: 0`，包含块就是 `.board`（这份文档里唯一的
+      `backdrop-filter` 祖先）→ 自然铺满整扇窗，居中即窗口居中。
+
+   ⚠️ 颜色的**变化**刻意只用不录进样式审查的属性表达（`outline`、
+   `box-shadow`）。`:focus` 在这里一定成立（输入框自动聚焦），但
+   「headless 里文档有没有焦点」是环境行为，把它录进基线等于给护栏埋一条
+   会随机红的假失败 —— 所以聚焦态只用 `outline` 画，`border-color` 一路不变。 */
+.pane-fences .fence-dialog-overlay {
+  --dlg-bg: rgba(252, 253, 255, 0.99);
+  --dlg-line: rgba(26, 35, 50, 0.14);
+  --dlg-hover: rgba(45, 106, 79, 0.09);
+  --dlg-shadow: 0 16px 44px rgba(26, 35, 50, 0.28);
+  --dlg-dim: rgba(26, 35, 50, 0.22);
+  --dlg-muted: #5a6b7d;
+  --dlg-field: #ffffff;
+
+  position: fixed;
+  inset: 0;
+  /* 60 压过 `.fence-menu` 的 40 —— 弹窗可能正是**从菜单里**开出来的
+     （重命名），必须在它上面。这条比大小发生在 `.board` 的层叠上下文里，
+     与 `.fence-menu` 那条注释说的是同一件事。 */
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--dlg-dim);
+}
+
+@media (prefers-color-scheme: dark) {
+  .pane-fences .fence-dialog-overlay {
+    --dlg-bg: rgba(24, 30, 40, 0.99);
+    --dlg-line: rgba(255, 255, 255, 0.14);
+    --dlg-hover: rgba(255, 255, 255, 0.1);
+    --dlg-shadow: 0 16px 44px rgba(0, 0, 0, 0.6);
+    --dlg-dim: rgba(0, 0, 0, 0.45);
+    --dlg-muted: #9fb0c2;
+    --dlg-field: rgba(255, 255, 255, 0.06);
+  }
+}
+
+/* 宽度**写死**（与 `.fence-menu` 的 `min-width` 相反）。菜单的宽度是内容驱动的，
+   所以它不在样式审查的几何白名单里；弹窗是块固定尺寸的卡片，宽高都不该跟着
+   某个标签的字数走 —— 于是它进白名单，改宽度会当场被审查拦下。 */
+.pane-fences .fence-dialog {
+  width: 288px;
+  padding: 14px 14px 12px;
+  border-radius: 12px;
+  background-color: var(--dlg-bg);
+  border: 1px solid var(--dlg-line);
+  box-shadow: var(--dlg-shadow);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.pane-fences .fence-dialog-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pane-fences .fence-dialog-detail {
+  margin-top: 6px;
+  /* 后端错误原文可能很长（带路径、带换行）。给个上限让它自己滚，
+     别把框撑成一条竖线。`pre-wrap` 保住原文里的换行。 */
+  max-height: 84px;
+  overflow-y: auto;
+  color: var(--dlg-muted);
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.pane-fences .fence-dialog-input {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--dlg-line);
+  border-radius: 7px;
+  background-color: var(--dlg-field);
+  color: inherit;
+  font: inherit;
+}
+
+/* 聚焦态只用 outline（见块首那条 ⚠️）。`outline-offset: -1px` 让它贴着边框内侧，
+   和菜单项 / 主按钮的处理一致。 */
+.pane-fences .fence-dialog-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.pane-fences .fence-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.pane-fences .fence-dialog-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--dlg-line);
+  border-radius: 7px;
+  background-color: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pane-fences .fence-dialog-btn:hover {
+  background-color: var(--dlg-hover);
+}
+
+.pane-fences .fence-dialog-btn:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* 主按钮。`:disabled` 只有一处会走到：重命名的输入框被清空时 ——
+   没有它，回车会走到调用侧那道 `if (!name) return`，表现是「点了没反应」。 */
+.pane-fences .fence-dialog-btn.primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.pane-fences .fence-dialog-btn.primary:hover:not(:disabled) {
+  background-color: #35805f;
+}
+
+.pane-fences .fence-dialog-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

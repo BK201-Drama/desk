@@ -47,6 +47,38 @@ async function openBoard(page: Page) {
 
 const MENU = '[data-testid="fence-menu"]';
 const SUB = '[data-testid="fence-menu-sub"]';
+/** 看板自己的弹窗（2026-09-13 取代原生 alert/confirm/prompt）。 */
+const DIALOG = '[data-testid="fence-dialog"]';
+const DIALOG_INPUT = '[data-testid="fence-dialog-input"]';
+const DIALOG_OK = '[data-testid="fence-dialog-ok"]';
+
+/**
+ * 往弹窗的输入框里打字。
+ *
+ * **不能**用 `locator.fill` / `page.keyboard.type`：这个环境的键盘通道会被宿主吞掉
+ * （文件头那段），Playwright 的输入动作会一直挂到超时。走原生 setter + 派发 `input`，
+ * 与 style-audit 里搜搜索框那一段同源。
+ */
+async function clickIn(page: Page, sel: string) {
+  await page.evaluate((s) => {
+    const el = document.querySelector<HTMLElement>(s);
+    if (!el) throw new Error(`clickIn: 找不到 ${s}`);
+    el.click();
+  }, sel);
+}
+
+async function typeInDialog(page: Page, text: string) {
+  await page.evaluate(
+    ({ sel, value }) => {
+      const input = document.querySelector<HTMLInputElement>(sel);
+      if (!input) throw new Error(`typeInDialog: 找不到 ${sel}`);
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    },
+    { sel: DIALOG_INPUT, value: text }
+  );
+}
 
 /**
  * 围栏区里的一个图标。
@@ -284,20 +316,30 @@ test("新建文本文档：命令参数正确，推一帧后新项出现在看�
   ).toHaveText("新建文本文档");
 });
 
-test("重命名：prompt 的初值是 path 的文件名，提交时补回扩展名且参数名是 camelCase", async ({
+test("重命名：对话框初值是 path 的文件名，提交时补回扩展名且参数名是 camelCase", async ({
   page,
 }) => {
   await openBoard(page);
 
-  const seen: { type: string; message: string; defaultValue: string }[] = [];
+  // 原生框一个都不该再出现了。**光断言命令发出去了拦不住这件事** ——
+  // 那正是替换前的样子，两边都绿。
+  const native: string[] = [];
   page.on("dialog", (d) => {
-    seen.push({ type: d.type(), message: d.message(), defaultValue: d.defaultValue() });
-    void d.accept("新名字");
+    native.push(d.type());
+    void d.dismiss();
   });
 
   await rightClick(page, app("d-cursor-0"), 900, 300);
   await clickMenu(page, "rename");
   await closeMenu(page);
+
+  await expect(page.locator(DIALOG)).toBeVisible();
+  // 初值取自 path 的 basename（带 .lnk），**不是** label（label 里没有扩展名）
+  await expect(page.locator(DIALOG_INPUT)).toHaveValue("Cursor.lnk");
+
+  await typeInDialog(page, "新名字");
+  await clickIn(page, DIALOG_OK);
+  await expect(page.locator(DIALOG)).toHaveCount(0);
 
   await expect.poll(async () => callsTo(page, "fence_rename")).toEqual([
     // newName（不是 new_name）+ 补回了 `.lnk`。两件事各有一个坑：
@@ -306,10 +348,7 @@ test("重命名：prompt 的初值是 path 的文件名，提交时补回扩展�
     { path: "C:\\Desktop\\Cursor.lnk", newName: "新名字.lnk" },
   ]);
 
-  expect(seen).toHaveLength(1);
-  expect(seen[0].type).toBe("prompt");
-  // 初值取自 path 的 basename（带 .lnk），**不是** label（label 里没有扩展名）
-  expect(seen[0].defaultValue).toBe("Cursor.lnk");
+  expect(native, "重命名不该再弹原生 prompt").toEqual([]);
 });
 
 /**
@@ -320,6 +359,10 @@ test("重命名：prompt 的初值是 path 的文件名，提交时补回扩展�
  * 这条的**主要断言是「一个对话框都没有」**，不是「命令发出去了」——
  * 只断言后者的话，留着那个 `confirm` 也能过（用户点确认就是了）。
  * 挂一个 `dialog` 监听把两件事一起钉住：命令到了，而且没有任何框弹出来。
+ *
+ * 2026-09-13 换成自己的弹窗之后，这条多了半个身位：现在「弹窗」有两种可能
+ * （原生 / 我们自己的），所以**两边都要断言**。只盯着原生那个的话，
+ * 哪天有人给删除补一个自己的确认框，这条测试会高高兴兴地放过去。
  */
 test("删除：不弹任何对话框，直接发命令", async ({ page }) => {
   await openBoard(page);
@@ -337,6 +380,8 @@ test("删除：不弹任何对话框，直接发命令", async ({ page }) => {
     .poll(async () => callsTo(page, "fence_delete"))
     .toEqual([{ path: "C:\\Desktop\\语雀.lnk" }]);
 
+  await expect(page.locator(DIALOG), "删除不该弹自己的弹窗").toHaveCount(0);
+
   // 命令是同步发的，框若存在会**先**被上面的监听收到 —— 所以这一拍是给「万一」
   // 留的，不是必须等的。断言放在最后，顺序上更严格。
   await page.waitForTimeout(200);
@@ -350,18 +395,23 @@ test("删除：不弹任何对话框，直接发命令", async ({ page }) => {
  * desk 的窗口是 `WS_EX_NOACTIVATE` 的（桌面看板刻意不抢焦点，`win_zorder.rs`），
  * 于是**原生对话框也抢不到键盘**：框照常画出来，敲进去的字进不去。
  * 修法是把搜索框那条路复用一遍 —— 菜单开着时借键盘、关掉时还，
- * 要弹对话框的动作（重命名 / alert）再自己借一次。（删除原先也在这条路上，
- * 后来那个 `confirm` 被用户撤掉了，见下面那条测试。）
+ * 要弹框的动作再自己借一次。（删除原先也在这条路上，后来那个 `confirm`
+ * 被用户撤掉了，见下面那条测试。）
  *
- * 这条测的是**顺序**，因为顺序就是正确性本身：
- *   · 借必须发生在对话框**弹出之前**（`withKeyboard` 里是 `await` 完才跑 `fn`）
- *   · 还必须在对话框**关掉之后**（`finally`），否则框一出来窗口又不可激活了
- * `__MOCK_CALLS__` 是有序日志，所以这两条都能直接读出来。
+ * 2026-09-13 起框换成了看板自己的（`FenceDialog.tsx`，用户裁决「优化一下弹窗的样式」），
+ * **租约这条约束没有变**，变的是它覆盖的区间：
+ *   · 原生那条路：`withKeyboard` 在弹框**前** `await`，框关了在 `finally` 里还
+ *   · 现在：租约覆盖**整个对话框的生命周期** —— 借在框出现之前，还在框关掉之后
+ * 后半句是本文件与 `fence-dialog.spec.ts` 的分工：那边验「借到手才渲染」，这边验
+ * 「借/还摆在整条时间线的哪两个位置」。
+ *
+ * 这条测的是**顺序**，因为顺序就是正确性本身。`__MOCK_CALLS__` 是有序日志，
+ * 所以能直接读出来。
  *
  * 注意这条在 mock 里**不可能**验出「真机上到底能不能打字」（那要真键盘），
  * 它验的是「代码把租约的顺序摆对了」。真机那一下仍要用户肉眼过。
  */
-test("键盘租约：开菜单借、关菜单还；对话框弹出前租约必须已在手上", async ({ page }) => {
+test("键盘租约：开菜单借、关菜单还；对话框全程握着租约", async ({ page }) => {
   await openBoard(page);
   const keyboard = () => callsTo(page, "set_keyboard_input");
 
@@ -378,10 +428,21 @@ test("键盘租约：开菜单借、关菜单还；对话框弹出前租约必�
   await closeMenu(page);
   await expect.poll(keyboard).toEqual([{ active: true }, { active: false }]);
 
-  // ③ 重命名：把「借/还」与「命令」拼成一条有顺序的时间线
-  page.once("dialog", (d) => void d.accept("新名字"));
+  // ③ 重命名：时间线从开菜单一路读到最后一条命令
   await rightClick(page, app("d-cursor-0"), 900, 300);
   await clickMenu(page, "rename");
+  await expect(page.locator(DIALOG)).toBeVisible();
+  // 框已经在屏幕上了 ⇒ 借必然在手上：拿不到租约这个框**根本不渲染**
+  // （`FenceDialog.tsx` 的 `ready`）。所以这一条不是在数 IPC，是在钉不变式。
+  await expect.poll(keyboard).toEqual([
+    { active: true },
+    { active: false },
+    { active: true },
+    { active: false },
+    { active: true },
+  ]);
+
+  await clickIn(page, DIALOG_OK);
   await expect.poll(async () => callsTo(page, "fence_rename")).toHaveLength(1);
 
   const timeline = await page.evaluate(() =>
@@ -396,10 +457,17 @@ test("键盘租约：开菜单借、关菜单还；对话框弹出前租约必�
       )
   );
 
-  // 读法：借(开菜单) → 还(Esc) → 借(再开) → 还(pick 先关菜单) → 借(弹框前) → rename → 还(框关了)
-  expect(timeline.join(" ")).toBe("借 还 借 还 借 rename 还");
-  // 单把最关键的那一步再钉一次：rename 之前紧邻的那次键盘操作必须是「借」
-  expect(timeline[timeline.indexOf("rename") - 1]).toBe("借");
+  // 读法：借(开菜单) → 还(Esc) → 借(再开) → 还(pick 先关菜单) → 借(框挂载) →
+  //       还(框关掉) → rename(命令)
+  //
+  // 末两位是**「还」在前**，和替换前正好相反（那时是「借 → rename → 还」）。
+  // 不是笔误：关框和发命令是两次独立 IPC，命令不需要键盘，所以租约在框关掉那一刻
+  // 就该还 —— 留着它等于让看板在「命令在路上」这段窗口里继续可被激活。
+  // 顺序是**确定**的，因为「还」是在 `finish` 里同步发出的（`FenceDialog.tsx` 有注释）。
+  expect(timeline.join(" ")).toBe("借 还 借 还 借 还 rename");
+  // 单把最关键的一段再钉一次：框的生命周期整个落在租约里
+  const i = timeline.indexOf("rename");
+  expect(timeline.slice(i - 2, i)).toEqual(["借", "还"]);
 
   // ④ 时序：搜索框**失焦**排下的那个释放，不能把菜单刚借到的租约还掉。
   //    真实顺序是「先失焦（释放排进 0ms 定时器）→ 再派发 contextmenu（借）」，

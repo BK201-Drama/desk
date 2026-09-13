@@ -176,6 +176,12 @@
       // 浅拷贝，不用 structuredClone：args 里可能有 Tauri 的回调句柄等
       // 不可克隆的东西，一次抛错就会把整个 mock 打死（那是 e2e 全红，不是一条失败）。
       mockCalls.push({ cmd: cmd, args: Object.assign({}, args) });
+      // 让指定命令失败。弹窗那条路（`alert` 报错）在真机上只有后端出错才走得到，
+      // 没有这个开关就等于没有护栏。与 `__MOCK_ICONS_VISIBLE_THROWS__` 同一套路：
+      // 记录先写、再抛，所以断言里仍能看到「这个命令被调过」。
+      if ((window.__MOCK_FAIL_CMDS__ || []).indexOf(cmd) !== -1) {
+        throw new Error("mock: " + cmd + " 故意失败");
+      }
       switch (cmd) {
         case "plugin_get_config":
           return config;
@@ -270,6 +276,14 @@
           });
           return config;
         case "set_keyboard_input":
+          // `__MOCK_KEYBOARD_DELAY_MS__` 把「借键盘」这条 IPC 拖慢 —— 用来验
+          // 「租约没到手就不渲染对话框」。真机上这个往返是真有耗时的，只是快；
+          // 不拖慢的话「先渲染后借」和「先借后渲染」在 e2e 里看不出区别。
+          if (window.__MOCK_KEYBOARD_DELAY_MS__) {
+            await new Promise(function (r) {
+              setTimeout(r, window.__MOCK_KEYBOARD_DELAY_MS__);
+            });
+          }
           return null;
         case "plugin:event|listen": {
           eventIdSeq += 1;

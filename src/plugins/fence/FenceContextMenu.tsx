@@ -20,6 +20,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { HostContext } from "../../host/types";
+import type { FenceDialogApi } from "./FenceDialog";
 import {
   baseName,
   clampToViewport,
@@ -273,21 +274,24 @@ function SubMenu({
  * 每个调用都 `.catch(alert)`：右键菜单是个不显眼的地方，静默失败最坏 ——
  * 用户以为点过了、其实什么都没发生。与同文件里 autostart / restore 的处理一致。
  *
- * `withKeyboard` 是**弹原生对话框的必要条件**，不是锦上添花：窗口是
- * `WS_EX_NOACTIVATE` 的，不先借键盘，`prompt()` 的框会画出来但打不进字。
- * 完整因果写在 `FencePanel.tsx` 的 `withKeyboard` 上。
+ * `dlg` 是看板自己的弹窗（`FenceDialog.tsx`）。**它自己会借键盘**，这个文件
+ * 不需要知道租约的事 —— 换掉原生框之前，这里还要先 `withKeyboard` 借一次，
+ * 因为窗口是 `WS_EX_NOACTIVATE` 的，不借就「框画得出来、字打不进去」。
  */
 export function useMenuIo(
   ctx: HostContext,
   open: (path: string, id: string) => void,
-  withKeyboard: <T>(fn: () => T) => Promise<T>
+  dlg: FenceDialogApi
 ): MenuIo {
   const call = useCallback(
     (cmd: string, args?: Record<string, unknown>) => {
-      // 报错也要弹 alert —— 同一条约束：alert 也需要键盘（Esc / 回车关掉它）。
-      void ctx.invoke(cmd, args).catch((e) => void withKeyboard(() => alert(String(e))));
+      // 失败一律说出来。报错原文交给 `detail` —— 后端那句中文（含路径）比
+      // 「操作失败」四个字有用得多，而标题栏只有这样才不会被撑成一条竖线。
+      void ctx
+        .invoke(cmd, args)
+        .catch((e) => void dlg.alert({ title: "操作失败", detail: String(e) }));
     },
-    [ctx, withKeyboard]
+    [ctx, dlg]
   );
 
   return useMemo<MenuIo>(
@@ -310,13 +314,15 @@ export function useMenuIo(
         // 旧名从 **path 的 basename** 取，不能从 label 取：看板上文件的 label
         // 已经被后端去掉了扩展名（`index.rs:74` → `Cursor.lnk` 显示成 `Cursor`）。
         const old = baseName(path);
-        void withKeyboard(() => {
-          const input = prompt("重命名为", old);
-          if (input == null) return; // 用户取消
+        void (async () => {
+          // `prompt` 的 `null` = 用户取消（不发命令）；空串走下面的 `if (!name)`
+          // —— 不过那个分支在 UI 上已经不可达了：输入框空着时「重命名」按钮是禁用的。
+          const input = await dlg.prompt({ title: "重命名为", initial: old });
+          if (input == null) return;
           const name = withPreservedExtension(old, input);
           if (!name) return; // 只打了空格
           call("fence_rename", { path, newName: name });
-        });
+        })();
       },
       // **不弹确认框**（2026-09-13 用户裁决）：「我删除内容，不要弹窗，这增加了
       // 不必要的交互」。原先这里有一层 `confirm`，理由是「desk 没有 Ctrl+Z」——
