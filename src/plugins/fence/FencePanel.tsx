@@ -620,7 +620,15 @@ export function FencePanel({ ctx }: PluginComponentProps) {
                 role="button"
                 aria-expanded={!f.collapsed}
                 title={`${f.name}：点击${f.collapsed ? "展开" : "收起"}，右键调高度`}
-                onClick={() => applyUi(f.name, { collapsed: !f.collapsed })}
+                onClick={() => {
+                  // 拖拽收尾的那一下 click：指针只是**松在**标题条上，不是「点标题」。
+                  // 不挡的话就是「横向搬个图标、松手时指针压在标题上 → 那一栏顺手被收起」，
+                  // 用户看到内容猛地展开／收起。`useFenceDnD` 立 `suppressClick` 正是为这个 ——
+                  // 只是它原先只被 `.fence-app` 的 `tryLaunch` 消费，而松手在标题条上时
+                  // 浏览器那一下 click 的落点是 `.fence-title`，走的是这里。
+                  if (consumeSuppressClick()) return;
+                  applyUi(f.name, { collapsed: !f.collapsed });
+                }}
               >
                 {f.name}{" "}
                 <em>

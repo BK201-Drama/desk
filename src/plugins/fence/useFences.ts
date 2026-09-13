@@ -125,12 +125,27 @@ export function useFences(ctx: HostContext) {
     });
   }, [ctx]);
 
+  /**
+   * 「用户主动做完一件事之后」的重扫：强制重扫 + 同步补图标。
+   *
+   * ⚠️ **必须是 stable 引用**，不能在这里写 `() => loadFences("fence_rescan")`。
+   * 字面量箭头每次渲染都是新函数，而 `FencePanel` 那个 setup effect 把它放进了
+   * 依赖数组 —— 于是 effect **每次渲染都重跑**：两条一次性读取（`autostart_get`
+   * 与 `fence_icons_visible`）、`fence:changed` 的退订/重订、两条命令的重注册、
+   * document keydown 的摘挂，全都变成「每渲染一次一轮」。
+   *
+   * 实测（2026-09-13，`e2e/fence-interactions.spec.ts` 的静止断言）：这个不稳的
+   * 引用配上 mock 里 `autostart_get` 落到 `default: return {}`（每次新对象，
+   * React 无法 bail out），闭环之后看板**静止不动**也在每秒打两万多次 IPC。
+   * 真机上那是每秒两万多次注册表读。
+   */
+  const rescan = useCallback(() => loadFences("fence_rescan"), [loadFences]);
+
   return {
     fences,
     setFences,
     loadError,
-    /** 给「用户主动做完一件事之后」用的重扫：强制重扫 + 同步补图标。 */
-    loadFences: () => loadFences("fence_rescan"),
+    loadFences: rescan,
     persistOrder,
     persistUi,
     launch,

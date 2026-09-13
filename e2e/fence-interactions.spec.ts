@@ -459,6 +459,117 @@ test("调高度要连 overflow 一起翻：`工作` 默认 hidden，设成 2 行
   expect(after.overflowY, "行数调大了却还是 hidden —— 多出来的行会被裁掉").toBe("auto");
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. 两条回归（2026-09-13 实测出来的）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 一次**分两跳**的拖拽：先经过 `via`（一个网格 → 立 `targetFence`），再落到 `to`。
+ *
+ * 为什么需要它：`dragApp` 只发**一个** move，位移与落点是同一个点。而真鼠标的
+ * 轨迹是连续的 —— 「拖起来之后再横移到标题条上松手」这种落点，用单跳复现不出来。
+ */
+async function dragAppVia(page: Page, fromSel: string, viaSel: string, toSel: string) {
+  const from = await centerOf(page, fromSel);
+  const via = await centerOf(page, viaSel);
+  const to = await centerOf(page, toSel);
+  await page.evaluate(
+    ({ fromSel: fs, from, via, to }) => {
+      const el = document.querySelector(fs);
+      if (!el) throw new Error(`dragAppVia: 找不到 ${fs}`);
+      const PID = 7;
+      const opts = { bubbles: true, cancelable: true, pointerId: PID, isPrimary: true };
+      el.dispatchEvent(
+        new PointerEvent("pointerdown", { ...opts, button: 0, buttons: 1, clientX: from.x, clientY: from.y })
+      );
+      window.dispatchEvent(
+        new PointerEvent("pointermove", { ...opts, button: -1, buttons: 1, clientX: via.x, clientY: via.y })
+      );
+      window.dispatchEvent(
+        new PointerEvent("pointermove", { ...opts, button: -1, buttons: 1, clientX: to.x, clientY: to.y })
+      );
+      window.dispatchEvent(
+        new PointerEvent("pointerup", { ...opts, button: 0, buttons: 0, clientX: to.x, clientY: to.y })
+      );
+    },
+    { fromSel, from, via, to }
+  );
+}
+
+/**
+ * 围栏面板**静止时不该空转**。
+ *
+ * `FencePanel` 那个 setup effect 里有两条一次性读取：`autostart_get` 与
+ * `fence_icons_visible`。它们的语义是「进面板时读一次」，不是「每次渲染读一次」。
+ *
+ * 实测（2026-09-13）：依赖数组里放了 `useFences` 每次渲染新建的 `loadFences`
+ * 箭头 → effect 每次渲染都重跑；而 mock 的 `autostart_get` 没有 case、落到
+ * `default: return {}`，**每次都是一个新对象** → `setAutostartOn({})` 无法让 React
+ * bail out → 再渲染 → effect 再跑。闭环成立之后看板静止不动也在**每秒四万多次**
+ * 地打 IPC（实测 5 秒累计 22.4 万条，`autostart_get` 与 `fence_icons_visible`
+ * 各 11.2 万，严格 1:1）。真机上那是每秒四万多次注册表读。
+ *
+ * 断言的是**这两条不再增长**，不是「总调用数不变」—— 别的插件有合法的定时轮询
+ * （`sys_res_snapshot` 就会自己涨），拿总数断言会变成一个假失败。
+ */
+test("围栏面板静止时不空转：两条一次性读取不随渲染重复发", async ({ page }) => {
+  await openBoard(page);
+  // 启动期（fence_list / 抽图标）不算，从第 1 秒起看「静止期」
+  await page.waitForTimeout(1000);
+
+  const countOf = () =>
+    page.evaluate(() => {
+      const calls = (window as unknown as { __MOCK_CALLS__: Array<{ cmd: string }> }).__MOCK_CALLS__;
+      const n = (c: string) => calls.filter((x) => x.cmd === c).length;
+      return { autostart: n("autostart_get"), icons: n("fence_icons_visible") };
+    });
+
+  const a = await countOf();
+  await page.waitForTimeout(1500);
+  const b = await countOf();
+
+  expect(
+    b.autostart - a.autostart,
+    `autostart_get 在静止的 1.5 秒里又发了 ${b.autostart - a.autostart} 次 —— effect 在自转`
+  ).toBe(0);
+  expect(
+    b.icons - a.icons,
+    `fence_icons_visible 在静止的 1.5 秒里又发了 ${b.icons - a.icons} 次 —— effect 在自转`
+  ).toBe(0);
+});
+
+/**
+ * 拖拽收尾的那一下 `click` **不该同时把围栏收起来**。
+ *
+ * `useFenceDnD` 在真拖成功之后立 `suppressClick`，注释里写明它的用途是
+ * 「吃掉属于这次拖拽的那一下 click」（`useFenceDnD.ts:44-51`）。但它只被
+ * `.fence-app` 的 `tryLaunch` 消费 —— 而**拖到标题条上松手**时，浏览器那一下
+ * click 的落点是 `.fence-title`，它的 `onClick` 直接 `applyUi(...collapsed 取反)`。
+ * 于是「横向拖一个图标、松手时指针压在标题上」= 搬栏 + 那一栏被收起，
+ * 用户看到的是内容**猛地展开／收起**。落盘失败的话还会叠一个弹窗（`设置没存上`）。
+ *
+ * 真鼠标的轨迹在 e2e 里发不出来（见文件头），所以这里显式补发那一下 click ——
+ * 浏览器在 pointerup 之后就是会发它，补发是对真实行为的**忠实**还原，不是造数据。
+ */
+test("拖拽落点在标题条上时，收尾那一下 click 不该把这一栏收起", async ({ page }) => {
+  await openBoard(page);
+
+  // 先经过「工作」的网格（立 targetFence = 工作），再落到「工作」的标题上松手
+  await dragAppVia(page, app("d-cursor-0"), gridOf("工作"), titleOf("工作"));
+
+  // 拖拽本身要真的发生 —— 否则这条测试会因为「什么都没拖」而假绿
+  expect(await callsTo(page, "fence_save_order"), "拖拽没生效，这条就测不到 click").toHaveLength(1);
+
+  // 浏览器在 pointerup 之后补发的那个 click，落点就是标题条
+  await clickSel(page, titleOf("工作"));
+
+  expect(
+    await callsTo(page, "fence_save_ui"),
+    "拖拽收尾的 click 被当成了「点标题收起」—— 搬个图标顺手把栏收起来了"
+  ).toEqual([]);
+  expect((await gridInfo(page, "工作")).visible, "「工作」被误收起了").toBe(true);
+});
+
 test("收起与高度是两个独立字段：收起之后高度照旧记着", async ({ page }) => {
   await openBoard(page);
 
