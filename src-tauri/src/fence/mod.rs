@@ -462,8 +462,11 @@ fn system_shell_items(icons: &Path) -> Vec<FenceItemDto> {
 ///
 /// 失败只 `eprintln!` 不返回 Err：spec §8 要求 `HideIcons` 写失败**不阻塞启动**
 /// （reg + powershell 刷 Explorer 在有些机器上会卡）。
+///
+/// 「用户意愿」取 `hide::may_hide()` —— 优先级（用户意愿 > 认领记录 > 残留）
+/// 全部在 `fence/hide.rs` 的 `classify` 里。这里只是取用，不要在这里再加第二个判断。
 fn hide_unless_user_wants_visible() {
-    if hide::user_wants_visible() {
+    if !hide::may_hide() {
         return;
     }
     if let Err(e) = hide::set_desktop_icons_hidden(true) {
@@ -483,6 +486,18 @@ fn hide_unless_user_wants_visible() {
 /// 隐藏本身不能同步做：`reg add` 之后还要刷 Explorer，同步跑会卡住首屏
 /// （旧 takeover 的冷启动快路径就是为了这个才把隐藏丢后台的）。
 fn hide_desktop_icons_on_start() {
+    // 用户按过逃生开关时**一个字都不写**：不隐藏，也**不记这条账**。
+    //
+    // 旧实现无条件把 `owned` 记成 true，于是「用户要求显示」的机器上每次启动都会
+    // 凭空留下一条假认领 —— 同一条状态的两个真相源。它当时没出事，只是因为
+    // `recover_orphan_hidden_state` 恰好先查标志文件把它压住了；换个顺序就翻。
+    // 现在这条记录根本不会产生。
+    //
+    // INV-3 不受影响：`owned` 是给「我们收下的那个 1」用的，而这条分支下我们
+    // 根本没有收下任何东西（真收下了的话下面照样记账）。
+    if !hide::may_hide() {
+        return;
+    }
     if let Ok(mut m) = meta::load() {
         if !m.hide.owned {
             m.hide.owned = true;
@@ -764,6 +779,11 @@ pub fn fence_status() -> Result<serde_json::Value, String> {
 }
 
 /// 当前桌面图标是否可见（= `HideIcons` 为 0 或未设置）。
+///
+/// 这里报的是**事实**（注册表现在是什么值），不是**意图**（谁说了算）——
+/// 所以刻意**不**走 `hide::classify`。用户按了逃生开关、但改注册表那一步失败时，
+/// 两者会不一致，这时如实报「还隐藏着」才对：前端 `catch` 会弹「还原失败」，
+/// 用户看得见、能重试。拿意图来粉饰事实会把这个失败藏起来。
 #[tauri::command]
 pub fn fence_icons_visible() -> Result<bool, String> {
     Ok(hide::is_enabled()? != Some(true))
@@ -771,29 +791,12 @@ pub fn fence_icons_visible() -> Result<bool, String> {
 
 /// 逃生开关：立即切换桌面图标可见性，并记住这个选择（重启 desk 不反弹）。
 ///
-/// 除切换注册表外还要维护两处本地状态，缺一个都会让「用户的选择」跟
-/// 别的机制打架：
-///   - 标志文件 `icons-visible`：让 `fence_list` 的启动隐藏路径不再动 `HideIcons`。
-///     **这个文件是逃生口的唯一权威** —— 它必须独立于 desk 进程健康与注册表状态
-///     存在（设计 §6.2 第 3 条），所以哪怕 `fence.json` 坏了也不影响它被读到。
-///   - `fence.json` 的 `hide.owned`：让启动时的孤儿自检知道这个 `HideIcons` 有主。
-///     只置位不清除的话，「visible=true 但 owned 仍是 true」这条过期记录会把
-///     孤儿自检的判据带偏。（v1 里这是 `vault.json` 的 `hide_icons_applied`，
-///     Task 12 随 vault 读路径搬到了 `meta::HideState`。）
+/// 三处来源（注册表 / 标志文件 / `hide.owned`）的写法整体搬进了
+/// `hide::apply_user_choice` —— 它们和读它们的 `classify` 现在同处一室，
+/// 改一处就能看见另一处。这里只负责把它接出来。
 #[tauri::command]
 pub fn fence_set_icons_visible(visible: bool) -> Result<bool, String> {
-    if visible {
-        hide::disable()?;
-    } else {
-        hide::enable()?;
-    }
-    hide::set_user_wants_visible(visible)?;
-
-    let mut m = meta::load()?;
-    if m.hide.owned != !visible {
-        m.hide.owned = !visible;
-        meta::save(&m)?;
-    }
+    hide::apply_user_choice(visible)?;
     Ok(visible)
 }
 
