@@ -5,6 +5,12 @@
   // `max_schemes_matches_frontend` 钉住，改任何一处测试都会响。
   const MAX_SCHEMES = 3;
 
+  // ⚠️ `disabled` **故意不等于**真机的 `coder` 预设。真机那份是 `plugins.rs` 的
+  // `coder_disabled()`，**七项**（这里之外还禁 clock / qq-music / stock / sys-res）；
+  // 这里只禁三项，是**fixture 超集** —— 为的是让时钟 / QQ 音乐 / 股票 / 系统资源每块面板
+  // 都有一份 spec 能把它驱动起来。**改这里不等于改真机默认布局**（要核那个读 `coder_disabled`）。
+  // 两边的一致性**没有护栏**，也刻意不做 —— 跨语言桥接预设组成会把产品动作锁死，见 GOAL 台账
+  // 「刻意不加护栏的两处」。
   const defaultConfig = {
     active_preset: "coder",
     disabled: ["hello", "ops-hud", "event-tape"],
@@ -237,6 +243,13 @@
             active_preset: "scheme",
           });
           return config;
+        // ⚠️ 这里**只改 `active_preset`**，不像真机那样把 `disabled` 换成该预设的规范列表、
+        // 并把 `order` 清空（真机见 `plugins.rs` 的 `plugin_apply_preset`）。要补齐就得把三条
+        // `disabled` 列表再抄一份进 mock —— 等于给「预设组成」添第四份抄本，而 GOAL 台账里
+        // 判过不为此建跨语言桥，所以**留着不做**。
+        //
+        // 代价说清楚：**目前没有任何 spec 走这条命令**；将来谁写「切预设」的 e2e，
+        // 断言到的是这个 no-op 而不是真机行为（切完面板不会变）。别把它当真机。
         case "plugin_apply_preset":
           config = Object.assign({}, config, {
             active_preset: args.id,
