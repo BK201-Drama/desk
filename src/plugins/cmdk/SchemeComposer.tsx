@@ -3,7 +3,6 @@ import {
   chipLabel,
   MAX_SCHEMES,
 } from "../../host/schemeLogic";
-import { QUICK_PRESETS } from "./constants";
 import {
   buildSchemeComposerView,
   isBuiltinActive,
@@ -33,7 +32,7 @@ type Props = {
 };
 
 export function SchemeComposer({ hidden }: Props) {
-  const { config } = useLayoutConfig();
+  const { config, presets } = useLayoutConfig();
   const {
     applyPresetId,
     applySchemeTab,
@@ -179,19 +178,23 @@ export function SchemeComposer({ hidden }: Props) {
         <div className="cmdk-builtin-row">
           <span className="cmdk-builtin-label">内置</span>
           <div className="cmdk-preset-pills">
-            {QUICK_PRESETS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className={`cmdk-preset-pill${isBuiltinActive(activePreset, p.id) ? " is-active" : ""}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void applyPresetId(p.id);
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
+            {/* 内置行**必须**读 `presets`，不许自己抄一份：抄过一次，同一个
+                预设在 `CmdkPanel` 里叫「仅围栏」、在这里叫「围栏」。 */}
+            {presets
+              .filter((p) => p.builtin)
+              .map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`cmdk-preset-pill${isBuiltinActive(activePreset, p.id) ? " is-active" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void applyPresetId(p.id);
+                  }}
+                >
+                  {p.name}
+                </button>
+              ))}
           </div>
         </div>
       </div>
