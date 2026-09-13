@@ -79,15 +79,35 @@ pub(crate) fn set_desktop_icons_hidden(hidden: bool) -> Result<(), String> {
 }
 
 /// 当前 HideIcons 的值。`None` 表示该值在注册表里不存在（等价于未隐藏）。
+///
+/// ⚠️ `CREATE_NO_WINDOW` 不是可有可无的美化。desk 是 **GUI 子系统**
+/// （`main.rs` 的 `windows_subsystem = "windows"`，实测 PE Subsystem=2），
+/// **自己没有控制台可继承**，而 `reg.exe` 是**控制台程序** —— 不带这个 flag，
+/// Windows 会给它**新分配一个控制台窗口**，界面上就是一个「黑窗一闪而过」。
+///
+/// 2026-09-13 的真机缺陷就是漏在这里：这条命令经 `fence_icons_visible`
+/// （`mod.rs`）挂在围栏面板的 setup effect 里，于是**每次点围栏标题收起/展开都闪一次**。
+/// 护栏见 `src/lib/spawnFlags.test.ts`，它扫的就是这一段。
 pub(crate) fn is_enabled() -> Result<Option<bool>, String> {
-    let out = std::process::Command::new("reg")
-        .args(["query", REG_PATH, "/v", "HideIcons"])
-        .output()
-        .map_err(|e| format!("reg query 启动失败：{e}"))?;
-    if !out.status.success() {
-        return Ok(None);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let out = Command::new("reg")
+            .args(["query", REG_PATH, "/v", "HideIcons"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map_err(|e| format!("reg query 启动失败：{e}"))?;
+        if !out.status.success() {
+            return Ok(None);
+        }
+        Ok(parse_hide_icons(&String::from_utf8_lossy(&out.stdout)))
     }
-    Ok(parse_hide_icons(&String::from_utf8_lossy(&out.stdout)))
+    // 非 Windows 上没有 `HideIcons` 这个值 —— 语义上等价于「从没隐藏过」。
+    #[cfg(not(windows))]
+    {
+        Ok(None)
+    }
 }
 
 pub(crate) fn enable() -> Result<(), String> {
