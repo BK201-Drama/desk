@@ -31,6 +31,22 @@ pub(crate) struct ScannedItem {
 /// 围栏显示顺序。沿用旧实现，改动会让用户的既有布局换位置。
 const FENCE_ORDER: [&str; 5] = ["游戏", "工具", "工作", "文件夹", "其它"];
 
+/// 自定义高度的上界（行）。**必须和前端 `model.ts` 的 `ROWS_MAX` 一致** ——
+/// 两边各自写一遍是没办法的事（Rust 常量过不去线），所以两边都留了这条注释。
+/// 前端的行数是**类名**（`.fence-grid.rows-N`），后端放出界就会指向一个不存在的类，
+/// 症状是「设了 9 行，网格却是默认 2 行」。这里在**读取时**夹住，手改过的
+/// `fence.json` 也收敛得回来。
+pub(crate) const ROWS_MAX: u32 = 5;
+
+/// 一个围栏在 `ui` 里的显示偏好。读的时候就地收敛：
+/// `rows` 超界夹到 `ROWS_MAX`，0 与缺键同义（都表示「自动」）。
+fn ui_of(name: &str, meta: &FenceMeta) -> (bool, u32) {
+    (
+        meta.ui.collapsed.contains(name),
+        meta.ui.rows.get(name).copied().unwrap_or(0).min(ROWS_MAX),
+    )
+}
+
 /// 图标文件名：meta key 含 `:`（Windows 文件名非法字符），转义一次。
 /// 用可读的文件名而不是哈希 —— 出问题时能一眼看出这个 png 属于谁。
 pub(crate) fn icon_file(key: &str) -> PathBuf {
@@ -149,26 +165,35 @@ pub(crate) fn build_fences(items: &[ScannedItem], meta: &FenceMeta) -> Vec<Fence
     for name in FENCE_ORDER {
         if let Some(v) = buckets.remove(name) {
             if !v.is_empty() {
+                let (collapsed, rows) = ui_of(name, meta);
                 fences.push(FenceDto {
                     name: name.to_string(),
                     items: v.into_iter().map(|(_, _, d)| d).collect(),
+                    collapsed,
+                    rows,
                 });
             }
         }
     }
     for (name, v) in buckets {
         if !v.is_empty() {
+            let (collapsed, rows) = ui_of(&name, meta);
             fences.push(FenceDto {
                 name,
                 items: v.into_iter().map(|(_, _, d)| d).collect(),
+                collapsed,
+                rows,
             });
         }
     }
 
     if let Ok(icons) = super::icons_dir() {
+        let (collapsed, rows) = ui_of("系统", meta);
         fences.push(FenceDto {
             name: "系统".into(),
             items: system_shell_items(&icons),
+            collapsed,
+            rows,
         });
     }
     fences
@@ -266,6 +291,47 @@ mod tests {
     fn build_always_appends_system_fence() {
         let fences = build_fences(&[], &FenceMeta::default());
         assert_eq!(fences.last().unwrap().name, "系统");
+    }
+
+    /// `ui` 是**按围栏名**发下去的，不是全局的：收了「游戏」不该顺手把「工具」也收掉。
+    /// 顺带钉住默认值 —— 没有任何 ui 记录时，每一栏都是 `collapsed: false, rows: 0`。
+    #[test]
+    fn build_reads_collapsed_and_rows_per_fence() {
+        let d = scratch();
+        std::fs::write(d.path().join("PVZ.lnk"), b"").unwrap();
+        std::fs::write(d.path().join("Cursor.lnk"), b"").unwrap();
+        let items = scan_root("user", d.path()).unwrap();
+
+        let mut m = FenceMeta::default();
+        m.entries.insert(
+            "user:PVZ.lnk".into(),
+            Entry {
+                fence: "游戏".into(),
+                order: 0,
+                mtime: 0,
+            },
+        );
+        m.entries.insert(
+            "user:Cursor.lnk".into(),
+            Entry {
+                fence: "工具".into(),
+                order: 0,
+                mtime: 0,
+            },
+        );
+        m.ui.collapsed.insert("游戏".into());
+        m.ui.rows.insert("工具".into(), 3);
+        // 手改过的 json 可能留下越界的行数：读取时就夹住，别让它指到一个不存在的 CSS 类
+        m.ui.rows.insert("系统".into(), 99);
+
+        let fences = build_fences(&items, &m);
+        let by = |n: &str| fences.iter().find(|f| f.name == n).unwrap();
+
+        assert!(by("游戏").collapsed);
+        assert_eq!(by("游戏").rows, 0, "只收了，没设高度");
+        assert!(!by("工具").collapsed, "收的是游戏，不是工具");
+        assert_eq!(by("工具").rows, 3);
+        assert_eq!(by("系统").rows, ROWS_MAX, "越界行数在读取时被夹住");
     }
 
     /// 真机验证 —— `cargo test real_icons -- --ignored --nocapture` 手动跑。

@@ -207,6 +207,11 @@ mod tests {
         FenceDto {
             name: name.into(),
             items,
+            // 显示偏好（2026-09-13）**刻意不进指纹**：指纹判的是「桌面内容变没变」，
+            // 而收起/高度是纯前端偏好，改它不该触发一次重扫推送 —— 前端自己就改了。
+            // 真被推了也不会错（`collect_fences` 每拍重读 `meta`），只是白跑一趟。
+            collapsed: false,
+            rows: 0,
         }
     }
 

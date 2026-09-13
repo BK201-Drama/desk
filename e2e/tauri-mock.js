@@ -28,9 +28,18 @@
   // 它**不参与渲染**（没有任何 class / data 属性读它），所以补这个字段
   // 不会动样式基线 —— 加完请跑一次 `npm run test:style` 复核三个基线零 diff。
   // 真机线上一定有这个字段（serde 无条件序列化 bool），所以每个条目都写全。
+  //
+  // `collapsed` / `rows` 是 2026-09-13（围栏交互）加的：`FenceDto` 上的两个显示偏好，
+  // 与 `is_dir` 不同，它们**参与渲染**（`.is-collapsed` / `.fence-grid.rows-N` 两个类）。
+  // 于是这份 fixture 的默认值必须是「不收起（false）+ 自动（0）」——
+  // 那正是 `gridClass(0)` 返回裸 `"fence-grid"` 的那一支，既有 6 份基线才能重录成**纯新增**。
+  // 想录「收起」/「自定义高度」两个新状态，请用 `__MOCK_SAVE_UI__` 现改（见下面
+  // `fence_save_ui` 的桩），**不要**把默认值改掉。
   const FENCE_FIXTURE = [
     {
       name: "游戏",
+      collapsed: false,
+      rows: 0,
       items: [
         { id: "d-lol-0", label: "英雄联盟", path: "C:\\Desktop\\英雄联盟.lnk", icon: null, is_dir: false },
         { id: "d-cs2-0", label: "counter-strike 2", path: "C:\\Desktop\\counter-strike 2.lnk", icon: null, is_dir: false },
@@ -41,6 +50,8 @@
     },
     {
       name: "工具",
+      collapsed: false,
+      rows: 0,
       items: [
         { id: "d-cursor-0", label: "Cursor", path: "C:\\Desktop\\Cursor.lnk", icon: null, is_dir: false },
         { id: "d-gitbash-0", label: "Git Bash", path: "C:\\Desktop\\Git Bash.lnk", icon: null, is_dir: false },
@@ -50,6 +61,8 @@
     },
     {
       name: "工作",
+      collapsed: false,
+      rows: 0,
       items: [
         { id: "d-feishu-0", label: "飞书", path: "C:\\Desktop\\飞书.lnk", icon: null, is_dir: false },
         { id: "d-paper-0", label: "文献批量阅读助手", path: "C:\\Desktop\\文献批量阅读助手.lnk", icon: null, is_dir: false },
@@ -59,6 +72,8 @@
     },
     {
       name: "文件夹",
+      collapsed: false,
+      rows: 0,
       items: [
         { id: "d-downloads-0", label: "下载", path: "C:\\Desktop\\下载", icon: null, is_dir: true },
         { id: "d-proj-0", label: "项目", path: "C:\\Desktop\\项目", icon: null, is_dir: true },
@@ -67,6 +82,8 @@
     },
     {
       name: "系统",
+      collapsed: false,
+      rows: 0,
       items: [
         { id: "sys-recycle", label: "回收站", path: "shell:RecycleBinFolder", icon: null, is_dir: true },
         { id: "sys-pc", label: "此电脑", path: "shell:MyComputerFolder", icon: null, is_dir: true },
@@ -98,6 +115,29 @@
   // 与 `FENCE_FIXTURE` 分开是**必须**的：后者是样式基线的输入，
   // 一旦被某个用例改脏，style-audit 会在不同状态之间随机飘。
   let liveFixture = structuredClone(FENCE_FIXTURE);
+  // 首帧之前就把显示偏好摆好。**必须在渲染前**：先画成默认态再改，
+  // 样式审查会拍到中间那一帧（收缩态 / 自定义高度态两个基线就靠这个开关）。
+  //   page.addInitScript(() => { window.__MOCK_UI_PRESET__ = { 工作: { collapsed: true } } })
+  //
+  // ⚠️ **不能在这里就地读 `__MOCK_UI_PRESET__`**。本文件是 `addInitScript` 注册的
+  // 第一个脚本，测试体里再挂一个 `addInitScript` 去设这个开关时，执行顺序是
+  // 「mock 先、开关后」—— 在这里读**永远是 undefined**，而失败方式非常安静：
+  // 基线照样录，只是录到的是默认态。（`__MOCK_ICONS_VISIBLE_THROWS__` 没这个毛病，
+  // 它是 invoke **运行时**才读的。）所以推迟到第一次 invoke：那时所有 init script
+  // 都跑完了，而 `fence_list` 还没被问过，仍早于第一帧。
+  let uiPresetApplied = false;
+  function applyUiPreset() {
+    if (uiPresetApplied) return;
+    uiPresetApplied = true;
+    const uiPreset = window.__MOCK_UI_PRESET__ || {};
+    Object.keys(uiPreset).forEach(function (n) {
+      const f = liveFixture.find(function (x) {
+        return x.name === n;
+      });
+      if (!f) throw new Error("mock: __MOCK_UI_PRESET__ 里的围栏不存在 " + n);
+      Object.assign(f, uiPreset[n]);
+    });
+  }
   let createdSeq = 0;
 
   /** 当前「后端认为的」看板。测试用它拼断言，不要用 __FENCE_FIXTURE__。 */
@@ -173,6 +213,8 @@
     },
     invoke: async function (cmd, args) {
       args = args || {};
+      // 第一次被问就把显示偏好落到 liveFixture 上（见上方 applyUiPreset 的 ⚠️）。
+      applyUiPreset();
       // 浅拷贝，不用 structuredClone：args 里可能有 Tauri 的回调句柄等
       // 不可克隆的东西，一次抛错就会把整个 mock 打死（那是 e2e 全红，不是一条失败）。
       mockCalls.push({ cmd: cmd, args: Object.assign({}, args) });
@@ -368,8 +410,7 @@
           };
         case "fence_list":
         case "fence_rescan":
-        case "fence_save_order":
-          // 三个命令返回同一份数据是刻意的：它们读的都是「同一批围栏」，
+          // 两个命令返回同一份数据是刻意的：它们读的都是「同一批围栏」，
           // 数据不一致的话样式审查会在两个状态之间随机飘。
           // （旧版的 `fence_takeover` 随 Task 10 删掉了 —— 现在读源是真桌面，
           //  `fence_rescan` 只是「重扫一遍」，结论仍是这份数据。）
@@ -377,8 +418,79 @@
           // 返回 `liveFixture`（不是 FENCE_FIXTURE）：ops 改完后端状态之后，
           // 任何一次重读都该看到新结果（Task 15）。开局两者内容相同。
           return structuredClone(liveFixture);
+        case "fence_save_order": {
+          // 拖拽重排（2026-09-13 起常态可用）。**桩必须真的重排 `liveFixture`**：
+          // 真机上这条命令写 `fence.json` 的归属与 order，再 `collect_fences()`
+          // 回吐**重排后**的看板，而前端 `persistOrder` 是拿这个返回值直接
+          // setFences 的 —— 桩回吐一份没重排的，会把前端刚做的乐观更新顶掉，
+          // 症状是「拖完图标自己弹回去」。那是个**只在 mock 里存在**的假失败，
+          // 正是文件头警告的那类坑。
+          //
+          // 语义对齐 `fence_save_order`（src/fence/mod.rs:623）：只认 `layout` 里
+          // 提到的那些 id 的**归属**，`sys-` 项不参与重排（后端 `continue` 掉它们）。
+          const layout = Array.isArray(args.layout) ? args.layout : [];
+          const byId = new Map();
+          liveFixture.forEach(function (f) {
+            f.items.forEach(function (it) {
+              byId.set(it.id, it);
+            });
+          });
+          const next = {};
+          layout.forEach(function (block) {
+            if (block.name === "系统") return;
+            next[block.name] = (block.ids || [])
+              .filter(function (id) {
+                return !String(id).startsWith("sys-");
+              })
+              .map(function (id) {
+                return byId.get(id);
+              })
+              .filter(Boolean);
+          });
+          // 没被 layout 认领的项（`sys-` 全在这一类里）留在原栏末尾 ——
+          // 一次拖拽把别的图标弄丢的话，断言会变成很难读的「图标不见了」。
+          const claimed = new Set();
+          Object.keys(next).forEach(function (n) {
+            next[n].forEach(function (it) {
+              claimed.add(it.id);
+            });
+          });
+          liveFixture.forEach(function (f) {
+            const list = next[f.name] || (next[f.name] = []);
+            f.items.forEach(function (it) {
+              if (!claimed.has(it.id)) list.push(it);
+            });
+          });
+          liveFixture.forEach(function (f) {
+            if (next[f.name]) f.items = next[f.name];
+          });
+          return structuredClone(liveFixture);
+        }
         case "fence_snapshot":
           return { fences: structuredClone(liveFixture), icons: [] };
+        // 显示偏好（收起 / 高度，2026-09-13）。与 `fence_save_order` 一样，
+        // **返回一帧新看板**而不是 null —— 真机上这条链是
+        // 「前端乐观改 → invoke → 用返回值对齐」，返回 null 的话
+        // `normalizeFences(undefined)` 会把整个看板清空（那是 mock 特有的假失败）。
+        //
+        // ⚠️ **不推 `fence:changed`**：这条命令改的是 `fence.json`（看板自己的偏好），
+        // 不是桌面，真机上的 watcher 也不会为它响。所以前端只能靠返回值更新 ——
+        // 这正是 `useMenuIo` 那个 `ui` 参数存在的原因，别在这里"顺手"补一次推送。
+        case "fence_save_ui": {
+          if (window.__MOCK_SAVE_UI_THROWS__) throw new Error("mock: 显示偏好写入失败");
+          const name = String(args.name || "");
+          const host = liveFixture.find(function (f) {
+            return f.name === name;
+          });
+          // 真机上是 `meta::load()` 后按键查表，给一个不存在的名字**不会**报错
+          // （entries 里加一条就是了）。mock 这里抛是为了让"名字传错了"立刻炸 ——
+          // 静默成功的话，用例会断言到一个**根本没生效**的状态上。
+          if (!host) throw new Error("mock: 没有这个围栏 " + name);
+          // `null` = 不改这一项（后端那两个参数是 `Option<T>`）；`rows: 0` = 回到自动。
+          if (args.collapsed != null) host.collapsed = Boolean(args.collapsed);
+          if (args.rows != null) host.rows = Math.max(0, Number(args.rows) || 0);
+          return structuredClone(liveFixture);
+        }
         // ── Task 14/15 的十个文件操作命令 ────────────────────────────────
         // 参数名按**真机**的 camelCase 写（Tauri 2 默认 camelCase）。桩本身很简单，
         // 但它是「前端发的参数名对不对」这条断言的落点 —— 见 e2e/fence-menu.spec.ts。

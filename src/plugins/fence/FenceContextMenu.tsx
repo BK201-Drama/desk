@@ -281,7 +281,18 @@ function SubMenu({
 export function useMenuIo(
   ctx: HostContext,
   open: (path: string, id: string) => void,
-  dlg: FenceDialogApi
+  dlg: FenceDialogApi,
+  /**
+   * 显示偏好那两个动作（收起 / 高度）。**必须由调用方注入**，不能在这里
+   * `call("fence_save_ui", …)` 了事：那条命令的返回值是**一帧新的看板**，
+   * 丢掉它的话后端改了、前端还画着旧的（`fence_save_ui` 不触发 watcher 推送 ——
+   * 它改的是 `fence.json`，不是桌面）。所以这条链得回到 `useFences.persistUi`
+   * 去，由它把返回值 setFences 进去。菜单这一侧只当个转发口。
+   */
+  ui: {
+    setCollapsed: (name: string, collapsed: boolean) => void;
+    setRows: (name: string, rows: number) => void;
+  }
 ): MenuIo {
   const call = useCallback(
     (cmd: string, args?: Record<string, unknown>) => {
@@ -333,7 +344,10 @@ export function useMenuIo(
       sendTo: (path) => call("fence_send_to", { path }),
       compress: (path) => call("fence_compress", { path }),
       properties: (path) => call("fence_properties", { path }),
+      // 显示偏好：转给调用方（见上面 `ui` 参数的注释）。
+      setCollapsed: (name, collapsed) => ui.setCollapsed(name, collapsed),
+      setRows: (name, rows) => ui.setRows(name, rows),
     }),
-    [call, open]
+    [call, open, ui]
   );
 }

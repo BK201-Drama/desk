@@ -1,4 +1,4 @@
-import { asArray, asObject, asString } from "../../lib/safe";
+import { asArray, asNumber, asObject, asString } from "../../lib/safe";
 
 export type FenceItem = {
   id: string;
@@ -16,6 +16,12 @@ export type FenceItem = {
 export type FenceGroup = {
   name: string;
   items: FenceItem[];
+  /** 收起了（只留标题条）。必填，理由同 `FenceItem.isDir` ——
+      它被 `applyLayout` / `moveItemAcross` 两个「重建 group」的地方路过，
+      可选的话 `{...f}` 之外的那些重建点会**静默丢掉它**。 */
+  collapsed: boolean;
+  /** 自定义行数。**0 = 自动**（用 styles.css 里那份默认）。上界 `ROWS_MAX`。 */
+  rows: number;
 };
 
 export type FenceLayout = {
@@ -23,7 +29,38 @@ export type FenceLayout = {
   ids: string[];
 };
 
+/** 拖拽的启动阈值，单位是**屏幕像素**（与 `clientX` 同一坐标系，见
+    `FenceContextMenu.tsx` 的文件头）—— 缩放 1.6384 下约等于 3.7 个 CSS 像素，
+    比 Windows 自己的 `SM_CXDRAG`（4）还宽一点。
+
+    ⚠️ 2026-09-13 之前它是「编辑态专用」的：那时点与拖分在两个模式里，
+    阈值偏小没人会撞上。现在拖拽**常开**（用户需求 1），阈值就变成了
+    「点一下图标会不会误判成拖」的唯一防线 —— 所以**不许下调**。 */
 export const DRAG_THRESHOLD_PX = 6;
+
+/** 自定义高度的行数范围。**上界必须和 `index.rs` 的 `ROWS_MAX` 一致** ——
+    两边各写一遍是没办法的事（常量过不去 IPC），所以两边都留了注释互指。
+    对不上的症状：设了 N 行却画成默认的 2 行（`.fence-grid.rows-N` 这个类不存在）。 */
+export const ROWS_MAX = 5;
+
+/** 行数收敛：0 与「非法值」都算自动。后端读取时也夹了一道（`index::ui_of`）。 */
+export function clampRows(v: unknown): number {
+  const n = typeof v === "number" && Number.isFinite(v) ? Math.floor(v) : 0;
+  return n <= 0 ? 0 : Math.min(n, ROWS_MAX);
+}
+
+/**
+ * `.fence-grid` 的类名。行数用**类**表达，不用内联 `--fence-rows`，因为
+ * `overflow-y` 必须跟着行数一起改（1 行的那三栏是 `hidden`，行数调大就会被裁掉
+ * 而不是滚动），类能把两条声明写进同一个选择器里 —— 完整理由见 `panel.css`。
+ *
+ * 自动时**原样返回 `"fence-grid"`**，不拼一个空串：样式审查把 `className`
+ * 原文一起录进基线，多个尾随空格就是一处 diff（虽然不影响观感，但会淹掉真信号）。
+ */
+export function gridClass(rows: number): string {
+  const r = clampRows(rows);
+  return r > 0 ? `fence-grid rows-${r}` : "fence-grid";
+}
 
 /**
  * 系统围栏那两项的 id 前缀（`sys-recycle` / `sys-pc`，见后端 `system_shell_items`）。
@@ -74,6 +111,11 @@ export function normalizeFences(raw: unknown): FenceGroup[] {
         items: asArray<unknown>(o.items)
           .map(normalizeFenceItem)
           .filter((x): x is FenceItem => x != null),
+        // 与 `is_dir` 同一条规矩：只认字面 `true`，缺字段 / 写成字符串都算「没收起」。
+        collapsed: o.collapsed === true,
+        // `asNumber` 已经把非数字挡成 0（= 自动）；`clampRows` 再把越界夹回来。
+        // 旧的后端（不认识这两个字段）也能被这套默认值兜住。
+        rows: clampRows(asNumber(o.rows)),
       };
     })
     .filter((x): x is FenceGroup => x != null);
@@ -135,7 +177,9 @@ export function applyLayout(fences: FenceGroup[], layout: FenceLayout[]): FenceG
     for (const i of f.items) {
       if (!i.id.startsWith(SYS_ID_PREFIX) && !seen.has(i.id)) items.push(i);
     }
-    return { name: f.name, items: [...items, ...sys] };
+    // `collapsed` / `rows` 是**显示偏好**，与「按 layout 重排」这件事无关 ——
+    // 必须原样带过去。漏掉它们的症状是：保存过一次顺序之后，收起的围栏自己展开了。
+    return { name: f.name, items: [...items, ...sys], collapsed: f.collapsed, rows: f.rows };
   });
 }
 

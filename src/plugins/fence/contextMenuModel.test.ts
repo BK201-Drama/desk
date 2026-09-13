@@ -11,7 +11,7 @@ import {
   type MenuItem,
   type MenuTarget,
 } from "./contextMenuModel";
-import type { FenceItem } from "./model";
+import { ROWS_MAX, type FenceItem } from "./model";
 
 /** 记录调用的端口。菜单的行为合同就是「点了这项调到哪个命令、参数是什么」，全在这上面。 */
 function spyIo() {
@@ -33,6 +33,8 @@ function spyIo() {
     sendTo: rec("sendTo"),
     compress: rec("compress"),
     properties: rec("properties"),
+    setCollapsed: rec("setCollapsed"),
+    setRows: rec("setRows"),
   };
   return { io, calls };
 }
@@ -231,12 +233,75 @@ describe("sys 目标", () => {
   });
 });
 
+describe("围栏标题", () => {
+  const at = (collapsed: boolean, rows: number): MenuTarget => ({
+    kind: "fence",
+    name: "工作",
+    collapsed,
+    rows,
+  });
+
+  it("前两组是自己那两项，后面**原样接上**空白菜单 —— 右键标题不该比右键空地少拿到东西", () => {
+    const m = contextMenuModel(at(false, 0), spyIo().io);
+    expect(ids(m)).toEqual(["collapse", "rows", SEP_ID, "new", SEP_ID, "paste"]);
+    expect(ids(m[1].submenu!)).toEqual([
+      "rows-auto",
+      ...Array.from({ length: ROWS_MAX }, (_, i) => `rows-${i + 1}`),
+    ]);
+  });
+
+  it("标签写**动作**：没收起时给「收起」，收起时给「展开」", () => {
+    const open = flat(contextMenuModel(at(false, 0), spyIo().io));
+    const shut = flat(contextMenuModel(at(true, 0), spyIo().io));
+    expect(open.find((i) => i.id === "collapse")!.label).toBe("收起");
+    expect(shut.find((i) => i.id === "collapse")!.label).toBe("展开");
+  });
+
+  it("点「收起」打到 setCollapsed(名字, **取反**)—— 菜单项本身不带状态，取反只能在这一侧做", () => {
+    const a = spyIo();
+    run(contextMenuModel(at(false, 0), a.io), "collapse");
+    expect(a.calls).toEqual([["setCollapsed", "工作", true]]);
+
+    const b = spyIo();
+    run(contextMenuModel(at(true, 0), b.io), "collapse");
+    expect(b.calls).toEqual([["setCollapsed", "工作", false]]);
+  });
+
+  it("高度：子项 1..ROWS_MAX 各打到 setRows(名字, N)，「自动」打到 **0**", () => {
+    const { io, calls } = spyIo();
+    const m = contextMenuModel(at(false, 3), io);
+    for (const id of ["rows-auto", "rows-1", "rows-3", `rows-${ROWS_MAX}`]) run(m, id);
+    expect(calls).toEqual([
+      ["setRows", "工作", 0], // 0 = 自动，也是「调坏了回原样」的那个出口
+      ["setRows", "工作", 1],
+      ["setRows", "工作", 3],
+      ["setRows", "工作", ROWS_MAX],
+    ]);
+  });
+
+  it("当前高度写在父项标签里（不勾选）：自动 / N 行", () => {
+    const label = (rows: number) =>
+      flat(contextMenuModel(at(false, rows), spyIo().io)).find((i) => i.id === "rows")!.label;
+    expect(label(0)).toBe("高度（自动）");
+    expect(label(2)).toBe("高度（2 行）");
+  });
+
+  it("父项自己 run 什么也不做 —— 点它只展开子菜单（渲染层也是这么接的）", () => {
+    const { io, calls } = spyIo();
+    run(contextMenuModel(at(false, 0), io), "rows");
+    expect(calls).toEqual([]);
+  });
+});
+
 describe("整个菜单的形状不变量", () => {
   const all: MenuTarget[] = [
     { kind: "blank" },
     { kind: "item", item: fileItem, isDir: false },
     { kind: "item", item: dirItem, isDir: true },
     { kind: "sys", item: sysItem },
+    // 两个围栏目标：收起 / 不收起各来一个 —— 标签是随状态变的，形状不变量得两种都过。
+    { kind: "fence", name: "工作", collapsed: false, rows: 0 },
+    { kind: "fence", name: "游戏", collapsed: true, rows: ROWS_MAX },
   ];
 
   it("非分隔线的 id 不重复（重复会让 data-menu-id 选择器指到两个元素）", () => {

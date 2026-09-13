@@ -1,11 +1,15 @@
-//! fence.json v2 —— 只存偏好（围栏归属 / 排序 / 可见性），**不存文件**。
+//! fence.json v2 —— 只存偏好（围栏归属 / 排序 / 可见性 / 收起与高度），**不存文件**。
 //! 文件永远住在真桌面上（INV-1）；删掉本文件只丢偏好，不丢文件（INV-4）。
+//!
+//! `version` 停在 2 是**故意的**：它今天没有任何读取者（只有 `default_version()`
+//! 和一条钉住它的单测），升号换不到兼容性 —— 桌面只有一个构建。新字段一律
+//! `#[serde(default)]`，旧文件读进来就是「没收起、没自定义高度」。
 
 // Task 12 已按约删掉 `#![allow(dead_code)]` —— vault 读源没了，`fence.json` 是唯一
 // 读源，这个模块的每个类型/函数都有了确定的使用者（或已被编译器指出来没有）。
 
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,6 +20,8 @@ pub(crate) struct FenceMeta {
     pub entries: BTreeMap<String, Entry>,
     #[serde(default)]
     pub hide: HideState,
+    #[serde(default)]
+    pub ui: UiState,
 }
 
 fn default_version() -> u32 {
@@ -39,12 +45,32 @@ pub(crate) struct HideState {
     pub visible: bool,
 }
 
+/// 看板自己的显示偏好（2026-09-13）：哪些围栏收起了、每个围栏几行高。
+///
+/// **为什么和 `entries` 不同、不参与 `prune`**：`entries` 按 `{origin}:{文件名}` 记账，
+/// 一条过期条目会在同名文件**再次出现**时静默继承上一次的分类 —— 那是真缺陷，
+/// 所以 `fence_list` 每次冷启动都要收一次。这里按**围栏名**记账，过期的键是**惰性**的：
+/// 它只在同名围栏再次出现时生效，而那一刻它正是用户想要的东西（用户就是把它收着的）。
+/// 于是不收，也不为它多跑一次扫描。
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct UiState {
+    /// 收起（只留标题条）的围栏名。
+    #[serde(default)]
+    pub collapsed: BTreeSet<String>,
+    /// 自定义行数。**缺键 = 自动**（用 `styles.css` 里那份默认）。
+    /// 上界由 `index::ROWS_MAX` 在读取时夹住 —— 前端只发 1..=ROWS_MAX，
+    /// 但手改过的 json 也得收敛到一个存在的 CSS 类上。
+    #[serde(default)]
+    pub rows: BTreeMap<String, u32>,
+}
+
 impl Default for FenceMeta {
     fn default() -> Self {
         Self {
             version: 2,
             entries: BTreeMap::new(),
             hide: HideState::default(),
+            ui: UiState::default(),
         }
     }
 }
@@ -169,5 +195,53 @@ mod tests {
     #[test]
     fn default_has_version_2() {
         assert_eq!(FenceMeta::default().version, 2);
+    }
+
+    /// 迁移期的**旧文件**（没有 `ui` 键，Task 15 之前写下的每一份都是这样）
+    /// 必须读成「没事发生」。这条是 `#[serde(default)]` 的落点 ——
+    /// 漏了它，用户一升级就看板全空（或者直接 `load()` 报错）。
+    #[test]
+    fn old_json_without_ui_loads_as_default() {
+        let old = r#"{
+            "version": 2,
+            "entries": { "user:a.lnk": { "fence": "游戏", "order": 0, "mtime": 0 } },
+            "hide": { "owned": true, "visible": false }
+        }"#;
+        let m: FenceMeta = serde_json::from_str(old).expect("old json must load");
+        assert!(m.ui.collapsed.is_empty());
+        assert!(m.ui.rows.is_empty());
+        // 旧字段一个都没被这条新字段影响
+        assert_eq!(m.entries["user:a.lnk"].fence, "游戏");
+        assert!(m.hide.owned);
+    }
+
+    /// `ui` 的读写是**往返**的：写出去再读回来必须一模一样。
+    /// 它同时钉住 JSON 的形状（两个容器都序列化成 object / array，不是别的）。
+    #[test]
+    fn ui_state_round_trips() {
+        let mut m = FenceMeta::default();
+        m.ui.collapsed.insert("游戏".into());
+        m.ui.collapsed.insert("工作".into());
+        m.ui.rows.insert("工作".into(), 3);
+
+        let s = serde_json::to_string(&m).unwrap();
+        let back: FenceMeta = serde_json::from_str(&s).unwrap();
+
+        // BTreeSet / BTreeMap 是有序的：顺序稳定，`fence.json` 的 diff 才读得下去
+        assert_eq!(
+            back.ui.collapsed.iter().cloned().collect::<Vec<_>>(),
+            vec!["工作".to_string(), "游戏".to_string()]
+        );
+        assert_eq!(back.ui.rows["工作"], 3);
+        assert!(!back.ui.rows.contains_key("游戏"));
+    }
+
+    /// 串起来的键**不 panic**，只是没记录 = 自动。
+    /// （`fence_save_ui` 传 `rows: null` 时走的就是这条路。）
+    #[test]
+    fn missing_rows_key_means_auto() {
+        let m: FenceMeta = serde_json::from_str(r#"{"ui":{"collapsed":["工具"]}}"#).unwrap();
+        assert!(m.ui.rows.get("工具").is_none());
+        assert!(m.ui.collapsed.contains("工具"));
     }
 }

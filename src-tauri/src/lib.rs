@@ -187,6 +187,8 @@ pub fn run() {
             fence::fence_icons_visible,
             fence::fence_set_icons_visible,
             fence::fence_save_order,
+            // 2026-09-13：只写显示偏好（收起 / 高度），不碰归属与顺序。
+            fence::fence_save_ui,
             // Task 14：右键菜单的文件操作。这是全仓**唯一**会动用户文件的命令组，
             // 每个入口先过 `ops::locate`（只放行桌面根的直接子项）。
             fence::ops::fence_create,

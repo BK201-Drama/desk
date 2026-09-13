@@ -1,10 +1,26 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import type { HostContext } from "../../host/types";
 import { DRAG_THRESHOLD_PX, moveItemAcross, type FenceGroup } from "./model";
 
-/** application/UI：编辑模式下拖拽重排 */
+/**
+ * 拖拽重排（跨围栏搬图标）。
+ *
+ * ── 2026-09-13 拆掉了编辑态那道闸（用户需求：「支持用户自己拖拽图标到分类里」）──
+ *
+ * 原先第一句是 `if (!ctx.editing() || e.button !== 0) return`，也就是拖拽只在
+ * `Win+Shift+D` 的重排模式下可用。那道闸的存在理由写在 spec §7.3：
+ * 「点」与「拖」分进两个模式，就不必判断这一下到底是点还是拖。
+ *
+ * **但那个判断这个文件早就自己做掉了**，闸门是多余的：
+ *   · `DRAG_THRESHOLD_PX` 之内不算拖（`p.active` 一直是 false）；
+ *   · 真拖了才立 `suppressClick`，紧接着那一下 `click` 会被 `tryLaunch` 吃掉。
+ * 于是拆闸之后语义不变，只是不再需要先想起一个热键 —— 用户根本不知道有那个键。
+ *
+ * 编辑态**没有被删掉**，它还剩「点击不启动」（`doLaunch` 里那道 `ctx.editing()`）。
+ *
+ * 拆闸之后这个 hook 不再需要 `ctx`（原先只用来问 `ctx.editing()`），
+ * 所以第一个参数**去掉了** —— 与 `moveItemAcross` 一样，它现在是个纯 UI 组件。
+ */
 export function useFenceDnD(
-  ctx: HostContext,
   fences: FenceGroup[],
   onPersist: (next: FenceGroup[]) => void
 ) {
@@ -23,8 +39,16 @@ export function useFenceDnD(
   const suppressClick = useRef(false);
 
   const onAppPointerDown = (e: ReactPointerEvent, itemId: string, fenceName: string) => {
-    if (!ctx.editing() || e.button !== 0) return;
+    // 只认左键。中键/右键不拖 —— 右键要留给菜单。
+    if (e.button !== 0) return;
     if (itemId.startsWith("sys-") || fenceName === "系统") return;
+    // `suppressClick` 的作用域是**一次手势**，不是「直到下一次点图标」。
+    // 拆闸之前它够用：那时点击本来就不启动（编辑态），漏消费也看不出来。
+    // 现在不一样了 —— 「拖到空白处松手」那一下 click 落在 `.fence` 上，
+    // 没有任何 `.fence-app` 的 onClick 去消费它，于是标记一直挂着，
+    // 下一次**正常点图标**会被它静默吃掉（症状：第一次点没反应）。
+    // 这里清零是安全的：属于本次拖拽的那一下 click 一定排在下一次 pointerdown 之前。
+    suppressClick.current = false;
     pointer.current = {
       id: e.pointerId,
       itemId,

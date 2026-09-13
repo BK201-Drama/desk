@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -11,7 +12,14 @@ import { setEditing, toggleEditing } from "../../host/edit";
 import { useKeyboardInput } from "../../lib/useKeyboardInput";
 import { useDeskShellOptional } from "../../app/providers/DeskShellProvider";
 import { useFences } from "./useFences";
-import { findItemById, searchFences, totalFenceItems, type FenceItem } from "./model";
+import {
+  SYS_ID_PREFIX,
+  findItemById,
+  gridClass,
+  searchFences,
+  totalFenceItems,
+  type FenceItem,
+} from "./model";
 import { fenceIconStyle, highlightLabelParts } from "./iconStyle";
 import { useFenceDnD } from "./useFenceDnD";
 import { useRecents, RecentRow } from "./recent";
@@ -53,10 +61,11 @@ function AppButton({
 export function FencePanel({ ctx }: PluginComponentProps) {
   const shell = useDeskShellOptional();
   const setKeyboard = useKeyboardInput(ctx);
-  const { fences, loadError, loadFences, persistOrder, launch } = useFences(ctx);
+  const { fences, loadError, loadFences, persistOrder, persistUi, launch } = useFences(ctx);
   const { items: recents, push: pushRecent } = useRecents(ctx, fences);
+  // 拖拽**不再需要 ctx**：拆闸之后这个 hook 里没有 `ctx.editing()` 了（见其文件头）。
+  // 编辑态本身还在（`doLaunch` 那道闸），只是拖拽不再等它。
   const { draggingId, onAppPointerDown, consumeSuppressClick } = useFenceDnD(
-    ctx,
     fences,
     persistOrder
   );
@@ -121,9 +130,33 @@ export function FencePanel({ ctx }: PluginComponentProps) {
    */
   const { dialog, node: dialogNode } = useFenceDialogs(setKeyboard);
 
+  /**
+   * 写显示偏好（收起 / 高度）的**唯一入口**：点标题、以及右键菜单那两项，都走这里。
+   *
+   * 失败要**说出来**：`persistUi` 落盘失败会自己回滚（那一步在 `useFences` 里），
+   * 但回滚的视觉表现是「点了没反应」—— 不弹一句话，用户只会以为是自己没点准。
+   */
+  const applyUi = useCallback(
+    (name: string, patch: { collapsed?: boolean; rows?: number }) => {
+      void persistUi(name, patch).then((err) => {
+        if (err) void dialog.alert({ title: "设置没存上", detail: err });
+      });
+    },
+    [persistUi, dialog]
+  );
+
+  /** 菜单那一侧的两个动作。`useMenuIo` 把它记进 useMemo 依赖，所以要**稳定引用**。 */
+  const menuUi = useMemo(
+    () => ({
+      setCollapsed: (name: string, collapsed: boolean) => applyUi(name, { collapsed }),
+      setRows: (name: string, rows: number) => applyUi(name, { rows }),
+    }),
+    [applyUi]
+  );
+
   // 菜单的命令通道。`open` 接的就是上面那个 doLaunch —— 于是「从右键菜单打开」
   // 与「点图标打开」走的是同一条路（含「记进最近」）。
-  const menuIo = useMenuIo(ctx, doLaunch, dialog);
+  const menuIo = useMenuIo(ctx, doLaunch, dialog, menuUi);
   /**
    * 关菜单**并还键盘**。
    *
@@ -251,6 +284,20 @@ export function FencePanel({ ctx }: PluginComponentProps) {
   const editHint = editingOn ? "完成 (Win+Shift+D)" : "编辑 (Win+Shift+D)";
   const lastCursor = useRef<string>("");
 
+  /**
+   * 菜单的 `key`：**换了目标就重挂载**，于是上一轮展开的子菜单不会跟过来。
+   * 三类目标各有各的取法 —— 「围栏」那类必须带名字：不带的话，从「工作」的标题
+   * 移到「游戏」的标题，key 都是 `fence`，React 会复用同一个实例，
+   * 而它内部那个「高度 ▸ 展开中」的 state 就留着了。
+   */
+  const menuKey = !menu
+    ? "none"
+    : menu.target.kind === "item" || menu.target.kind === "sys"
+      ? menu.target.item.id
+      : menu.target.kind === "fence"
+        ? `fence:${menu.target.name}`
+        : "blank";
+
   return (
     <div
       ref={rootRef}
@@ -271,12 +318,23 @@ export function FencePanel({ ctx }: PluginComponentProps) {
         // 而这个窗口默认不可激活（`WS_EX_NOACTIVATE`），不先把键盘借过来，
         // 这两件事都会以「看得见、用不了」的方式失败（真机症状见 `withKeyboard`）。
         void setKeyboard(true);
-        // 搜索结果行也是条目（带 data-id），一视同仁地给条目菜单；
-        // 只有真正的空白（工具栏、围栏标题、网格空地）才出「新建 ▸ / 粘贴」。
+        // 搜索结果行也是条目（带 data-id），一视同仁地给条目菜单。
         const host = t?.closest<HTMLElement>(".fence-app, .fence-search-row");
         const item = host?.dataset.id ? findItemById(fences, host.dataset.id) : null;
+        // 围栏**标题**（2026-09-13）：收起 / 高度两项挂这儿。判定走 `data-name`，
+        // 于是「最近」那一栏（同样有 `.fence-title`，但**没有** `data-name`，
+        // 它不是一个分类）自然落回空白菜单 —— 不必在这里特判它的名字。
+        // 次序：条目的 `.fence-app` 不在标题里，两个 closest 不会同时命中，
+        // 但仍先判条目 —— 条目菜单是既有的那条路，不该被新分支改变。
+        const fenceEl = t?.closest<HTMLElement>(".fence-title")?.closest<HTMLElement>(".fence");
+        const name = fenceEl?.dataset.name;
+        const group = name ? fences.find((f) => f.name === name) : undefined;
         setMenu({
-          target: item ? targetFor(item) : { kind: "blank" },
+          target: item
+            ? targetFor(item)
+            : group
+              ? { kind: "fence", name: group.name, collapsed: group.collapsed, rows: group.rows }
+              : { kind: "blank" },
           at: { x: e.clientX, y: e.clientY },
         });
       }}
@@ -286,11 +344,18 @@ export function FencePanel({ ctx }: PluginComponentProps) {
         );
         let next = "default";
         if (t) {
-          if (t.classList.contains("fence-app") && editingOn) {
-            next = draggingId ? "grabbing" : "grab";
-          } else {
-            next = "pointer";
-          }
+          // 光标要**说实话**：给了一个 `grab` 却拖不动，比不给更糟。
+          // 于是「可拖」的判据和 `useFenceDnD.onAppPointerDown` 里那两道闸**逐条对齐**：
+          //   · 得是 `.fence-app`（搜索结果行是 `.fence-search-row`，不在拖拽路径上）；
+          //   · 不能是 `sys-`（伪条目，拖不了）；
+          //   · 不能在 `#fenceRecent` 里 —— 那一行的图标**没有** `onPointerDown`，
+          //     它是历史记录、不是分类成员，拖走它没有归属可言。
+          // 最后一跳就是「光标不再等编辑态」（拆闸，2026-09-13）：现在是常态可拖。
+          const draggable =
+            t.classList.contains("fence-app") &&
+            !t.dataset.id?.startsWith(SYS_ID_PREFIX) &&
+            t.closest("#fenceRecent") === null;
+          next = draggable ? (draggingId ? "grabbing" : "grab") : "pointer";
         }
         if (next === lastCursor.current) return;
         lastCursor.current = next;
@@ -597,11 +662,50 @@ export function FencePanel({ ctx }: PluginComponentProps) {
           </div>
         ) : (
           fences.map((f) => (
-            <div key={f.name} className="fence" data-name={f.name}>
-              <div className="fence-title" aria-label={`${f.name} ${f.items.length}`}>
-                {f.name} <em>{f.items.length}</em>
+            <div
+              key={f.name}
+              className={`fence${f.collapsed ? " is-collapsed" : ""}`}
+              data-name={f.name}
+            >
+              {/* 点标题整行 = 收起 / 展开（2026-09-13）。**为什么整行而不是画个小三角**：
+                  收起之后这一栏只剩标题条，能点的面积越大越找得回来。右键同一行还给
+                  「高度」—— 两件事都挂在标题上，所以 `title` 把那两句都写出来。
+                  收起是**不可见状态**：不写明「点一下能展开」，用户收起一次就以为东西没了。 */}
+              <div
+                className="fence-title"
+                aria-label={`${f.name} ${f.items.length}`}
+                role="button"
+                aria-expanded={!f.collapsed}
+                title={`${f.name}：点击${f.collapsed ? "展开" : "收起"}，右键调高度`}
+                onClick={() => applyUi(f.name, { collapsed: !f.collapsed })}
+              >
+                {f.name}{" "}
+                <em>
+                  {f.items.length}
+                  {/* caret 塞在 `em` **里面**，不做 `.fence-title` 的第三个 flex 子元素：
+                      `.fence-title` 是 `justify-content: space-between` 的**两项**布局
+                      （名字 + 计数），插第三个会把计数从右边缘挪到中间 —— 那是观感漂移。
+                      至于它会不会把标题撑高：`.fence-caret` 在 panel.css 里用
+                      `vertical-align: middle` + 7px 盒，压在 7px 字号的 strut 之内。
+                      **这是要拿样式审查验的**（`.fence` 的 rect-h），不是想当然。 */}
+                  <span
+                    className={`fence-caret ${f.collapsed ? "is-closed" : "is-open"}`}
+                    aria-hidden="true"
+                  >
+                    <svg viewBox="0 0 8 8">
+                      <path
+                        d="M1.7 3 4 5.4 6.3 3"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </span>
+                </em>
               </div>
-              <div className="fence-grid">
+              <div className={gridClass(f.rows)}>
                 {f.items.map((item) => (
                   <AppButton
                     key={item.id}
@@ -623,7 +727,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
           于是上一轮展开的子菜单不会带过来。 */}
       {menu ? (
         <FenceContextMenu
-          key={menu.target.kind === "blank" ? "blank" : menu.target.item.id}
+          key={menuKey}
           target={menu.target}
           io={menuIo}
           at={menu.at}

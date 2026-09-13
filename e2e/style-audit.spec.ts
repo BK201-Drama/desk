@@ -88,6 +88,13 @@ const GEOMETRY = [
   ".face", // 24px —— 这就是当初的盲区
   ".fence-search-list", // 搜索结果列表：高度 = 行数 × 行高 + gap
   ".fence-search-row", // 搜索结果行
+  // 标题栏上的收起箭头（2026-09-13 加）。它是 `display: inline-flex` 且宽高写死
+  // 7px —— **不受 font metric 影响**（所以不触发上面「文字盒子不录」那条），
+  // 而它恰恰是唯一能撑高 `.fence-title` 行盒的东西：`.fence-title` 自己不在
+  // 白名单里（文字盒子），可 `.fence` 在 —— caret 长高了会透过 `.fence` 的
+  // `rect-h` 露出来。录它，是为了让「caret 从 7px 变成 12px」当场红，
+  // 而不是等到某天发现标题栏胖了一圈。
+  ".fence-caret",
   // 弹窗。**这里是对上面那条「尺寸是内容驱动的」的刻意例外**：
   // `.fence-menu` 的宽度由菜单项字数决定，所以它不在白名单里；弹窗反过来 ——
   // 它是块固定尺寸的卡片（panel.css 里写死 288px），宽高都不该跟着标题字数走。
@@ -406,5 +413,75 @@ test.describe("样式审查（fence 重构护栏）", () => {
       "弹窗没进快照，dialog 态等于空护栏"
     ).toBe(true);
     check("dialog", snap);
+  });
+
+  /**
+   * 收缩态 —— 2026-09-13 新增的 UI（用户裁决：「分类要能点击收缩展开」）。
+   * 与 warn / menu / dialog 三态同款：不单开一个状态录，那套
+   * `is-collapsed` / `fence-caret.is-closed` / `.fence-grid { display: none }`
+   * 就永远待在护栏外面（GOAL §4.5）。
+   *
+   * **为什么用 `__MOCK_UI_PRESET__` 而不是「点一下标题」**：样式审查要的是**确定的
+   * 一帧**，而点击走到的是「乐观更新 → invoke → 对齐」那条链，中间夹着一帧还没
+   * 收起的画面。点击这条路已经由 `fence-interactions.spec.ts` 管着（那才是它该管的），
+   * 这里只管观感。开关在 mock 里是**推迟到第一次 invoke** 才生效的 —— 见那边的 ⚠️。
+   */
+  test("收缩态", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __MOCK_UI_PRESET__?: unknown }).__MOCK_UI_PRESET__ = {
+        游戏: { collapsed: true },
+      };
+    });
+    await openBoard(page);
+    const game = page.locator('#fences .fence[data-name="游戏"]');
+    await expect(game).toHaveClass(/is-collapsed/);
+    // 箭头得是「收起」那个朝向，不然录到的是「收起了，箭头还说能收」的错误组合
+    await expect(game.locator(".fence-caret")).toHaveClass(/is-closed/);
+    const snap = await snapshot(page);
+    expect(Object.keys(snap).length).toBeGreaterThan(MIN_ELEMENTS);
+    expect(
+      Object.keys(snap).some((k) => k.includes("fence-caret")),
+      "caret 没进快照，收缩态等于空护栏"
+    ).toBe(true);
+    check("collapsed", snap);
+  });
+
+  /**
+   * 自定义高度态 —— 2026-09-13 新增的 UI（用户裁决：「分类高度可以自定义」）。
+   *
+   * **两个围栏各录一条，因为 `--fence-rows` 能坏在两个不同的地方**：
+   *   · 「游戏」`rows: 1` —— 内容 5 项 = 2 行，压到 1 行，**高度真的会变**。
+   *     这一条守的是「`--fence-rows` 传下去没有」：`--fence-rows` 本身不在 PROPS 里，
+   *     没有这条的话，「`.rows-1` 被 styles.css 的按名规则盖回去」在属性表上
+   *     一个值都不变 —— 正是 `.face` 那个盲区的翻版。
+   *   · 「工作」`rows: 3` —— 内容才 4 项（1 行），**高度不变**，但它的
+   *     `overflow-y` 会从 styles.css 写死的 `hidden` 翻成 `auto`。
+   *     这一条守的是那条 CSS 陷阱（工作 / 系统 / 最近 三个是按名 `hidden` 的）。
+   * 只录一个的话，另一半坏了照样全绿。
+   */
+  test("自定义高度态", async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __MOCK_UI_PRESET__?: unknown }).__MOCK_UI_PRESET__ = {
+        游戏: { rows: 1 },
+        工作: { rows: 3 },
+      };
+    });
+    await openBoard(page);
+    // `rows-N` 是面板 CSS 打的（styles.css 只认按名的 `--fence-rows`），
+    // 等它出现 = 等「自定义」这条路真的接上了，不是等一个巧合。
+    await expect(page.locator('#fences .fence[data-name="游戏"] .fence-grid')).toHaveClass(
+      /rows-1/
+    );
+    await expect(page.locator('#fences .fence[data-name="工作"] .fence-grid')).toHaveClass(
+      /rows-3/
+    );
+    const snap = await snapshot(page);
+    expect(Object.keys(snap).length).toBeGreaterThan(MIN_ELEMENTS);
+    expect(
+      Object.keys(snap).some((k) => k.includes("rows-1")) &&
+        Object.keys(snap).some((k) => k.includes("rows-3")),
+      "两个自定义高度的网格没进快照，rows 态等于空护栏"
+    ).toBe(true);
+    check("rows", snap);
   });
 });

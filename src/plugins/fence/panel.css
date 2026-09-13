@@ -296,3 +296,127 @@
   opacity: 0.45;
   cursor: default;
 }
+
+/* ── 围栏的三种交互（2026-09-13）───────────────────────────────────────────
+   拖拽 / 收起 / 高度。**这个块整体是「拆闸」的样式部分** —— 原先这三件事
+   要么只在编辑态可用（拖拽、`.drag-over` 高亮），要么根本不存在。
+
+   一条**必须**守住的边界：`src/styles.css` 一个字都不动（子计划 §5、S3）。
+   `.fence` / `.fence-title` / `.fence-grid` / `.fence-app` 全都定义在那里，
+   这里只做**叠加**。于是每个选择器都得算清楚能不能压过它：
+
+     `--fence-rows` 的两个来源、优先级必须摆对（下面 `.rows-N` 那条详细写了）。
+     其余几条要么压过、要么只管本来就没人写的属性。
+
+   `overflow-y` / `pointer-events` / `cursor` / `touch-action` / `outline`
+   这几样**不在样式审查的属性表里**（`e2e/style-audit.spec.ts` 的 PROPS），
+   所以这个块理论上不产生基线 diff；真产生的那部分（caret、`.rows-N`、
+   `.is-collapsed`）是子计划 §5 预告过的**纯新增**。 */
+
+/* 标题变成可点。`.fence-title` 在 styles.css:1053 是 `pointer-events: none`
+   —— 原本它只是一行字，点它是「点空白」。现在它是个开关，必须收得到指针。
+   `[data-name]` 那道限定的作用是**把「最近」那一栏排除掉**：`#fenceRecent .fence-title`
+   长得一模一样，但它不是分类（不能收起、没有高度可调），收起它没有意义。 */
+.pane-fences .fence[data-name] .fence-title {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* 悬停反馈。**圆角和背景色都只写在 `:hover` 里，不进常态规则** ——
+   `border-top-left-radius` 和 `background-color` 都在样式审查的属性表里
+   （PROPS），写在常态里会让 6 份既有基线的每条 `.fence-title` 都变一次，
+   而本任务对它们的判据是「diff 只能是**纯新增**」（子计划 §5）。
+   写成 :hover 之后基线拍不到它（审查不真的悬停，见 spec 里那句
+   「用派发 pointerover 而不是 page.hover()」）。 */
+.pane-fences .fence[data-name] .fence-title:hover {
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: 4px;
+  color: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  .pane-fences .fence[data-name] .fence-title:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* caret。**盒子只有 7px、并且 `vertical-align: middle`** —— 这两个数不是随手取的：
+   `.fence-title` 的 `line-height: 1.25` × `font-size: 8px`（styles.css:1047-1049）
+   给出的行盒高度是**定死**的，里面塞一个更高的原子内联盒就会把标题撑高一行，
+   而 `.fence` 的 rect-h 在几何白名单里 —— 那会变成一次「观感漂移」的判定。
+   `middle` 让 7px 的盒以 x-height 中线对齐，上下都不越出 strut。
+   改这两个值之前先跑一遍 `npm run test:style`（子计划 §6 的判据之一）。 */
+.pane-fences .fence-caret {
+  display: inline-flex;
+  align-items: center;
+  width: 7px;
+  height: 7px;
+  margin-left: 2px;
+  vertical-align: middle;
+}
+
+.pane-fences .fence-caret svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 展开时朝下（⌄），收起时朝右（›）。`transform` 不进样式审查的属性表，
+   而且它不改布局盒 —— 转的是 svg 自己的坐标系。 */
+.pane-fences .fence-caret.is-closed svg {
+  transform: rotate(-90deg);
+}
+
+/* 收起 = 把网格拿掉。**不是 `max-height: 0`**：那样网格还在，只是看不见 ——
+   它仍然是 tab 序列里的一串按钮（键盘用户会掉进一个空空如也的坑）。
+   `display: none` 同时解决「看不见」和「不占位 / 不可聚焦」两件事。 */
+.pane-fences .fence.is-collapsed .fence-grid {
+  display: none;
+}
+
+/* 自定义高度。**为什么是 `--fence-rows` 而不是直接写 max-height**：
+   styles.css:1070 那个 calc 已经把 row / gap / padding 的关系算好了，
+   这里只要换一个输入变量，四处尺寸（max-height）与「该不该滚动」就自动一致。
+
+   **为什么选择器长这样**：styles.css 里 `--fence-rows` 有两个来源 ——
+   默认的 `.fence-grid { --fence-rows: 2 }`（1 个类）与按名字的
+   `.fence[data-name="工作"] .fence-grid { --fence-rows: 1; overflow-y: hidden }`
+   （3 个类）。本文件是懒加载 chunk，进 <head> 比 styles.css **晚**，
+   平手时后者赢 —— 所以光靠 `.pane-fences`（2 个类）压不过那 3 个类的那条。
+   借 `#fences` 这个真 id 把优先级抬到 (1,3,0)，**不依赖加载顺序**，
+   也不必去动 styles.css 里那几条（S3 不许动）。
+   `overflow-y: auto` 必须跟着一起写：`工作` / `系统` 在 styles.css:1092 是
+   `hidden`，只调行数不改它的话，多出来的行会被**裁掉**而不是滚动 ——
+   那是「调了高度反而少看见东西」的坏体验。
+
+   行数上限 ROWS_MAX = 5 是**前后端各写一遍**的常量（另一份在
+   `src/fence/index.rs` 的 `ROWS_MAX`）。加行数要同时改两处。 */
+.pane-fences #fences .fence-grid.rows-1 { --fence-rows: 1; overflow-y: auto; }
+.pane-fences #fences .fence-grid.rows-2 { --fence-rows: 2; overflow-y: auto; }
+.pane-fences #fences .fence-grid.rows-3 { --fence-rows: 3; overflow-y: auto; }
+.pane-fences #fences .fence-grid.rows-4 { --fence-rows: 4; overflow-y: auto; }
+.pane-fences #fences .fence-grid.rows-5 { --fence-rows: 5; overflow-y: auto; }
+
+/* 拖拽不再等编辑态（拆闸）：`.fence-app` 常态就要能拖。
+   `touch-action: none` 是真机上「触摸屏拖图标」能不能用的开关 —— 不加的话
+   WebView 会把这一串 pointer 事件当成滚动意图收走，拖到一半就没事件了。
+   代价认下来：触摸屏上拖图标时不能再顺势滚动围栏（滚空白 / 间隙仍然是滚的）。 */
+.pane-fences .fence-app {
+  touch-action: none;
+}
+
+/* 拖拽中的源图标变淡。styles.css:1140 只写了 `.board.editing .fence-app.dragging`，
+   现在任何时候都能拖，于是那条规则**常态下不生效** —— 这里补一份不看编辑态的。
+   注意 `.dragging` 是 React 按 `draggingId` 加的类，与 `:active` 无关。 */
+.pane-fences .fence-app.dragging {
+  opacity: 0.35;
+}
+
+/* 拖到哪一格松手的高亮。同样是编辑态那条（styles.css:1144）的补丁 ——
+   拆闸之后它在非编辑态失效，而「没有落点提示」会让拖拽变成盲操。 */
+.pane-fences .fence-grid.drag-over {
+  outline: 1px dashed rgba(45, 106, 79, 0.45);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+

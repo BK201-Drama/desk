@@ -49,6 +49,16 @@ pub struct FenceItemDto {
 pub struct FenceDto {
     pub name: String,
     pub items: Vec<FenceItemDto>,
+    /// 这一栏现在是不是收起的（只留标题条）。来自 `fence.json` 的 `ui.collapsed`。
+    ///
+    /// 挂在 DTO 上而不是单开一条 `fence_ui_get`，是为了**首帧就带着它**：
+    /// 分两次拿的话，用户每次启动都会看见所有围栏先展开、再「啪」地收起来。
+    /// 三个读命令（`fence_list` / `fence_rescan` / `fence_save_order`）与 watcher
+    /// 推帧都走 `collect_fences()`，于是四条路一次性拿到同一个口径。
+    pub collapsed: bool,
+    /// 用户自定义的行数。**0 = 自动**（用 `styles.css` 里那份默认）。
+    /// 上界见 `index::ROWS_MAX`。
+    pub rows: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -648,6 +658,45 @@ pub fn fence_save_order(layout: Vec<FenceLayoutDto>) -> Result<Vec<FenceDto>, St
     // 返回值必须和 `fence_list` 走**同一条读路径**（`collect_fences`，即真桌面）。
     // 前端 `persistOrder` 是拿这个返回值直接 setFences 的 —— 回吐一份口径不同的列表
     // （比如只回吐 meta 里记过账的那些）会让一批项的图标当场从看板上消失。
+    collect_fences()
+}
+
+/// 只写**显示偏好**（收起 / 高度），不动任何归属与顺序。
+///
+/// 两个参数都是 `Option`，语义是「这一项改不改」而不是「改成什么」：
+///   - `collapsed: None` = 别碰收起态；`Some(false)` = 展开（删键，让 json 保持干净）
+///   - `rows: None` = 别碰高度；`Some(0)` = 回到「自动」（删键）
+///
+/// 前端**两个都显式发**（另一个发 `null`）—— 与 `fence_create` 的 `target: null`
+/// 同一条规矩：不缺字段，免得依赖后端对缺键的宽容度。
+///
+/// 返回值必须和 `fence_list` 走**同一条读路径**（`collect_fences`），理由与
+/// `fence_save_order` 那条注释完全一样：前端拿它直接 `setFences`。
+#[tauri::command]
+pub fn fence_save_ui(
+    name: String,
+    collapsed: Option<bool>,
+    rows: Option<u32>,
+) -> Result<Vec<FenceDto>, String> {
+    let mut m = meta::load()?;
+    if let Some(c) = collapsed {
+        if c {
+            m.ui.collapsed.insert(name.clone());
+        } else {
+            m.ui.collapsed.remove(&name);
+        }
+    }
+    if let Some(r) = rows {
+        // 0 与缺键同义（都是「自动」），所以落盘时统一成「没有这个键」。
+        // 夹上界的是 `index::ui_of`（读那一侧）—— 写这一侧原样存，
+        // user 手写的 99 也在读的时候被收敛，不必两处各夹一遍。
+        if r == 0 {
+            m.ui.rows.remove(&name);
+        } else {
+            m.ui.rows.insert(name.clone(), r);
+        }
+    }
+    meta::save(&m)?;
     collect_fences()
 }
 

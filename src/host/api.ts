@@ -21,6 +21,11 @@ const PERM_COMMANDS: Record<PluginPermission, string[]> = {
     "fence_rescan",
     "fence_restore",
     "fence_save_order",
+    // 显示偏好（收起 / 高度，2026-09-13）。**这张表是手写的白名单，
+    // 漏一个的症状是 `permission denied: <命令名>` —— 而且是在**运行时**才炸
+    // （`tsc` 与单测都看不见），前端还把它当成「落盘失败」回滚 + 弹窗。
+    // 加后端命令时记得同时看这里。
+    "fence_save_ui",
     "fence_set_icons_visible",
     // Task 14 的右键文件操作。**刻意不新开一个权限位**：`fence.write` 现在的含义
     // 已经包含比删除更重的动作（`fence_restore` 就是迁移 34 个真文件），

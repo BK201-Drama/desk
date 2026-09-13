@@ -9,12 +9,15 @@
  * 计划里的签名是 `contextMenuModel(target)`（单参）。加第二参数是**故意**的偏离，
  * 理由就是上面那条 —— 见子计划 §1.1。
  */
-import { SYS_ID_PREFIX, type FenceItem } from "./model";
+import { ROWS_MAX, SYS_ID_PREFIX, type FenceItem } from "./model";
 
 export type MenuTarget =
   | { kind: "blank" }
   | { kind: "item"; item: FenceItem; isDir: boolean }
-  | { kind: "sys"; item: FenceItem };
+  | { kind: "sys"; item: FenceItem }
+  /** 围栏标题（2026-09-13）。**只给真分类**：`最近` 那一栏没有 `data-name`，
+      `FencePanel` 的解析器走不到这里 —— 它不是分类，不能收起、没有高度可调。 */
+  | { kind: "fence"; name: string; collapsed: boolean; rows: number };
 
 export type MenuItem = {
   id: string;
@@ -52,6 +55,13 @@ export type MenuIo = {
   sendTo: (path: string) => void;
   compress: (path: string) => void;
   properties: (path: string) => void;
+  /**
+   * 收起 / 展开某一栏（2026-09-13）。写 `fence.json` 的 `ui.collapsed`。
+   * 点标题整行也是它 —— 菜单只是第二条路（可发现性）。
+   */
+  setCollapsed: (name: string, collapsed: boolean) => void;
+  /** 自定义高度（2026-09-13）。`1..ROWS_MAX` 行；**`0` = 自动**。写 `ui.rows`。 */
+  setRows: (name: string, rows: number) => void;
 };
 
 /** 分隔线的 id。渲染层见到它就画一条 `<hr>` 而不是一个按钮。 */
@@ -85,11 +95,60 @@ export function targetFor(item: FenceItem): MenuTarget {
  */
 export function contextMenuModel(target: MenuTarget, io: MenuIo): MenuItem[] {
   if (target.kind === "blank") return blankMenu(io);
+  if (target.kind === "fence") return fenceMenu(target, io);
   if (target.kind === "sys") {
     const { path: p, id } = target.item;
     return [{ id: "open", label: "打开", enabled: true, run: () => io.open(p, id) }];
   }
   return itemMenu(target.item, target.isDir, io);
+}
+
+/**
+ * 围栏标题的菜单（2026-09-13）。前两组是**这一栏自己的**（收起 / 高度），
+ * 后面接上空白菜单那三组 —— 标题也是看板的一部分，右键它不该**少拿到**
+ * 原本在空白处能拿到的东西。`fence_create` / `fence_paste` 本来就是桌面级的
+ * （落点永远是桌面根，不是「某个围栏」），挂在这里语义与空白处完全一致。
+ *
+ * 当前高度写在父项标签里（`高度（3 行）` / `高度（自动）`），**不是**在子项上打勾：
+ * `MenuItem` 里没有「勾选」这个字段，为它加一个会连带改渲染层与已录的菜单基线；
+ * 而写在标签里零成本、一样看得见。
+ */
+function fenceMenu(
+  t: { name: string; collapsed: boolean; rows: number },
+  io: MenuIo
+): MenuItem[] {
+  const rows: MenuItem[] = [
+    // 「自动」排第一：它是**默认**，也是「我调坏了，回到原样」的那个出口。
+    { id: "rows-auto", label: "自动", enabled: true, run: () => io.setRows(t.name, 0) },
+  ];
+  for (let n = 1; n <= ROWS_MAX; n += 1) {
+    rows.push({
+      id: `rows-${n}`,
+      label: `${n} 行`,
+      enabled: true,
+      run: () => io.setRows(t.name, n),
+    });
+  }
+  return [
+    {
+      id: "collapse",
+      // 标签写**动作**（点它会发生什么），不是状态 —— 与「显示桌面图标」那个按钮
+      // 的念法不同，但那两个的语义本来就不一样：那个显示的是开关形参，
+      // 这个显示的是「接下来会做什么」。收起时给「展开」，反之亦然。
+      label: t.collapsed ? "展开" : "收起",
+      enabled: true,
+      run: () => io.setCollapsed(t.name, !t.collapsed),
+    },
+    {
+      id: "rows",
+      label: `高度（${t.rows > 0 ? `${t.rows} 行` : "自动"}）`,
+      enabled: true,
+      run: () => {},
+      submenu: rows,
+    },
+    SEP,
+    ...blankMenu(io),
+  ];
 }
 
 function blankMenu(io: MenuIo): MenuItem[] {

@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { HostContext } from "../../host/types";
 import { layoutFromFences, normalizeFences, type FenceGroup } from "./model";
 
 export function useFences(ctx: HostContext) {
   const [fences, setFences] = useState<FenceGroup[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** 渲染期同步的一份镜像。**唯一读者是 `persistUi` 的回滚** —— 它必须在
+      `setFences` **之前**读到旧值（渲染后这个 ref 里就已经是新值了）。 */
+  const fencesRef = useRef(fences);
+  fencesRef.current = fences;
 
   const loadFences = useCallback(
     async (cmd: "fence_list" | "fence_rescan" = "fence_list") => {
@@ -38,6 +42,41 @@ export function useFences(ctx: HostContext) {
         setFences(normalizeFences(raw));
       } catch (e) {
         console.error("fence_save_order", e);
+      }
+    },
+    [ctx]
+  );
+
+  /**
+   * 写**显示偏好**（收起 / 高度）。与 `persistOrder` 同形，只多一步**回滚**：
+   *
+   * 「收起」是个一眼可见、点一下就该立刻生效的动作，等一趟 IPC 回来再变会有顿感 ——
+   * 所以先乐观改本地、再落盘、再用返回值对齐。落盘失败就**退回旧值**（不退回的话
+   * 用户会看着一个「已经收起」的围栏，重启之后它自己又展开了，而且中间没有任何提示）。
+   *
+   * 返回值是给调用方弹提示用的错误串（成功 `null`）。
+   * `?? null` 那条：Tauri 的 `Option<T>` 参数**显式发 null**，不缺字段 ——
+   * 与 `fence_create` 的 `target: null` 同一条规矩（`FenceContextMenu.tsx:308`）。
+   */
+  const persistUi = useCallback(
+    async (
+      name: string,
+      patch: { collapsed?: boolean; rows?: number }
+    ): Promise<string | null> => {
+      const before = fencesRef.current;
+      setFences((cur) => cur.map((f) => (f.name === name ? { ...f, ...patch } : f)));
+      try {
+        const raw = await ctx.invoke("fence_save_ui", {
+          name,
+          collapsed: patch.collapsed ?? null,
+          rows: patch.rows ?? null,
+        });
+        setFences(normalizeFences(raw));
+        return null;
+      } catch (e) {
+        console.error("fence_save_ui", e);
+        setFences(before);
+        return String(e);
       }
     },
     [ctx]
@@ -93,6 +132,7 @@ export function useFences(ctx: HostContext) {
     /** 给「用户主动做完一件事之后」用的重扫：强制重扫 + 同步补图标。 */
     loadFences: () => loadFences("fence_rescan"),
     persistOrder,
+    persistUi,
     launch,
   };
 }
