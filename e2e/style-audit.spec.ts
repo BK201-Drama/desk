@@ -62,7 +62,7 @@ const MIN_ELEMENTS = 40;
  * 几何量白名单 —— 额外录 width / height。
  *
  * **为什么需要它**：computed style 里的 gap / padding 只覆盖「间距」，覆盖不了
- * 「盒子自己多大」。`.face` 是 `width: 24px; height: 24px`（styles.css:1159-1161），
+ * 「盒子自己多大」。`.face` 是 `width: 24px; height: 24px`（panel.css:442-443），
  * 而网格列是 `1fr`（列宽由容器决定）—— 把 24px 改成 20px 不会传导到
  * `grid-template-columns`，属性表一个值都不变，审计会全绿。这是纯属性快照的盲区。
  *
@@ -111,7 +111,7 @@ const GEOMETRY = [
 /**
  * ⚠️ `getBoundingClientRect()` 的数值比 CSS 里写的大 —— 别以为是错了。
  *
- * `html, body { zoom: var(--desk-zoom) }`（styles.css:30-39，`--desk-zoom: 1.28`），
+ * `html, body { zoom: var(--desk-zoom) }`（styles.css:27-36，`--desk-zoom: 1.28`），
  * zoom 套在**两层**选择器上，复合成 1.28² = **1.6384**。所以：
  *   `.fence-app .face` 写 `width: 24px` → 录到 `39.31px`
  *   `.fence-search-row .face` 写 `32px`  → 录到 `52.42px`

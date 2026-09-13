@@ -20,7 +20,7 @@ export type FenceGroup = {
       它被 `applyLayout` / `moveItemAcross` 两个「重建 group」的地方路过，
       可选的话 `{...f}` 之外的那些重建点会**静默丢掉它**。 */
   collapsed: boolean;
-  /** 自定义行数。**0 = 自动**（用 styles.css 里那份默认）。上界 `ROWS_MAX`。 */
+  /** 自定义行数。**0 = 自动**（用 `panel.css` 里 `.fence-grid` 那份默认）。上界 `ROWS_MAX`。 */
   rows: number;
 };
 

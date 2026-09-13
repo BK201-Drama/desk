@@ -1,8 +1,596 @@
-/* fence 插件自己的样式。只有这个插件会长出来的东西才写在这里，
-   全局的围栏样式仍在 src/styles.css —— Task 17 才把后者拆过来。
+/**
+ * fence 的样式，全部住在这里。
+ *
+ * 2026-09-13（Task 17）从 `src/styles.css` 搬来 —— 在那之前 fence 的规则散在
+ * `styles.css` 的**五个地方**：`:root` 里的三个变量、`.pane-fences` 那一组、
+ * `.fences-head` 起的一大段（`.fences-head` → `.fence-search-row.is-selected`）、
+ * `#fenceRecent:not([hidden])` 那 10 行、以及暗色 media query 里夹在别的插件
+ * 规则之间的一段。搬走之后，`styles.css` 里与 fence 有关的只剩一条
+ * `.pane-left` 的暗色背景 —— 它原本和 `.pane-fences` 写在同一个混合选择器里，
+ * **外科手术**把 `, .pane-fences` 那一行摘走、那一半留在了原地。
+ *
+ * **判据只有一条：8 份 `e2e/style-baseline.*.json` 零 diff。**
+ * 它不是「看着一样」，是每个元素 33 项计算属性 + 几何量逐个比对。
+ * 同特异性规则的胜负会因为这次搬迁而翻转，这条基线就是为它准备的。
+ *
+ * ⚠️ **本文件是懒加载的**（`panel.tsx` 里 `import "./panel.css"`，而插件 chunk
+ * 由 `plugins/index.ts` 的 `import.meta.glob` 动态引入），注入 `<head>` 的时机
+ * **比 `styles.css` 晚**。于是这里同特异性的规则会**赢过** `styles.css` ——
+ * 这是搬迁时唯一的真风险，也是 Task 15 / 子计划 B 新增的规则一律写成
+ * `.pane-fences …` 前缀的原因：**靠特异性，不靠加载顺序，也不用 `!important`**。
+ *
+ * 下面先是搬来的**存量规则**（逐字节原样，只加了一层 `:root` 与 `@media` 壳），
+ * 再是 Task 15 / B 的**新增规则**。
+ */
 
-   选择器一律带 .pane-fences 前缀：本文件是懒加载 chunk，进 <head> 比
-   styles.css 晚，平手时后者赢。加前缀把优先级抬上去，不依赖加载顺序。 */
+/* ── 存量（原 styles.css，2026-09-13 搬入） ────────────────────────────── */
+
+:root {
+  --fence-row: 42px;
+  --fence-gap: 3px;
+  --fence-pad-y: 3px;
+}
+
+.pane-fences {
+  padding: 4px 5px 6px;
+  background: rgba(255, 255, 255, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 0 14px 14px 0;
+}
+
+.fence-panel-root {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+}
+
+#fences {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-bottom: 6px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#fences::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.fences-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.fences-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  min-height: 20px;
+}
+.fences-head h2 {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.head-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.icon-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  border: 1px solid rgba(26, 35, 50, 0.12);
+  background: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+.icon-btn svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+}
+.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
+}
+.icon-btn .ico-done {
+  display: none;
+}
+.board.editing #editToggle {
+  background: rgba(45, 106, 79, 0.18);
+  border-color: rgba(45, 106, 79, 0.45);
+  color: var(--accent);
+}
+.board.editing #editToggle .ico-edit {
+  display: none;
+}
+.board.editing #editToggle .ico-done {
+  display: block;
+}
+.icon-btn.on {
+  background: rgba(45, 106, 79, 0.18);
+  border-color: rgba(45, 106, 79, 0.45);
+  color: var(--accent);
+}
+
+.fence-search {
+  width: 100%;
+  height: auto;
+  min-height: 28px;
+  padding: 6px 9px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  border: 1px solid rgba(26, 35, 50, 0.12);
+  background: rgba(255, 255, 255, 0.55);
+  font-size: 10px;
+  line-height: 1.3;
+  font-family: inherit;
+  color: var(--ink);
+  flex-shrink: 0;
+  user-select: text;
+  -webkit-user-select: text;
+  pointer-events: auto;
+  margin: 0;
+}
+.fence-search::placeholder {
+  color: #8b9cb3;
+}
+.fence-search:focus {
+  outline: none;
+  border-color: rgba(45, 106, 79, 0.45);
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.pane-fences.is-searching #fences {
+  display: none !important;
+}
+#fenceSearchResults[hidden],
+#fenceRecent[hidden] {
+  display: none !important;
+}
+.pane-fences.is-searching .fence-search {
+  border-color: rgba(45, 106, 79, 0.55);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 2px rgba(45, 106, 79, 0.1);
+}
+
+.fence-search-results {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.fence-search-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(45, 106, 79, 0.22);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+
+.fence-search-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.fence-search-query {
+  font-weight: 500;
+  color: #6b7a8c;
+  font-family: "Cascadia Mono", "Consolas", "Segoe UI Mono", monospace;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fence-search-empty {
+  font-size: 10px;
+  color: #6b7a8c;
+  text-align: center;
+  padding: 24px 8px;
+}
+
+.fence-search-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.fence-search-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.fence-search-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(26, 35, 50, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: var(--ink);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.fence-search-row:hover {
+  background: rgba(45, 106, 79, 0.08);
+  border-color: rgba(45, 106, 79, 0.28);
+}
+.fence-search-row:active {
+  transform: scale(0.99);
+}
+.fence-search-row .face {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 1px 3px rgba(26, 35, 50, 0.12);
+}
+.fence-search-row-text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fence-search-row .label {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fence-search-row .label mark {
+  background: rgba(45, 106, 79, 0.2);
+  color: var(--accent);
+  font-weight: 700;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+.fence-search-row .cat {
+  font-size: 8px;
+  color: #8b9cb3;
+  letter-spacing: 0.04em;
+}
+
+.fence {
+  /* 上下 flex：标题固定在上，图标网格单独滚动 */
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: 8px;
+  padding: 2px 3px 3px;
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px dashed rgba(26, 35, 50, 0.14);
+}
+.board.editing .fence {
+  border-style: solid;
+  border-color: rgba(45, 106, 79, 0.35);
+}
+.fence-title {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  margin: 0;
+  padding: 3px 4px 2px;
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft, #6b7a8c);
+  background: transparent;
+  pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fence-title em {
+  font-style: normal;
+  font-size: 7px;
+  font-weight: 400;
+  color: #8b9cb3;
+  flex-shrink: 0;
+}
+.fence-grid {
+  --fence-rows: 2;
+  flex: 0 1 auto;
+  min-height: 0;
+  /* border-box：max-height 须覆盖 row + gap + 上下 padding，否则一行也会溢出可滚 */
+  max-height: calc(
+    var(--fence-row) * var(--fence-rows) + var(--fence-gap) * max(var(--fence-rows) - 1, 0) +
+      var(--fence-pad-y) * 2 + 2px
+  );
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--fence-gap) 4px;
+  padding: var(--fence-pad-y) 3px;
+  align-content: start;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.fence[data-name="游戏"] .fence-grid,
+.fence[data-name="工具"] .fence-grid {
+  --fence-rows: 3;
+}
+.fence[data-name="工作"] .fence-grid,
+.fence[data-name="系统"] .fence-grid,
+#fenceRecent .fence-grid {
+  --fence-rows: 1;
+  overflow-y: hidden;
+}
+.fence-grid::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+.fence-app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 8px;
+  line-height: 1.1;
+  color: var(--ink-soft);
+  text-align: center;
+  min-width: 0;
+  height: var(--fence-row, 42px);
+  cursor: pointer;
+  background: none;
+  border: none;
+  font-family: inherit;
+  padding: 3px 2px;
+  border-radius: 8px;
+  transition: background 0.12s ease, transform 0.12s ease;
+  box-sizing: border-box;
+}
+.fence-app:hover {
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--ink);
+}
+.fence-app:hover .face {
+  transform: scale(1.04);
+  box-shadow: 0 2px 6px rgba(26, 35, 50, 0.16);
+}
+.fence-app:active {
+  background: rgba(45, 106, 79, 0.16);
+  transform: scale(0.96);
+}
+.fence-app:active .face {
+  transform: none;
+  box-shadow: none;
+}
+.board.editing .fence-app {
+  cursor: grab;
+  touch-action: none;
+}
+.board.editing .fence-app.dragging {
+  opacity: 0.35;
+  cursor: grabbing;
+}
+.board.editing .fence-grid.drag-over {
+  outline: 1px dashed rgba(45, 106, 79, 0.45);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+.fence-app .label {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+  line-height: 1.15;
+  padding: 0 1px;
+}
+.fence-app .face {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-color: rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.fence-search-empty-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 20px 10px 16px;
+}
+.fence-search-empty {
+  padding: 0;
+  font-weight: 600;
+  color: var(--ink);
+}
+.fence-search-hint {
+  font-size: 9px;
+  color: #8b9cb3;
+  text-align: center;
+  line-height: 1.35;
+}
+.fence-search-clear {
+  margin-top: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(45, 106, 79, 0.35);
+  background: rgba(45, 106, 79, 0.1);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+.fence-search-clear:hover {
+  background: rgba(45, 106, 79, 0.18);
+}
+
+.fence-search-row.is-selected {
+  background: rgba(45, 106, 79, 0.14);
+  border-color: rgba(45, 106, 79, 0.42);
+  box-shadow: 0 0 0 1px rgba(45, 106, 79, 0.12);
+}
+
+#fenceRecent:not([hidden]) {
+  margin-bottom: 0;
+  border-style: solid;
+  border-color: rgba(45, 106, 79, 0.2);
+  background: rgba(45, 106, 79, 0.08);
+}
+#fenceRecent:not([hidden]) .fence-grid {
+  grid-template-columns: repeat(4, 1fr);
+  --fence-rows: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+  /* 从 `styles.css` 那条混合选择器 `.pane-left, .pane-fences` 里拆出来的。
+     留在那边的那半仍是 `.pane-left` —— 只摘走了后缀这一行。 */
+  .pane-fences {
+    background: rgba(16, 20, 28, 0.55);
+  }
+
+  .icon-btn {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--ink-soft);
+  }
+  .icon-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--ink);
+  }
+
+  .fence-search {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--ink);
+  }
+  .fence-search::placeholder {
+    color: #6b7a8c;
+  }
+  .fence-search:focus {
+    border-color: rgba(82, 183, 136, 0.5);
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .pane-fences.is-searching .fence-search {
+    border-color: rgba(82, 183, 136, 0.55);
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 0 2px rgba(82, 183, 136, 0.12);
+  }
+
+  .fence-search-panel {
+    background: rgba(28, 34, 44, 0.92);
+    border-color: rgba(82, 183, 136, 0.25);
+    box-shadow: none;
+  }
+
+  .fence-search-row {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .fence-search-row:hover,
+  .fence-search-row.is-selected {
+    background: rgba(82, 183, 136, 0.14);
+    border-color: rgba(82, 183, 136, 0.35);
+  }
+
+  .fence-search-empty {
+    color: var(--ink-soft);
+  }
+  .fence-search-clear {
+    border-color: rgba(82, 183, 136, 0.4);
+    background: rgba(82, 183, 136, 0.12);
+  }
+
+  .fence {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+  .fence-title {
+    color: #8a9aab;
+    background: transparent;
+    box-shadow: none;
+  }
+  .fence-title em {
+    color: #6b7a8c;
+  }
+  #fenceRecent:not([hidden]) {
+    border-color: rgba(82, 183, 136, 0.25);
+    background: rgba(82, 183, 136, 0.08);
+  }
+
+  .fence-app:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* 以下都是 Task 15 / 子计划 B 的新增样式 —— 上面那半是搬来的存量。
+
+   新增的选择器一律带 .pane-fences 前缀：本文件是懒加载 chunk，进 <head> 比
+   styles.css 晚，平手时后者赢。加前缀把优先级抬上去，不依赖加载顺序。
+   （Task 17 之前，存量规则在 styles.css 里、新增规则在这里，前缀是**跨文件**
+   抬优先级；搬过来之后两边同文件，前缀改成了**同文件内**的次序保险 ——
+   它仍然是对的，只是不再承担跨文件那层责任。）*/
 
 /* 桌面图标开关读写失败的提示条（FencePanel.tsx，spec §8）。
    刻意做得克制：它是个降级提示，不该抢围栏本身的注意力。 */
@@ -76,7 +664,8 @@
 
 /* 条目**刻意**不定位 —— 这不是漏写。子菜单是 fixed，它的包含块必须落在 `.board` 上；
    一旦这里写成 `position: relative`，包含块就挪进了 `.pane-fences`
-   （`overflow: hidden`，styles.css:184）里面，向左展开的子菜单会被 pane 的左边缘切掉。 */
+   （它那条 `overflow: hidden`，本文件上面 `.pane-fences {` 里）里面，
+   向左展开的子菜单会被 pane 的左边缘切掉。 */
 .pane-fences .fence-menu-li {
   position: static;
 }
@@ -301,19 +890,25 @@
    拖拽 / 收起 / 高度。**这个块整体是「拆闸」的样式部分** —— 原先这三件事
    要么只在编辑态可用（拖拽、`.drag-over` 高亮），要么根本不存在。
 
-   一条**必须**守住的边界：`src/styles.css` 一个字都不动（子计划 §5、S3）。
-   `.fence` / `.fence-title` / `.fence-grid` / `.fence-app` 全都定义在那里，
+  一条当时**必须**守住的边界：`src/styles.css` 一个字都不动（子计划 §5、S3）。
+   `.fence` / `.fence-title` / `.fence-grid` / `.fence-app` 那时全都定义在那里，
    这里只做**叠加**。于是每个选择器都得算清楚能不能压过它：
 
      `--fence-rows` 的两个来源、优先级必须摆对（下面 `.rows-N` 那条详细写了）。
      其余几条要么压过、要么只管本来就没人写的属性。
+
+   ⚠️ **这条边界在 Task 17 之后不再成立**：存量规则已经搬到本文件上半部，
+   下面这些「叠加」与它们同处一文件了。当年的算账过程保留在原处 ——
+   它是这些选择器为什么长这样的**理由**，理由不因为文件换了地方而失效；
+   但「压过 styles.css」这句话，现在该读成「压过本文件上半部的存量规则」。
 
    `overflow-y` / `pointer-events` / `cursor` / `touch-action` / `outline`
    这几样**不在样式审查的属性表里**（`e2e/style-audit.spec.ts` 的 PROPS），
    所以这个块理论上不产生基线 diff；真产生的那部分（caret、`.rows-N`、
    `.is-collapsed`）是子计划 §5 预告过的**纯新增**。 */
 
-/* 标题变成可点。`.fence-title` 在 styles.css:1053 是 `pointer-events: none`
+/* 标题变成可点。`.fence-title` 的存量规则是 `pointer-events: none`
+   （本文件上半部那条 `.fence-title {`）
    —— 原本它只是一行字，点它是「点空白」。现在它是个开关，必须收得到指针。
    `[data-name]` 那道限定的作用是**把「最近」那一栏排除掉**：`#fenceRecent .fence-title`
    长得一模一样，但它不是分类（不能收起、没有高度可调），收起它没有意义。 */
@@ -322,27 +917,28 @@
   cursor: pointer;
 }
 
-/* 悬停反馈。**圆角和背景色都只写在 `:hover` 里，不进常态规则** ——
-   `border-top-left-radius` 和 `background-color` 都在样式审查的属性表里
-   （PROPS），写在常态里会让 6 份既有基线的每条 `.fence-title` 都变一次，
-   而本任务对它们的判据是「diff 只能是**纯新增**」（子计划 §5）。
-   写成 :hover 之后基线拍不到它（审查不真的悬停，见 spec 里那句
-   「用派发 pointerover 而不是 page.hover()」）。 */
-.pane-fences .fence[data-name] .fence-title:hover {
-  background-color: rgba(255, 255, 255, 0.5);
-  border-radius: 4px;
-  color: var(--ink);
-}
+/* ⚠️ **这里曾经有一条 `:hover` 反馈，2026-09-13 按用户要求删掉了。**
+   原文是：
+     .pane-fences .fence[data-name] .fence-title:hover {
+       background-color: rgba(255, 255, 255, 0.5);
+       border-radius: 4px;
+       color: var(--ink);
+     }
+     （外加暗色 @media 里的一条 background-color: rgba(255,255,255,0.08)）
 
-@media (prefers-color-scheme: dark) {
-  .pane-fences .fence[data-name] .fence-title:hover {
-    background-color: rgba(255, 255, 255, 0.08);
-  }
-}
+   删它的理由（用户原话：「围栏的顶部有莫名其妙的 hover」）：`.fence-title`
+   是**横跨整条标题栏**的 flex 行，于是鼠标从围栏上扫过时整条会亮起一块
+   半透明底 —— 而它点下去只是收起，不属于需要那么强预告的动作。
+   **`cursor: pointer` 保留**：可点这个信息还得给，给法从「整条变色」降级为
+   「指针变形」，安静但说清楚了。
+
+   **删它不影响样式基线**：这两条本来就只在 `:hover` 里，
+   而 `e2e/style-audit.spec.ts` 不真的悬停（用派发 `pointerover` 而非
+   `page.hover()`），从没被拍进基线过。删完照例跑 `npm run test:style` 复核。 */
 
 /* caret。**盒子只有 7px、并且 `vertical-align: middle`** —— 这两个数不是随手取的：
-   `.fence-title` 的 `line-height: 1.25` × `font-size: 8px`（styles.css:1047-1049）
-   给出的行盒高度是**定死**的，里面塞一个更高的原子内联盒就会把标题撑高一行，
+   `.fence-title` 的 `line-height: 1.25` × `font-size: 8px`（本文件 `.fence-title {`
+   里那两行）给出的行盒高度是**定死**的，里面塞一个更高的原子内联盒就会把标题撑高一行，
    而 `.fence` 的 rect-h 在几何白名单里 —— 那会变成一次「观感漂移」的判定。
    `middle` 让 7px 的盒以 x-height 中线对齐，上下都不越出 strut。
    改这两个值之前先跑一遍 `npm run test:style`（子计划 §6 的判据之一）。 */
@@ -375,17 +971,20 @@
 }
 
 /* 自定义高度。**为什么是 `--fence-rows` 而不是直接写 max-height**：
-   styles.css:1070 那个 calc 已经把 row / gap / padding 的关系算好了，
-   这里只要换一个输入变量，四处尺寸（max-height）与「该不该滚动」就自动一致。
+   上面 `.fence-grid {` 里那个 calc 已经把 row / gap / padding 的关系算好了，
+   这里只要换一个输入变量，尺寸（max-height）与「该不该滚动」就自动一致。
 
-   **为什么选择器长这样**：styles.css 里 `--fence-rows` 有两个来源 ——
+   **为什么选择器长这样**：`--fence-rows` 有两个存量来源 ——
    默认的 `.fence-grid { --fence-rows: 2 }`（1 个类）与按名字的
    `.fence[data-name="工作"] .fence-grid { --fence-rows: 1; overflow-y: hidden }`
-   （3 个类）。本文件是懒加载 chunk，进 <head> 比 styles.css **晚**，
-   平手时后者赢 —— 所以光靠 `.pane-fences`（2 个类）压不过那 3 个类的那条。
-   借 `#fences` 这个真 id 把优先级抬到 (1,3,0)，**不依赖加载顺序**，
-   也不必去动 styles.css 里那几条（S3 不许动）。
-   `overflow-y: auto` 必须跟着一起写：`工作` / `系统` 在 styles.css:1092 是
+   （3 个类），两条都在本文件上半部。
+   Task 15 / B 写这段时的原话是「本文件是懒加载 chunk，进 <head> 比
+   styles.css 晚，平手时后者赢 —— 所以光靠 `.pane-fences`（2 个类）压不过
+   那 3 个类的那条」。Task 17 把存量规则搬过来之后，两边同文件、那条
+   「跨文件靠加载顺序」的算式没了，但**结论一个字都不用改**：
+   这里借 `#fences` 这个真 id 把优先级抬到 (1,3,0)，本来就压得过 (0,3,0)，
+   从头到尾靠的都是特异性，不是顺序。
+   `overflow-y: auto` 必须跟着一起写：`工作` / `系统` 的存量规则是
    `hidden`，只调行数不改它的话，多出来的行会被**裁掉**而不是滚动 ——
    那是「调了高度反而少看见东西」的坏体验。
 
@@ -405,14 +1004,16 @@
   touch-action: none;
 }
 
-/* 拖拽中的源图标变淡。styles.css:1140 只写了 `.board.editing .fence-app.dragging`，
+/* 拖拽中的源图标变淡。本文件上半部（搬来的存量）只写了
+   `.board.editing .fence-app.dragging`，
    现在任何时候都能拖，于是那条规则**常态下不生效** —— 这里补一份不看编辑态的。
    注意 `.dragging` 是 React 按 `draggingId` 加的类，与 `:active` 无关。 */
 .pane-fences .fence-app.dragging {
   opacity: 0.35;
 }
 
-/* 拖到哪一格松手的高亮。同样是编辑态那条（styles.css:1144）的补丁 ——
+/* 拖到哪一格松手的高亮。同样是存量里编辑态那条
+   （`.board.editing .fence-grid.drag-over`）的补丁 ——
    拆闸之后它在非编辑态失效，而「没有落点提示」会让拖拽变成盲操。 */
 .pane-fences .fence-grid.drag-over {
   outline: 1px dashed rgba(45, 106, 79, 0.45);

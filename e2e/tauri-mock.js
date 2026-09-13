@@ -19,10 +19,10 @@
   // **改这里 = 基线全体失效**：必须同时 `UPDATE_STYLE_BASELINE=1 npm run test:style`
   // 并逐行 review diff。
   //
-  // 覆盖 styles.css 里所有有分支的形状：
-  //   游戏 / 工具  → --fence-rows: 3   (styles.css:1084-1086)
-  //   工作 / 系统  → --fence-rows: 1   (styles.css:1088-1090)
-  //   最近         → #fenceRecent:not([hidden])，4 列 1 行 (styles.css:1236-1244)
+  // 覆盖围栏样式里所有有分支的形状（Task 17 起这些规则在 panel.css）：
+  //   游戏 / 工具  → --fence-rows: 3   (panel.css:366-369)
+  //   工作 / 系统  → --fence-rows: 1   (panel.css:370-374)
+  //   最近         → #fenceRecent:not([hidden])，4 列 1 行 (panel.css:494-503)
   //
   // `is_dir` 是 Task 15 加的：右键菜单靠它决定「打开方式」出不出现。
   // 它**不参与渲染**（没有任何 class / data 属性读它），所以补这个字段

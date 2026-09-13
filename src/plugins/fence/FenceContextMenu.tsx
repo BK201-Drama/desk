@@ -5,13 +5,13 @@
  * ── 定位这件事的结论（都是实测，别凭直觉改）───────────────────────────────
  *
  * 1. 菜单是 `position: fixed`，渲染在 `.pane-fences` 里面。`.pane-fences` 有
- *    `overflow: hidden`（styles.css:184），但**裁不到**它：`.board` 的
- *    `backdrop-filter`（styles.css:66-68）使 `.board` 成为 fixed 后代的包含块，
+ *    `overflow: hidden`（panel.css:41），但**裁不到**它：`.board` 的
+ *    `backdrop-filter`（styles.css:63-64）使 `.board` 成为 fixed 后代的包含块，
  *    菜单因此脱离了 pane 的裁剪链，可以摆到视口任何地方。
  * 2. `MouseEvent.clientX/Y` 与 `getBoundingClientRect()` 是**同一个坐标系**
  *    （都是「缩放之后的屏幕像素」）。所以 `left = 屏幕 x / Z` 就能把元素放到那个点。
  * 3. Z（屏幕像素 ÷ CSS 像素）是**两层 `zoom: 1.28` 叠出来的** 1.6384
- *    （styles.css:30-39 的 `html, body` 双选择器）。**不写死** —— 量出来，
+ *    （styles.css:27-36 的 `html, body` 双选择器）。**不写死** —— 量出来，
  *    见 `measureZoom`。写死的话，改一次 `--desk-zoom` 菜单位置就悄悄偏掉。
  * 4. 子菜单**也必须是 fixed**：纯 CSS 的 `position: absolute` 方案要求父 `<li>`
  *    是 `position: relative`，那个包含块在 pane **内部** → 向左展开的子菜单会被

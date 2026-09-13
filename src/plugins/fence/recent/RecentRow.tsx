@@ -2,13 +2,13 @@
  * 「最近」那一行的全部渲染。外部只传数据与回调。
  *
  * ⚠️ **DOM 必须逐字节等于重构前 `FencePanel` 里那段 `<AppButton>` 的输出。**
- * 样式挂在全局表 `styles.css` 上，其中三条依赖这里的结构：
+ * 样式挂在 `panel.css` 上（Task 17 之前挂在 `styles.css`），其中三条依赖这里的结构：
  *
  *   | 选择器 | 位置 | 依赖 |
  *   |---|---|---|
- *   | `#fenceRecent .fence-grid { --fence-rows: 1 }` | styles.css:1090 | 必须有 `.fence-grid` 这一层 |
- *   | `#fenceRecent:not([hidden])` | styles.css:1236 / 1242 / 1338 | 元素**不能带 `hidden` 属性** |
- *   | `.fence-app` / `.face` / `.label` | styles.css:1150+ | 三层结构不能少 |
+ *   | `#fenceRecent .fence-grid { --fence-rows: 1 }` | panel.css:372 | 必须有 `.fence-grid` 这一层 |
+ *   | `#fenceRecent:not([hidden])` | panel.css:494 / 500 / 577 | 元素**不能带 `hidden` 属性** |
+ *   | `.fence-app` / `.face` / `.label` | panel.css:381+ | 三层结构不能少 |
  *
  * 换句话说：这里的 className 少一个、层级差一层、多一个 `hidden`，
  * 观感就变了。而 `e2e/style-audit.spec.ts` 会当场红 —— 所以改这里之后
