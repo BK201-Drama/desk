@@ -32,8 +32,18 @@ export const PLUGIN_LABEL: Record<string, string> = {
   hello: "Hello",
 };
 
+/**
+ * ⚠️ **这是 `plugins.rs` 内置预设的第二份抄本** —— 名字必须跟那边一字不差。
+ *
+ * 曾经漏抄过一个字：这里写「围栏」，Rust 写「仅围栏」，于是同一个 cmdk 面板里
+ * `SchemeComposer` 的「内置」行与 `CmdkPanel` 的预设列表**同一个预设两个名字**。
+ *
+ * 正解是删掉这份抄本，让 `SchemeComposer` 用它已经拿到的 `presets`
+ * （`useLayoutConfig()` 就在同一个组件里）筛 `builtin` —— 那要确认首次绘制时
+ * `presets` 尚为空数组不会闪一下空行、以及是否碰样式基线，未在本轮做。
+ */
 export const QUICK_PRESETS = [
   { id: "coder", label: "程序员" },
   { id: "minimal", label: "极简" },
-  { id: "fence", label: "围栏" },
+  { id: "fence", label: "仅围栏" },
 ] as const;

@@ -8,10 +8,13 @@
     active_scheme_id: null,
   };
 
+  // 与 `plugins.rs` 的 `plugin_list_presets` 内置三条一字不差 —— 名字、描述、**以及 `builtin`**。
+  // 从前三条都漏了 `builtin`，而 `PresetInfo` 声明它是必填：任何 `p.builtin` 分支
+  // 在 mock 下都会静默走 falsy，测出来的行为跟真机不是一回事。
   const presets = [
-    { id: "coder", name: "程序员", description: "默认开发布局" },
-    { id: "minimal", name: "极简", description: "最少面板" },
-    { id: "fence", name: "围栏", description: "仅围栏" },
+    { id: "coder", name: "程序员", description: "时钟 + GitHub + Multica + 待办 + 围栏（你的默认）", builtin: true },
+    { id: "minimal", name: "极简", description: "时钟 + 围栏", builtin: true },
+    { id: "fence", name: "仅围栏", description: "只要桌面图标", builtin: true },
   ];
 
   // ── 样式审查 fixture（e2e/style-audit.spec.ts 的输入）────────────────────
