@@ -39,7 +39,7 @@ export type MenuIo = {
   /**
    * 打开。**带 id**，虽然命令本身只需要 path。
    *
-   * 面板启动东西的唯一入口是 `doLaunch(path, id)`（`FencePanel.tsx:91`），
+   * 面板启动东西的唯一入口是 `FencePanel` 的 `doLaunch(path, id)`，
    * 它顺手把 id 记进「最近」—— 不传 id 的话，从右键菜单打开的东西**不进最近**。
    * 那是「只在某一条路径上复现」的怪 bug，靠读代码看不出来，所以从端口签名上堵死。
    */
@@ -89,7 +89,7 @@ export function targetFor(item: FenceItem): MenuTarget {
  * 三个隐藏规则的**理由**（不是随手一刀）：
  *   - 目录不给「打开方式」：文件夹没有「打开方式」，资源管理器也不给。
  *   - 空白处才给「新建 ▸ / 粘贴」：`fence_create` 写的是用户桌面、`fence_paste` 粘的是桌面，
- *     两个命令都**没有**「落到某个文件夹」的参数（ops.rs:459-463 / :626）——
+ *     两个命令都**没有**「落到某个文件夹」的参数（`ops::fence_delete` / `ops::fence_compress`）——
  *     挂在目录项上就是在骗用户：点了不会进那个目录。
  *   - sys 只留「打开」（spec §7.4）：`shell:` 伪路径既不能改名也不能删。
  */
@@ -236,16 +236,16 @@ export function clampToViewport(
 /**
  * 改名时补回扩展名。**这张表前后端各有一半，缺了它就会毁掉快捷方式**：
  *
- *   - `ops::fence_rename` 是**原样改名**（`rename_in`，ops.rs:232-242）：给什么名字就是什么名字，
+ *   - `ops::fence_rename` 是**原样改名**（走 `ops::rename_in`）：给什么名字就是什么名字，
  *     它不补扩展名。
- *   - 而看板上文件的 `label` **已经掉了扩展名**（`index.rs:74-79`：`Cursor.lnk` → `Cursor`）。
+ *   - 而看板上文件的 `label` **已经掉了扩展名**（`fence::index` 派生 `label` 处：`Cursor.lnk` → `Cursor`）。
  *
  * 所以「把 Cursor 改成 记事本」如果不补 `.lnk`，结果是桌面多一个**没有扩展名的文件**，
  * 双击它什么都不会发生。旧名必须从 `item.path` 的 basename 取 —— 那里才有扩展名。
  *
- * 规则与 `ops::split_name`（ops.rs:97 起）**同一条**：开头的点是名字的一部分，不是扩展名
+ * 规则与 `ops::split_name`**同一条**：开头的点是名字的一部分，不是扩展名
  * （`.gitignore`）。用户自己打了扩展名就原样放行，不重复叠一层
- * —— 与 `ops::with_ext`（ops.rs:223，「输入 `简历.txt` 不该变成 `简历.txt.txt`」）对称。
+ * —— 与 `ops::with_ext`（「输入 `简历.txt` 不该变成 `简历.txt.txt`」）对称。
  *
  * 返回空串表示「用户没输入」，调用方据此当成取消。
  */

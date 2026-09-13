@@ -62,7 +62,7 @@ const MIN_ELEMENTS = 40;
  * 几何量白名单 —— 额外录 width / height。
  *
  * **为什么需要它**：computed style 里的 gap / padding 只覆盖「间距」，覆盖不了
- * 「盒子自己多大」。`.face` 是 `width: 24px; height: 24px`（panel.css:442-443），
+ * 「盒子自己多大」。`.face` 是 `width: 24px; height: 24px`（`fence/panel.css` 的 `.fence-app .face`），
  * 而网格列是 `1fr`（列宽由容器决定）—— 把 24px 改成 20px 不会传导到
  * `grid-template-columns`，属性表一个值都不变，审计会全绿。这是纯属性快照的盲区。
  *
@@ -111,7 +111,7 @@ const GEOMETRY = [
 /**
  * ⚠️ `getBoundingClientRect()` 的数值比 CSS 里写的大 —— 别以为是错了。
  *
- * `html, body { zoom: var(--desk-zoom) }`（styles.css:27-36，`--desk-zoom: 1.28`），
+ * `html, body { zoom: var(--desk-zoom) }`（`styles.css` 里的 `zoom` 规则，`--desk-zoom: 1.28`），
  * zoom 套在**两层**选择器上，复合成 1.28² = **1.6384**。所以：
  *   `.fence-app .face` 写 `width: 24px` → 录到 `39.31px`
  *   `.fence-search-row .face` 写 `32px`  → 录到 `52.42px`
@@ -229,7 +229,7 @@ async function openBoard(page: Page) {
   await page.addStyleTag({
     content: "*,*::before,*::after{transition:none!important;animation:none!important}",
   });
-  // 围栏面板在 250ms 定时器里挂载（useFences.ts:117-134），等元素真的出来
+  // 围栏面板在 250ms 定时器里挂载（`useFences` 里那个 250ms 定时器），等元素真的出来
   await page.waitForSelector("#fences .fence-app", { timeout: 20_000 });
   // 注意：不要写 `page.evaluate(() => document.fonts.ready)` —— 它 resolve 成 FontFaceSet，
   // 跨进程序列化不过去。用 waitForFunction 判状态。
@@ -281,7 +281,7 @@ test.describe("样式审查（fence 重构护栏）", () => {
   test("搜索态", async ({ page }) => {
     await openBoard(page);
     // 不要用 locator.fill / keyboard.type —— 这个环境的键盘通道会被宿主吞掉，
-    // Playwright 的输入动作会一直挂到超时（smoke.spec.ts:11 对 Ctrl+K 有同样的注释）。
+    // Playwright 的输入动作会一直挂到超时（`smoke.spec.ts` 的 `openCmdk` 对 Ctrl+K 有同样的注释）。
     // 直接派发 DOM 事件：先走原生 setter 再派 input，React 的 onChange 才会认。
     await page.evaluate(() => {
       const input = document.querySelector<HTMLInputElement>(".fence-search");

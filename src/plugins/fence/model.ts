@@ -93,7 +93,7 @@ export function normalizeFenceItem(raw: unknown): FenceItem | null {
     label: asString(o.label),
     path: asString(o.path),
     icon: o.icon == null ? null : asString(o.icon),
-    // 线上是 snake_case：`FenceItemDto` 没有 `#[serde(rename_all)]`（mod.rs:29）。
+    // 线上是 snake_case：`FenceItemDto` 没有 `#[serde(rename_all)]`。
     // 只认字面 `true` —— 缺字段 / 写成字符串都算「不是目录」，与后端默认一致。
     isDir: o.is_dir === true,
   };

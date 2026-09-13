@@ -40,7 +40,7 @@ const recentLabels = (page: Page) =>
 
 /**
  * 点一个 `.fence-app`。**不用 locator.click()** —— 这个环境里 Playwright 的
- * 命中测试会被宿主吞掉，动作会一直挂到超时（style-audit.spec.ts:235 同样的注释）。
+ * 命中测试会被宿主吞掉，动作会一直挂到超时（`style-audit.spec.ts` 里同样的注释）。
  * `el.click()` 派发的是真的冒泡 click 事件，React 的根委托照样收得到。
  */
 async function clickApp(page: Page, id: string) {

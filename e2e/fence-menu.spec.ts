@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
  * ── 为什么这个文件一条真实输入都不发 ───────────────────────────────────────
  *
  * **这个环境根本收不到真实输入。** `page.keyboard.press` 会一直挂
- * （smoke.spec.ts:11、recent.spec.ts:52 撞过，注释写的是「被宿主吞掉」），
+ * （`smoke.spec.ts` 的 `openCmdk`、`recent.spec.ts` 的 `pressKey` 都撞过，注释写的是「被宿主吞掉」），
  * 而**鼠标也是一样** —— Task 15 实测：`page.mouse.click(...)` 同样挂到超时，
  * 一次都完不成。所以本文件里所有输入都是派发的 DOM 事件：
  *
@@ -209,7 +209,7 @@ test("点菜单外 / Escape 都能关；Escape 不会顺手清空搜索框", asy
   });
   await closeMenu(page);
 
-  // ③ Escape 关菜单 —— 且**不能**同时把搜索框清掉（FencePanel.tsx:150 那个消费者）
+  // ③ Escape 关菜单 —— 且**不能**同时把搜索框清掉（`FencePanel` 里 `Escape` 的 keydown 消费者）
   await page.evaluate(() => {
     const input = document.querySelector<HTMLInputElement>(".fence-search")!;
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;

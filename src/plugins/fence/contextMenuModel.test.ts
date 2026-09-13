@@ -110,7 +110,7 @@ describe("空白处", () => {
     expect(calls).toEqual([["paste"]]);
   });
 
-  it("**没有**「快捷方式」—— 空白处没有 target，后端会明确报错（ops.rs:209）", () => {
+  it("**没有**「快捷方式」—— 空白处没有 target，后端会明确报错（`ops::create_in` 的「快捷方式需要一个目标」）", () => {
     const { io, calls } = spyIo();
     const m = contextMenuModel({ kind: "blank" }, io);
     expect(flat(m).map((i) => i.id)).not.toContain("new-lnk");
@@ -382,7 +382,7 @@ describe("withPreservedExtension", () => {
 
   it("旧名本来没有扩展名 → 不补", () => {
     expect(withPreservedExtension("下载", "文档")).toBe("文档");
-    // 开头的点是名字的一部分，不是扩展名 —— 与 ops::split_name（ops.rs:97）同一条规则
+    // 开头的点是名字的一部分，不是扩展名 —— 与 `ops::split_name` 同一条规则
     expect(withPreservedExtension(".gitignore", "新名")).toBe("新名");
   });
 
