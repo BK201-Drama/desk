@@ -1,13 +1,6 @@
 //! Windows「显示桌面图标」全局开关（HKCU\...\Explorer\Advanced\HideIcons）的生命周期管理。
 //! 这是新版围栏唯一还碰系统的地方 —— 所有写入都收敛在本文件内。
 
-// Task 2 只落地「读写能力」本身，调用方在后面的任务：
-//   Task 3 → is_enabled（启动自检）、disable（退出恢复）
-//   Task 5 → is_enabled / enable / disable（看板开关）
-// 在那之前整条链都是 dead code，而基线是零警告 —— 所以临时压一下。
-// ⚠️ **Task 3 接上调用方后请删掉这一行**，让警告重新可见。
-#![allow(dead_code)]
-
 use std::process::Command;
 
 const REG_PATH: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
@@ -96,12 +89,32 @@ pub(crate) fn is_enabled() -> Result<Option<bool>, String> {
     Ok(parse_hide_icons(&String::from_utf8_lossy(&out.stdout)))
 }
 
+// 调用方在 Task 5 的看板「显示桌面图标」开关；在那之前没有使用者。
+#[allow(dead_code)]
 pub(crate) fn enable() -> Result<(), String> {
     set_desktop_icons_hidden(true)
 }
 
 pub(crate) fn disable() -> Result<(), String> {
     set_desktop_icons_hidden(false)
+}
+
+/// INV-3 兜底：注册表里是 1，但本地没有任何认领它的接管记录 → 说明上次异常退出
+/// 且状态已无人负责。主动置 0，宁可少隐藏一次，也不让系统停在无人认领的改造状态。
+///
+/// 返回 true 表示执行了恢复。
+pub(crate) fn recover_orphan_hidden_state() -> Result<bool, String> {
+    if is_enabled()? != Some(true) {
+        return Ok(false);
+    }
+    // 有可解析的接管记录 → 这个 1 是有主人的，不动
+    if let Ok(meta) = crate::fence::load_meta() {
+        if !meta.items.is_empty() || meta.hide_icons_applied {
+            return Ok(false);
+        }
+    }
+    disable()?;
+    Ok(true)
 }
 
 #[cfg(test)]

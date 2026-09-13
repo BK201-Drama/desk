@@ -281,6 +281,19 @@ pub fn run() {
                 }
             });
 
+            // HideIcons 孤儿态自检：后台跑，不挡首帧（要起 reg 进程 + 可能刷 Explorer）
+            let app_handle_recover = app.handle().clone();
+            std::thread::spawn(move || {
+                match fence::hide::recover_orphan_hidden_state() {
+                    Ok(true) => {
+                        eprintln!("recovered orphan HideIcons=1 -> 0");
+                        let _ = app_handle_recover.emit("fence:hide-recovered", ());
+                    }
+                    Ok(false) => {}
+                    Err(e) => eprintln!("recover_orphan_hidden_state: {e}"),
+                }
+            });
+
             let edit_sc =
                 Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyD);
             if let Err(e) = app.global_shortcut().register(edit_sc) {
@@ -301,6 +314,14 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                // INV-3：desk 不运行时，HideIcons 必须是 0
+                if let Err(e) = fence::hide::disable() {
+                    eprintln!("hide::disable on exit: {e}");
+                }
+            }
+        });
 }
