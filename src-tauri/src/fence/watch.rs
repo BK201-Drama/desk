@@ -72,7 +72,7 @@ fn missing_icon_keys() -> HashSet<String> {
 /// 起监听。**失败不致命**：监听坏了看板退化成「只有冷启动那一次」，其余功能照常，
 /// 所以调用方拿到 `Err` 只该 `eprintln!`，不该 panic / 退出。
 pub(crate) fn start(app: AppHandle) -> Result<(), String> {
-    let roots = super::desktop_roots()?;
+    let roots = super::paths::desktop_roots()?;
     if roots.is_empty() {
         return Err("没有可监听的桌面目录".into());
     }

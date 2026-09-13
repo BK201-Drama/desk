@@ -69,7 +69,7 @@ fn locate(path: &Path, roots: &[(String, PathBuf)]) -> Result<(String, String), 
 /// tempdir 上，而这条链上有一步 `canonicalize`，真桌面上才可能出现临时目录里
 /// 造不出来的形状（junction / 大小写不一致 / 8.3 短名）。
 pub(crate) fn gate(path: &Path) -> Result<(String, String), String> {
-    locate(path, &super::desktop_roots()?)
+    locate(path, &super::paths::desktop_roots()?)
 }
 
 /// 新建 / 改名用的名字检查。
@@ -457,7 +457,7 @@ pub fn fence_create(
     kind: String,
     target: Option<String>,
 ) -> Result<String, String> {
-    let p = create_in(&super::desktop_dir()?, &name, &kind, target.as_deref())?;
+    let p = create_in(&super::paths::desktop_dir()?, &name, &kind, target.as_deref())?;
     Ok(p.to_string_lossy().to_string())
 }
 
@@ -596,7 +596,7 @@ pub fn fence_clipboard(paths: Vec<String>, cut: bool) -> Result<(), String> {
     if paths.is_empty() {
         return Err("没有选中任何项".into());
     }
-    let roots = super::desktop_roots()?;
+    let roots = super::paths::desktop_roots()?;
     let mut ps = Vec::with_capacity(paths.len());
     for s in &paths {
         let p = PathBuf::from(s);
@@ -616,7 +616,7 @@ pub fn fence_paste() -> Result<Vec<String>, String> {
     if srcs.is_empty() {
         return Err("剪贴板里没有可粘贴的项".into());
     }
-    let desktop = super::desktop_dir()?;
+    let desktop = super::paths::desktop_dir()?;
     let mut placed = Vec::new();
     let mut failed = Vec::new();
 
@@ -664,7 +664,7 @@ pub fn fence_send_to(path: String) -> Result<(), String> {
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .ok_or("路径没有名字")?;
-    let lnk = unique_name(&super::desktop_dir()?, &format!("{label} - 快捷方式.lnk"));
+    let lnk = unique_name(&super::paths::desktop_dir()?, &format!("{label} - 快捷方式.lnk"));
     create_shortcut(&p.to_string_lossy(), &lnk)
 }
 

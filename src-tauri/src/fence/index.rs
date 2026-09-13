@@ -4,7 +4,7 @@
 // Task 12：和 meta.rs 一起删掉 `#![allow(dead_code)]`（读源只剩桌面，本模块全部
 // 成员都在生产路径上，没有「为将来预留」的死代码了）。
 
-use super::guess_fence;
+use super::classify::guess_fence;
 use super::meta::{key as meta_key, FenceMeta};
 use super::{system_shell_items, FenceDto, FenceItemDto};
 use std::collections::BTreeMap;
@@ -57,7 +57,7 @@ pub(crate) fn icon_file(key: &str) -> PathBuf {
             c => c,
         })
         .collect();
-    match super::icons_dir() {
+    match super::paths::icons_dir() {
         Ok(d) => d.join(format!("{safe}.png")),
         Err(_) => PathBuf::new(),
     }
@@ -82,7 +82,7 @@ pub(crate) fn scan_root(origin: &str, root: &Path) -> Result<Vec<ScannedItem>, S
         if file_name.eq_ignore_ascii_case("desktop.ini") {
             continue;
         }
-        if super::is_self_desk_shortcut(&file_name) {
+        if super::classify::is_self_desk_shortcut(&file_name) {
             continue;
         }
         let path = ent.path();
@@ -187,7 +187,7 @@ pub(crate) fn build_fences(items: &[ScannedItem], meta: &FenceMeta) -> Vec<Fence
         }
     }
 
-    if let Ok(icons) = super::icons_dir() {
+    if let Ok(icons) = super::paths::icons_dir() {
         let (collapsed, rows) = ui_of("系统", meta);
         fences.push(FenceDto {
             name: "系统".into(),
@@ -210,7 +210,7 @@ pub(crate) fn ensure_icons(items: &[ScannedItem]) -> usize {
         if dest.as_os_str().is_empty() || dest.exists() {
             continue;
         }
-        if super::extract_icon_png(&it.path, &dest) {
+        if super::shell_icons::extract_icon_png(&it.path, &dest) {
             n += 1;
         }
     }
@@ -355,7 +355,7 @@ mod tests {
         // 抽取源 = 两个桌面根上的全部真项。用 `desktop_roots()` 而不是 `desktop_dir()`：
         // 迁移时公共桌面写不进去会退回用户桌面，只盯一个根可能一个文件都扫不到。
         let mut targets: Vec<(String, PathBuf)> = Vec::new();
-        for (origin, root) in crate::fence::desktop_roots().unwrap() {
+        for (origin, root) in crate::fence::paths::desktop_roots().unwrap() {
             for it in scan_root(&origin, &root).unwrap_or_default() {
                 targets.push((it.label, it.path));
             }
@@ -372,7 +372,7 @@ mod tests {
                 dirs += 1;
             }
             let dest = dest_dir.path().join(format!("{i}.png"));
-            if !crate::fence::extract_icon_png(path, &dest) {
+            if !crate::fence::shell_icons::extract_icon_png(path, &dest) {
                 failed.push(name.clone());
                 continue;
             }

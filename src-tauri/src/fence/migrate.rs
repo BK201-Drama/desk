@@ -44,13 +44,13 @@ fn default_origin() -> String {
 }
 
 pub(super) fn vault_dir() -> Result<PathBuf, String> {
-    let dir = super::app_data_dir()?.join("vault");
+    let dir = super::paths::app_data_dir()?.join("vault");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
 
 pub(super) fn meta_path() -> Result<PathBuf, String> {
-    Ok(super::app_data_dir()?.join("vault.json"))
+    Ok(super::paths::app_data_dir()?.join("vault.json"))
 }
 
 pub(super) fn load_meta() -> Result<VaultMeta, String> {
@@ -81,7 +81,7 @@ pub(crate) struct MigrateReport {
 pub(crate) fn run() -> Result<MigrateReport, String> {
     let vault = vault_dir()?;
     let old = load_meta()?;
-    let roots = super::desktop_roots()?;
+    let roots = super::paths::desktop_roots()?;
 
     // vault.json 不存在 → 从没搬过图标，或者早就迁完了。直接返回，别碰任何东西。
     if old.items.is_empty() {
@@ -512,7 +512,7 @@ mod tests {
     fn real_vault_dry_run_is_read_only() {
         let vault = vault_dir().unwrap();
         let old = load_meta().unwrap();
-        let roots = crate::fence::desktop_roots().unwrap();
+        let roots = crate::fence::paths::desktop_roots().unwrap();
         println!("vault 目录：{}", vault.display());
 
         if old.items.is_empty() {
