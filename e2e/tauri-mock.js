@@ -69,8 +69,11 @@
     },
   ];
 
-  // 最近：4 条，跨 工作 / 工具 / 游戏 三个围栏。不含 sys- —— recentItems() 会过滤掉
-  // （model.ts:105），过滤后不足 4 条 #fenceRecent 就不显示。
+  // 最近：4 条，跨 工作 / 工具 / 游戏 三个围栏。不含 sys- —— useRecents() 会过滤掉
+  // （src/plugins/fence/recent/index.ts），过滤后不足 4 条 #fenceRecent 就不显示。
+  //
+  // ⚠️ 这份数组**按页可变**：recent_push 会就地 unshift，后续 recent_list 就返回新内容。
+  // 所以同一个测试文件里，断言过「最近」的用例必须自己保证顺序，不能假设开局那 4 条。
   const RECENT_FIXTURE = ["d-feishu-0", "d-cursor-0", "d-lol-0", "d-obsidian-0"];
 
   let config = structuredClone(defaultConfig);
@@ -276,9 +279,13 @@
             throw new Error("mock: 读写桌面图标开关失败");
           }
           return !!args.visible;
+        // `__MOCK_RECENT_EMPTY__` 模拟「首次运行 / 删掉 recent-launches.json」：
+        // 空列表既不能报错，也不能让 #fenceRecent 留一个空壳（旧代码用
+        // `recents.length > 0 ? … : null` 挡住的那个洞）。
         case "recent_list":
-          return RECENT_FIXTURE.slice();
+          return window.__MOCK_RECENT_EMPTY__ ? [] : RECENT_FIXTURE.slice();
         case "recent_push": {
+          if (window.__MOCK_RECENT_EMPTY__) return [];
           const rid = args.id;
           if (typeof rid === "string" && rid && !RECENT_FIXTURE.includes(rid)) {
             RECENT_FIXTURE.unshift(rid);

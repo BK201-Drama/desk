@@ -1,18 +1,20 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type { PluginComponentProps } from "../../host/types";
 import { isTextField } from "../../host/util";
 import { setEditing, toggleEditing } from "../../host/edit";
 import { useKeyboardInput } from "../../lib/useKeyboardInput";
 import { useDeskShellOptional } from "../../app/providers/DeskShellProvider";
 import { useFences } from "./useFences";
-import {
-  recentItems,
-  searchFences,
-  totalFenceItems,
-  type FenceItem,
-} from "./model";
+import { searchFences, totalFenceItems, type FenceItem } from "./model";
 import { fenceIconStyle, highlightLabelParts } from "./iconStyle";
 import { useFenceDnD } from "./useFenceDnD";
+import { useRecents, RecentRow } from "./recent";
 
 function AppButton({
   ctx,
@@ -48,7 +50,8 @@ function AppButton({
 export function FencePanel({ ctx }: PluginComponentProps) {
   const shell = useDeskShellOptional();
   const setKeyboard = useKeyboardInput(ctx);
-  const { fences, recentIds, loadError, loadFences, persistOrder, launch } = useFences(ctx);
+  const { fences, loadError, loadFences, persistOrder, launch } = useFences(ctx);
+  const { items: recents, push: pushRecent } = useRecents(ctx, fences);
   const { draggingId, onAppPointerDown, consumeSuppressClick } = useFenceDnD(
     ctx,
     fences,
@@ -71,8 +74,28 @@ export function FencePanel({ ctx }: PluginComponentProps) {
   filterRef.current = filter;
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
-  const recents = recentItems(fences, recentIds);
   const total = totalFenceItems(fences);
+
+  /**
+   * 启动的**唯一入口**：真正打开 + 记入最近。
+   * 鼠标点击、搜索结果、键盘回车三条路径都必须走这里，
+   * 否则就会出现「某条路径启动的东西不进最近」这种只在某一条路上复现的怪 bug。
+   *
+   * `ctx.editing()` 那道闸是**故意的**，不是多余：编辑态下点击是用来拖拽排序的，
+   * 东西根本没被打开，自然不该进最近。旧代码把这道闸放在 `launch` 里，
+   * 而 `launch` 现在不再管最近，所以这里必须自己挡一次。
+   *
+   * 定义必须**早于**下面那个键盘 useEffect —— 它出现在依赖数组里，
+   * 而依赖数组是在渲染期求值的，晚定义会踩 `const` 的 TDZ。
+   */
+  const doLaunch = useCallback(
+    (path: string, id?: string) => {
+      if (ctx.editing()) return;
+      launch(path, id);
+      if (id) pushRecent(id);
+    },
+    [ctx, launch, pushRecent]
+  );
 
   useEffect(() => {
     const host = document.querySelector<HTMLElement>('[data-plugin="fence"]');
@@ -147,7 +170,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
         const hit = curHits[curSelected];
         if (!hit) return;
         e.preventDefault();
-        launch(hit.item.path, hit.item.id);
+        doLaunch(hit.item.path, hit.item.id);
       }
     };
     document.addEventListener("keydown", keyHandler);
@@ -156,7 +179,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
       document.removeEventListener("keydown", keyHandler);
       shell?.registerFocusFenceSearch(null);
     };
-  }, [ctx, launch, loadFences, setKeyboard, shell]);
+  }, [ctx, doLaunch, launch, loadFences, setKeyboard, shell]);
 
   useEffect(() => {
     const host = document.querySelector<HTMLElement>('[data-plugin="fence"]');
@@ -167,7 +190,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
 
   const tryLaunch = (path: string, id?: string) => {
     if (consumeSuppressClick()) return;
-    launch(path, id);
+    doLaunch(path, id);
   };
 
   const editHint = editingOn ? "完成 (Win+Shift+D)" : "编辑 (Win+Shift+D)";
@@ -466,24 +489,11 @@ export function FencePanel({ ctx }: PluginComponentProps) {
       ) : null}
 
       <div id="fences" hidden={Boolean(q)}>
-        {!q && recents.length > 0 ? (
-          <div id="fenceRecent" className="fence">
-            <div className="fence-title" aria-label={`最近 ${recents.length}`}>
-              最近 <em>{recents.length}</em>
-            </div>
-            <div className="fence-grid">
-              {recents.map((item) => (
-                <AppButton
-                  key={item.id}
-                  ctx={ctx}
-                  item={item}
-                  dragging={false}
-                  onPointerDown={() => {}}
-                  onLaunch={() => tryLaunch(item.path, item.id)}
-                />
-              ))}
-            </div>
-          </div>
+        {/* `!q` 留在面板这边（搜索时整块 #fences 是 hidden 的，不该再多渲染一个
+            #fenceRecent）；「空则不渲染」在 RecentRow 内部。两个条件的归属不同，
+            别顺手合并 —— 搜索态基线里 #fenceRecent 是**不存在**的。 */}
+        {!q ? (
+          <RecentRow ctx={ctx} items={recents} onLaunch={(i) => tryLaunch(i.path, i.id)} />
         ) : null}
         {loadError ? (
           <div className="fence">

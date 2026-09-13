@@ -17,8 +17,6 @@ export type FenceLayout = {
   ids: string[];
 };
 
-export const RECENT_MAX = 4;
-export const RECENT_LS_KEY = "desk-recent-v1";
 export const DRAG_THRESHOLD_PX = 6;
 
 export const SEARCH_ALIASES: Record<string, string[]> = {
@@ -100,13 +98,6 @@ export function searchFences(fences: FenceGroup[], query: string): FenceSearchHi
 
 export function totalFenceItems(fences: FenceGroup[]): number {
   return fences.reduce((n, f) => n + f.items.length, 0);
-}
-
-export function recentItems(fences: FenceGroup[], recentIds: string[]): FenceItem[] {
-  return recentIds
-    .slice(0, RECENT_MAX)
-    .map((id) => findItemById(fences, id))
-    .filter((item): item is FenceItem => item !== null && !item.id.startsWith("sys-"));
 }
 
 export function applyLayout(fences: FenceGroup[], layout: FenceLayout[]): FenceGroup[] {

@@ -1,48 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { HostContext } from "../../host/types";
-import {
-  RECENT_LS_KEY,
-  RECENT_MAX,
-  layoutFromFences,
-  normalizeFences,
-  type FenceGroup,
-} from "./model";
-import { asArray } from "../../lib/safe";
+import { layoutFromFences, normalizeFences, type FenceGroup } from "./model";
 
 export function useFences(ctx: HostContext) {
   const [fences, setFences] = useState<FenceGroup[]>([]);
-  const [recentIds, setRecentIds] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadRecent = useCallback(async () => {
-    try {
-      let ids = asArray<string>(await ctx.invoke("recent_list")).slice(0, RECENT_MAX);
-      if (!ids.length) {
-        try {
-          const raw = localStorage.getItem(RECENT_LS_KEY);
-          if (raw) {
-            const parsed = JSON.parse(raw) as unknown;
-            const legacy = asArray<unknown>(parsed)
-              .filter((x): x is string => typeof x === "string" && !x.startsWith("sys-"))
-              .slice(0, RECENT_MAX);
-            localStorage.removeItem(RECENT_LS_KEY);
-            for (const id of [...legacy].reverse()) {
-              ids = asArray<string>(await ctx.invoke("recent_push", { id })).slice(0, RECENT_MAX);
-            }
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-      setRecentIds(ids);
-    } catch (e) {
-      console.warn("recent_list", e);
-      setRecentIds([]);
-    }
-  }, [ctx]);
-
   const loadFences = useCallback(async () => {
-    await loadRecent();
     // 快路径：已有 vault 时先 list，避免开机同步跑完整 takeover（挪图标/抽图标/藏桌面）卡住 UI
     try {
       const raw = await ctx.invoke("fence_list");
@@ -58,7 +22,7 @@ export function useFences(ctx: HostContext) {
       setLoadError(String(e));
       setFences([]);
     }
-  }, [ctx, loadRecent]);
+  }, [ctx]);
 
   /** 后台 reconcile：桌面新图标进 vault；不挡首屏 */
   const reconcileDesktop = useCallback(async () => {
@@ -91,27 +55,17 @@ export function useFences(ctx: HostContext) {
     [ctx]
   );
 
-  const recordRecent = useCallback(
-    (id: string) => {
-      if (id.startsWith("sys-")) return;
-      void ctx
-        .invoke("recent_push", { id })
-        .then((ids) => setRecentIds(asArray<string>(ids).slice(0, RECENT_MAX)))
-        .catch((e) => console.warn("recent_push", e));
-    },
-    [ctx]
-  );
-
+  /** 只负责「打开」。记入最近由调用方（FencePanel::doLaunch）决定 ——
+      这里是「最近」那条边界的外面，不该知道 recent 的存在。 */
   const launch = useCallback(
     (path: string, id?: string) => {
       if (ctx.editing()) return;
-      if (id) recordRecent(id);
       void ctx
         .invoke("fence_launch", { path })
         .then(() => ctx.emit("fence:launch", { path, id }))
         .catch((err) => console.error(err));
     },
-    [ctx, recordRecent]
+    [ctx]
   );
 
   useEffect(() => {
@@ -136,7 +90,6 @@ export function useFences(ctx: HostContext) {
   return {
     fences,
     setFences,
-    recentIds,
     loadError,
     loadFences: async () => {
       await loadFences();
