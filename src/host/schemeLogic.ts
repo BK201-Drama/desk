@@ -20,13 +20,15 @@ const PLUGIN_SHORT: Record<string, string> = {
   fence: "围栏",
   "qq-music": "QQ",
   clock: "时钟",
+  "sys-res": "资源",
   "ops-hud": "HUD",
   "event-tape": "磁带",
   hello: "Hello",
   cmdk: "命令",
 };
 
-const ALL_KNOWN_PLUGINS = [
+/** 导出来只为给 `plugin-roster.test.ts` 守卫 —— 它是一份需要跟着插件目录长的名单。 */
+export const ALL_KNOWN_PLUGINS = [
   "github",
   "token-capsule",
   "multica",
@@ -35,6 +37,7 @@ const ALL_KNOWN_PLUGINS = [
   "fence",
   "qq-music",
   "clock",
+  "sys-res",
   "ops-hud",
   "event-tape",
   "hello",
