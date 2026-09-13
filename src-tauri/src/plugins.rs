@@ -557,3 +557,65 @@ pub fn plugin_storage_set(plugin_id: String, key: String, value: Value) -> Resul
     )
     .map_err(|e| e.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::MAX_SCHEMES;
+    use std::path::Path;
+
+    /// 抠出一个 `const NAME = N;` 里的 N。
+    ///
+    /// ⚠️ 必须卡**词法边界**：单纯 `starts_with("const MAX_SCHEMES")` 会让
+    /// `MAX_SCHEMES_X` 也命中，于是「改了名」被读成「没改名」，测试静默通过。
+    fn const_value(src: &str, decl: &str, file: &str) -> usize {
+        let line = src
+            .lines()
+            .map(str::trim_start)
+            .find(|l| {
+                l.strip_prefix(decl).is_some_and(|rest| {
+                    !rest.starts_with(|c: char| c.is_alphanumeric() || c == '_')
+                })
+            })
+            .unwrap_or_else(|| panic!("{file} 里找不到 `{decl}` —— 改了名就得同步改这条测试"));
+        line.split('=')
+            .nth(1)
+            .and_then(|s| s.trim().trim_end_matches(';').trim().parse().ok())
+            .unwrap_or_else(|| panic!("{file} 的 `{decl}` 解析不出数字：{line}"))
+    }
+
+    /// `MAX_SCHEMES` 在两个语言里各写一遍：这里（**真正拒绝创建**的那一处）、
+    /// `schemeLogic.ts`（「新建方案」按钮是否可点）；e2e 的替身 `tauri-mock.js` 里还有第三份。
+    ///
+    /// 漂移的症状是**静默的**，而且两个方向不对称 ——
+    /// - 这里改成 5、前端没改 → 按钮**永远**是灰的，用户根本建不出第 4 个。没有报错、没有日志，
+    ///   `tsc` / 单测 / e2e / 样式审查全绿，能力被悄悄吃掉。
+    /// - 前端改成 5、这里没改 → 按钮亮着，一点吃一个 `Err`，用户看得见（还算好）。
+    /// - mock 那份改了 → e2e 按另一个上限跑，而它看起来完全正常。
+    #[test]
+    fn max_schemes_matches_frontend() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let read = |p: &str| {
+            std::fs::read_to_string(root.join(p)).unwrap_or_else(|e| panic!("读不到 {p}：{e}"))
+        };
+
+        assert_eq!(
+            const_value(
+                &read("src/host/schemeLogic.ts"),
+                "export const MAX_SCHEMES",
+                "src/host/schemeLogic.ts"
+            ),
+            MAX_SCHEMES,
+            "schemeLogic.ts 的 MAX_SCHEMES 与本文件的不一致 —— 前端会按另一个数字决定「新建方案」能不能点"
+        );
+
+        assert_eq!(
+            const_value(
+                &read("e2e/tauri-mock.js"),
+                "const MAX_SCHEMES",
+                "e2e/tauri-mock.js"
+            ),
+            MAX_SCHEMES,
+            "tauri-mock.js 的 MAX_SCHEMES 与本文件的不一致 —— e2e 会按另一个上限跑，而它看起来完全正常"
+        );
+    }
+}

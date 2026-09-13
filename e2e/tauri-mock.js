@@ -1,5 +1,10 @@
 /** Browser init script — Playwright addInitScript({ path }) */
 (function () {
+  // 方案数量上限。真正**拒绝**创建的是 `plugins.rs` 的 `MAX_SCHEMES`，前端那份只管把按钮变灰。
+  // 从前这里是裸的 `>= 3`，三处各写一遍谁也不知道要同步 —— 现在由 `plugins.rs` 的
+  // `max_schemes_matches_frontend` 钉住，改任何一处测试都会响。
+  const MAX_SCHEMES = 3;
+
   const defaultConfig = {
     active_preset: "coder",
     disabled: ["hello", "ops-hud", "event-tape"],
@@ -254,7 +259,7 @@
         }
         case "plugin_create_scheme": {
           const schemes = (config.schemes || []).slice();
-          if (schemes.length >= 3) return config;
+          if (schemes.length >= MAX_SCHEMES) return config;
           const id = "scheme-" + Date.now();
           const name = (args.name && String(args.name).trim()) || "方案 " + (schemes.length + 1);
           schemes.push({

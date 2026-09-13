@@ -2,6 +2,12 @@ import type { LayoutScheme, PluginsConfig } from "./types";
 
 /** 领域层：布局方案纯逻辑，不依赖 React / Tauri / DOM */
 
+/**
+ * 方案数量上限。**真正拒绝创建的是 `plugins.rs` 的 `MAX_SCHEMES`**，这一份只决定
+ * 「新建方案」按钮点不点得动；e2e 的替身 `tauri-mock.js` 里还有第三份。
+ *
+ * 三处的一致性由 `plugins.rs` 的 `max_schemes_matches_frontend` 钉住，改一处就够了响。
+ */
 export const MAX_SCHEMES = 3;
 
 export const PRESET_LABEL: Record<string, string> = {
