@@ -8,7 +8,7 @@ import {
 } from "react";
 import type { PluginComponentProps } from "../../host/types";
 import { isTextField } from "../../host/util";
-import { setEditing, toggleEditing } from "../../host/edit";
+import { setEditing } from "../../host/edit";
 import { useKeyboardInput } from "../../lib/useKeyboardInput";
 import { useDeskShellOptional } from "../../app/providers/DeskShellProvider";
 import { useFences } from "./useFences";
@@ -72,7 +72,6 @@ export function FencePanel({ ctx }: PluginComponentProps) {
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState(-1);
   const [autostartOn, setAutostartOn] = useState(false);
-  const [iconsVisible, setIconsVisible] = useState(true);
   const [iconsError, setIconsError] = useState<string | null>(null);
   const [editingOn, setEditingOn] = useState(() => ctx.editing());
   /** 打开中的右键菜单。`at` 是打开那一刻的指针位置（屏幕像素）。 */
@@ -203,6 +202,28 @@ export function FencePanel({ ctx }: PluginComponentProps) {
           })();
         },
       }),
+      // 桌面图标开关。2026-09-13 从工具栏按钮挪到这里 —— 它实现的是 spec §6.2
+      // 第 3 条的逃生口（异常后把图标要回来），能力是真的，但不值得占一个常驻
+      // 按钮位：日常用不到，而误点它的后果很重（桌面图标当场全消失）。
+      // 命令面板搜「桌面图标」即可。
+      ctx.registerCommand({
+        id: "toggle-desktop-icons",
+        title: "显示 / 隐藏桌面图标",
+        group: "围栏",
+        run: () => {
+          void (async () => {
+            try {
+              // 现读现切，不用组件状态：命令面板可能隔很久才开一次，期间
+              // HideIcons 会被别处置动（desk 每次退出都会把它归零）。
+              const cur = await ctx.invoke<boolean>("fence_icons_visible");
+              await ctx.invoke("fence_set_icons_visible", { visible: !cur });
+              setIconsError(null);
+            } catch (e) {
+              setIconsError(String(e));
+            }
+          })();
+        },
+      }),
       // 桌面推来新的一帧 → 关掉菜单。条目可能已经不在了（刚被删掉的那个），
       // 留着菜单就是留着一个**已经失效的 path**，下一次点击会拿它去发命令。
       ctx.on("fence:changed", () => setMenu(null)),
@@ -214,12 +235,11 @@ export function FencePanel({ ctx }: PluginComponentProps) {
     };
     shell?.registerFocusFenceSearch(focusSearch);
     void ctx.invoke<boolean>("autostart_get").then(setAutostartOn).catch(() => {});
-    // 读失败**不算**「图标已隐藏」—— 两者含义完全不同。分开存，
-    // 否则一次 IPC 抖动会把按钮画成「已隐藏」，比不显示更误导。
-    void ctx
-      .invoke<boolean>("fence_icons_visible")
-      .then(setIconsVisible)
-      .catch((e) => setIconsError(String(e)));
+    // 桌面图标开关的**读写探测**。2026-09-13 把按钮挪进命令面板后这里不再存值
+    // （按钮没了，也就没有「画成已隐藏还是显示中」这个会骗人的问题），但这次
+    // 读取必须留着：spec §8 要求 HideIcons 写失败不阻塞启动，唯一呈现出口就是
+    // 下面那条 `fence-warn` 横条，`style-audit` 的 warn 态基线也靠它录。
+    void ctx.invoke<boolean>("fence_icons_visible").catch((e) => setIconsError(String(e)));
 
     const keyHandler = (e: KeyboardEvent) => {
       const cmdkOpen = document.querySelector('[data-plugin="cmdk"].show');
@@ -281,7 +301,6 @@ export function FencePanel({ ctx }: PluginComponentProps) {
     doLaunch(path, id);
   };
 
-  const editHint = editingOn ? "完成 (Win+Shift+D)" : "编辑 (Win+Shift+D)";
   const lastCursor = useRef<string>("");
 
   /**
@@ -463,82 +482,6 @@ export function FencePanel({ ctx }: PluginComponentProps) {
                   strokeWidth="1.5"
                   strokeLinecap="round"
                 />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="icon-btn"
-              title={editHint}
-              aria-label={editHint}
-              onClick={() => toggleEditing()}
-            >
-              <svg className="ico-edit" viewBox="0 0 16 16" aria-hidden="true">
-                <path
-                  d="M10.6 3.1 12.9 5.4 6.2 12.1H3.9v-2.3L10.6 3.1z"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M9.5 4.2 11.8 6.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-              </svg>
-              <svg className="ico-done" viewBox="0 0 16 16" aria-hidden="true">
-                <path
-                  d="M3.4 8.3 6.5 11.3 12.6 4.7"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-            {/* 逃生口：崩溃/异常后一键把桌面图标要回来（spec §6.2 第 3 条）。
-                刻意放最后，不动现有 4 个按钮的相对顺序。
-                复用 .icon-btn / .icon-btn.on，本任务不新增任何样式。 */}
-            <button
-              type="button"
-              className={`icon-btn${iconsVisible ? " on" : ""}`}
-              title={
-                iconsVisible ? "桌面图标：显示中（点击隐藏）" : "桌面图标：已隐藏（点击显示）"
-              }
-              aria-label="显示桌面图标"
-              onClick={() => {
-                void (async () => {
-                  try {
-                    const next = !iconsVisible;
-                    await ctx.invoke("fence_set_icons_visible", { visible: next });
-                    setIconsVisible(next);
-                    setIconsError(null);
-                  } catch (e) {
-                    setIconsError(String(e));
-                  }
-                })();
-              }}
-            >
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path
-                  d="M1.6 8s2.4-4.2 6.4-4.2S14.4 8 14.4 8s-2.4 4.2-6.4 4.2S1.6 8 1.6 8z"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.4"
-                />
-                <circle cx="8" cy="8" r="1.9" fill="none" stroke="currentColor" strokeWidth="1.4" />
-                {!iconsVisible ? (
-                  <path
-                    d="M3 13 13 3"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                ) : null}
               </svg>
             </button>
           </div>

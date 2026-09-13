@@ -118,20 +118,6 @@
   background: rgba(255, 255, 255, 0.85);
   color: var(--ink);
 }
-.icon-btn .ico-done {
-  display: none;
-}
-.board.editing #editToggle {
-  background: rgba(45, 106, 79, 0.18);
-  border-color: rgba(45, 106, 79, 0.45);
-  color: var(--accent);
-}
-.board.editing #editToggle .ico-edit {
-  display: none;
-}
-.board.editing #editToggle .ico-done {
-  display: block;
-}
 .icon-btn.on {
   background: rgba(45, 106, 79, 0.18);
   border-color: rgba(45, 106, 79, 0.45);
