@@ -48,8 +48,7 @@ export type HostStorage = {
 export type HostContext = {
   pluginId: string;
   permissions: ReadonlySet<string>;
-  /** `cmd` 是 `src/generated/commands.ts` 里的联合类型，不是 `string` ——
-      拼错命令名在这里就是 `tsc` 错误，而不是运行时的 `permission denied`。 */
+  /** `cmd` 是 `CommandName`（`src/generated/commands.ts`），不是 `string` —— 拼错命令名这里是 `tsc` 错误。 */
   invoke: <T = unknown>(cmd: CommandName, args?: Record<string, unknown>) => Promise<T>;
   openUrl: (url: string) => Promise<void>;
   convertFileSrc: (path: string) => string;

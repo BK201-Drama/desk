@@ -1,13 +1,9 @@
-//! 命令清单解析器的测试。
-//!
-//! 测的不是「生成的清单对不对」（那个由 `build.rs` 每次构建自动保证），
+//! 命令清单解析器的测试。测的不是「生成的清单对不对」（`build.rs` 每次构建已保证），
 //! 而是**解析器的自校验真的会响** —— 一道护栏如果永远不会红，它就不是护栏。
-//! 全部用临时文件喂合成输入，不碰真实的 `lib.rs`。
 
 // `include!` 已带入 `use std::path::{Path, PathBuf};`，这里不要再重复导入。
 include!("../cmd_manifest.rs");
 
-/// 写一个临时文件，返回路径。文件名带进程号 + 计数器，避免并行测试互踩。
 fn tmp(name: &str) -> PathBuf {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static N: AtomicUsize = AtomicUsize::new(0);
@@ -67,8 +63,7 @@ fn trailing_comma_and_no_comma_both_ok() {
 #[test]
 #[should_panic(expected = "解析不出命令名")]
 fn panics_on_unparseable_entry_instead_of_silently_skipping() {
-    // 这条是本次的核心：块里出现解析不了的行必须**炸**，不能静默漏掉一条命令。
-    // （旧版前端护栏的同类问题正是「扫不到就放行」。）
+    // 块里出现解析不了的行必须**炸**，不能静默漏掉一条命令。
     parse_source("generate_handler![\n  set_cursor,\n  \"string-literal-command\",\n]\n");
 }
 
@@ -92,9 +87,8 @@ fn panics_on_empty_block() {
 
 #[test]
 fn generated_file_on_disk_matches_the_registry() {
-    // 这条**会**被 build.rs 先修好（cargo 构建脚本跑在测试之前），所以它证明不了
-    // 「没有陈旧」—— 它的价值是另一个：确认生成物确实存在于源码树里、
-    // 且条数与注册表一致（防住「被 .gitignore 掉」或「构建脚本静默跳过」）。
+    // `build.rs` 跑在测试之前，所以这条证明不了「没有陈旧」；它证明的是生成物
+    // 确实在源码树里、且与注册表一致（防住「被 .gitignore 掉」或「构建脚本静默跳过」）。
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let want = parse_command_names(&lib_rs_path(&manifest_dir));
     let out = generated_path(&manifest_dir);

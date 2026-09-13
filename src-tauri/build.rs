@@ -1,11 +1,6 @@
-//! 构建脚本。
-//!
-//! 除了 Tauri 自己的 `tauri_build::build()`，这里还从 `src/lib.rs` 的
-//! `generate_handler![...]` 生成 `../src/generated/commands.ts` ——
-//! 前端与 e2e 测试替身都靠它知道「后端到底有哪些命令」。
-//!
-//! 解析器在 `cmd_manifest.rs`，用 `include!` 引入而不是复制一段 ——
-//! 复制出来的第二份正是本仓刚清理掉的那类缺陷（一个不变量写两遍）。
+//! 构建脚本：除 `tauri_build::build()` 外，从 `src/lib.rs` 的 `generate_handler![...]`
+//! 生成 `../src/generated/commands.ts`（前端与 e2e 测试替身靠它知道有哪些命令）。
+//! 解析器在 `cmd_manifest.rs`，用 `include!` 引入而不是复制第二份。
 
 include!("cmd_manifest.rs");
 
@@ -15,8 +10,7 @@ fn main() {
     let manifest_dir =
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR 未设置"));
 
-    // 注册表一变就重跑。发出这条之后 cargo 不再默认「任何文件变动都重跑」，
-    // 所以真正影响输出的输入都要在这里列全。
+    // 注册表一变就重跑。发出这条之后 cargo 不再默认「任何文件变动都重跑」，影响输出的输入都要列全。
     println!("cargo:rerun-if-changed=src/lib.rs");
 
     let names = parse_command_names(&lib_rs_path(&manifest_dir));

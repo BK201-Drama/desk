@@ -1,27 +1,13 @@
 //! 真机验收：不开 `tauri dev`，直接调生产函数读**真实**的桌面与 `fence.json`。
 //!
-//! 从 `mod.rs` 的 `#[cfg(test)] mod real_machine_tests` 搬来（2026-09-14，架构腐蚀清单 #7），
-//! 顺手去掉一层 `mod` 嵌套 —— 文件本身就是那个模块。**测试名一字未改**，
-//! 所以按名字筛（`--ignored real_machine`）仍然照旧。
-//!
 //! 跑法：`cargo test -- --ignored real_machine`
 //!
-//! ⚠️ 其中 `real_machine_migrate_vault_to_desktop` 是**不可逆**的那一条，必须**单独**跑
-//! （`cargo test -- --ignored real_machine_migrate`）：它搬真实文件，和别的真机测试并行会互相打架。
-//! 迁移（Task 11）已经跑过了，所以现在走的是它的幂等分支 —— 只读、可重复，不再搬任何东西。
-//!
-//! 计划 Task 10 Step 7 的四条手工验收，要的都是「读一次真数据看看」——
-//! 那就没必要非得开 `tauri dev` 用眼睛看：这里直接调生产函数 `collect_fences()`，
-//! 读的是同一份真实数据，还比肉眼多两条断言（图标仍在桌面上、vault 一个文件都没动）。
-//!
-//! 唯一真需要人看的是「界面画出来什么样」—— 那部分归 e2e 的样式审查，
-//! 以及迁移后（Task 11）打开看板亲眼确认。
-//!
-//! **全部 `#[ignore]`**：默认 `cargo test` 一条都不跑 —— 它们碰真桌面，跑一次就改一次真实世界。
+//! ⚠️ **全部 `#[ignore]`** —— 默认 `cargo test` 一条都不跑，它们碰真桌面、跑一次就改一次真实世界。
+//! 其中 `real_machine_migrate_vault_to_desktop` **不可逆**，必须**单独**跑
+//! （`cargo test -- --ignored real_machine_migrate`）—— 它搬真实文件，与别的真机测试并行会互相打架。
 
 use super::*;
-// `use super::*` 够不着下面这几个了 —— 它们已经不在 `fence` 里：
-// 路径搬去了 `paths`，`PathBuf` 以前是顺着 `super` 蹭到的（`mod.rs` 现在不用它了）。
+// `use super::*` 够不着下面这两个 —— 路径搬去了 `paths`，它不再从 `mod` 根上转出。
 use super::paths::{desktop_dir, desktop_roots};
 use std::path::PathBuf;
 
@@ -56,8 +42,7 @@ fn all_items() -> Vec<FenceItemDto> {
 #[test]
 #[ignore = "真机：读真实桌面"]
 fn real_machine_desktop_file_is_indexed_left_in_place_and_gone_after_delete() {
-    // 一条测试走完整个生命周期，而不是拆成两条 —— 拆开的话两个 test 线程会
-    // 同时往桌面写同名探针，`read_dir` 计数当场互相打架（实测踩过）。
+    // 一条测试走完整个生命周期 —— 拆两条的话两个 test 线程会同时往桌面写同名探针，计数互相打架。
     let probe = Probe::new();
     let desktop = probe.path.parent().unwrap().to_path_buf();
     let before = std::fs::read_dir(&desktop).unwrap().count();
@@ -74,18 +59,16 @@ fn real_machine_desktop_file_is_indexed_left_in_place_and_gone_after_delete() {
             )
         });
 
-    // ① 它在看板里，label 是文件名去掉扩展名
     assert_eq!(found.label, "__desk_task10_probe__");
-    // ② 它**还在桌面上** —— 这一条就是 Task 10 的全部意义
+    // 它**还在桌面上** —— 读源是只读索引，不搬文件
     assert!(probe.path.exists(), "图标被搬走了");
-    // ③ 整个过程中桌面不多不少
     assert_eq!(
         before,
         std::fs::read_dir(&desktop).unwrap().count(),
         "collect_fences 改动了桌面目录"
     );
 
-    // ④ 删掉文件 → 下一次读就不再出现：读源是实时的，不是缓存
+    // 删掉文件 → 下一次读就不再出现：读源是实时的，不是缓存
     let path = probe.path.clone();
     drop(probe);
     assert!(!path.exists());
@@ -95,13 +78,7 @@ fn real_machine_desktop_file_is_indexed_left_in_place_and_gone_after_delete() {
     );
 }
 
-/// 迁移**之后**的稳态：看板上一个 vault 项都不该再有。
-///
-/// 这条取代了迁移前的 `real_machine_vault_items_still_listed_and_untouched`
-/// （它断言 `from_vault > 0`）。那条是过渡期的守卫 —— 「切读源的那一刻图标不能消失」，
-/// 现在这件事由迁移测试的 `desktop_item_count() == 迁移前 + 34` 直接守住，
-/// 原断言留在原地只会变成一个必然失败的假警报。改成守反方向：
-/// **vault 层已经不在读路径上了**，Task 12 删掉读源之后这条仍是有效的回归网。
+/// 迁移**之后**的稳态：看板上一个 vault 项都不该再有（vault 层已不在读路径上）。
 #[test]
 #[ignore = "真机：读真实桌面"]
 fn real_machine_no_item_comes_from_vault() {
@@ -132,8 +109,7 @@ fn real_machine_no_item_comes_from_vault() {
         from_vault.is_empty(),
         "迁移（Task 11）之后读源只剩桌面，这些项却还从 vault 来：{from_vault:?}"
     );
-    // 迁移完 vault 层就该整个空掉/不存在 —— Task 12 删掉读源之后，这一层再没有任何
-    // 生产用途（只剩 `migrate` 的回滚路径认得它）。有东西 = 有旧构建在往回吸。
+    // 迁移完 vault 层就该整个空掉/不存在 —— 有东西 = 有旧构建在往回吸。
     assert!(
         before.is_empty(),
         "vault 目录里还有 {} 项，迁移之后它应该永远是空的：{before:?}",
@@ -149,7 +125,6 @@ fn desk_file(name: &str) -> PathBuf {
         .join(name)
 }
 
-/// 目录里的条目数（文件 + 子目录）。
 fn count_entries(d: &Path) -> usize {
     std::fs::read_dir(d).map(|it| it.flatten().count()).unwrap_or(0)
 }
@@ -163,10 +138,8 @@ fn other_origin(origin: &str) -> &'static str {
     }
 }
 
-/// 逐项核对：迁移前在哪个围栏，迁移后还在哪个围栏。
-///
-/// `expected` 是 `(迁移前 origin, 原文件名, 迁移前围栏)`。**只读**，所以首次跑和
-/// 事后重跑都能用同一份断言 —— 重跑时 `expected` 从归档的 `vault.json.migrated` 读回来。
+/// 逐项核对：迁移前在哪个围栏，迁移后还在哪个围栏。`expected` 是
+/// `(迁移前 origin, 原文件名, 迁移前围栏)`。**只读**，首次跑与事后重跑共用同一份断言。
 fn check_each_item_kept_its_fence(
     fences: &[FenceDto],
     m: &meta::FenceMeta,
@@ -178,13 +151,10 @@ fn check_each_item_kept_its_fence(
         .collect();
 
     for (origin, name, fence) in expected {
-        // 落点在哪个桌面根上，代码自己可能改主意（公共桌面不可写时退回用户桌面），
-        // 所以两个 origin 都试一遍。
+        // 落点在哪个桌面根上代码可能改主意（公共桌面不可写时退回用户桌面），两个 origin 都试。
         //
-        // ⚠️ key 必须从**看板**里挑，不能从迁移账本里挑。看板是扫桌面算出来的 ——
-        // 「文件躺在哪个根上」对它来说是地面真相；从账本里挑等于让被告自己作证：
-        // 账本把 key 写错（public 项退回用户桌面却记 public:）时，两边"自洽"地
-        // 一起错，断言照样通过。真机迁移就是这么放过去一条的（星云.lnk）。
+        // ⚠️ key 必须从**看板**里挑，不能从迁移账本里挑 —— 账本把 key 写错时两边会"自洽"地
+        // 一起错、断言照样通过；真机迁移就这么放过去过一条（星云.lnk）。
         let want = meta::key(origin, name);
         let k = [want.clone(), meta::key(other_origin(origin), name)]
             .into_iter()
@@ -215,10 +185,8 @@ fn check_each_item_kept_its_fence(
     }
 }
 
-/// 看板上的每一项（系统项除外）都得在 `fence.json` 里有账。
-///
-/// 孤儿 id = 这一项丢了围栏偏好，只能靠 `guess_fence` 碰运气 —— 正是
-/// 「public 项退回用户桌面、账本却记 public:」那个 bug 的形状。
+/// 看板上的每一项（系统项除外）都得在 `fence.json` 里有账 —— 孤儿 id = 丢了围栏偏好，
+/// 只能靠 `guess_fence` 碰运气（正是「public 项退回用户桌面、账本却记 public:」那个 bug 的形状）。
 fn check_no_orphan_ids(fences: &[FenceDto], m: &meta::FenceMeta) {
     let orphans: Vec<&str> = fences
         .iter()
@@ -232,9 +200,7 @@ fn check_no_orphan_ids(fences: &[FenceDto], m: &meta::FenceMeta) {
     );
 }
 
-/// 「最近」那一行不该指向已经不存在的条目。
-///
-/// 这里只能查**单向**（id 在 fence.json 里有账），因为重跑时拿不到原来的 id 映射 ——
+/// 「最近」那一行不该指向已经不存在的条目。这里只能查**单向**（id 在 fence.json 里有账）——
 /// 「旧 id 已被改写」那条更强的断言只在首次跑的路径上做（那里才有 `id_map`）。
 fn check_recent_ids_are_backed(m: &meta::FenceMeta) {
     for id in recent_file_ids() {
@@ -286,37 +252,22 @@ fn recent_file_ids() -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Task 11 的真机迁移。**本仓库唯一会动真实数据的测试。**
-///
-/// 走的是 `migrate::run()` —— 和工具栏「还原到系统桌面」按钮点下去**同一个生产入口**，
-/// 区别只是验收由机器做。计划 Task 11 Step 5 那七条手工核对，这里逐条变成断言：
-/// vault 清零 / 桌面多出且只多出 34 项 / `vault.json` 归档 / `fence.json` 记账逐项不串 /
-/// 看板这一侧归属一致 / 「最近」没被清空。
-///
-/// 跑法（**单独跑，别和别的真机测试并行**）：
-/// `cargo test -- --ignored real_machine_migrate --nocapture`
+/// 真机迁移。**本仓库唯一会动真实数据的测试** —— 走的是 `migrate::run()`，和工具栏
+/// 「还原到系统桌面」按钮点下去是**同一个生产入口**，区别只是验收由机器做。
+/// **不可逆**，单独跑：`cargo test -- --ignored real_machine_migrate --nocapture`
 #[test]
 #[ignore = "真机：不可逆，把 vault 里的文件搬回真桌面"]
 fn real_machine_migrate_vault_to_desktop() {
     let vault = migrate::vault_dir().expect("vault dir");
     let meta_p = migrate::meta_path().expect("meta path");
 
-    // ① 先取快照 —— 只能在 run() 之前，跑完 vault.json 就改名了，真相只剩这份内存里的
+    // 快照只能在 run() 之前取 —— 跑完 vault.json 就改名了，真相只剩这份内存里的。
     let before = migrate::load_meta().expect("vault meta").items;
 
     if before.is_empty() {
-        // 幂等分支：上一次已经迁完（或从没搬过图标）。**不重跑** —— `run()` 本来也是
-        // 空操作，但这里连文件系统都不该再碰一下。
-        //
-        // 但"不重跑"不等于"少验收"：旧账本 `vault.json.migrated` **还在盘上**，
-        // 迁移前每一项的 (origin, 文件名, 围栏) 都能从它读回来。于是重跑这条测试
-        // 依然能做**逐项**复核 —— 而且是只读的，可以随便多跑几遍。
-        //
-        // Task 12 之前这里只能断言「危险的形状不存在」（items 非空 = 有旧构建把桌面
-        // 吸回 vault 了），因为 `hide_desktop_icons_on_start` 每次启动都会往 vault.json
-        // 里写 `hide_icons_applied`，把归档掉的账本重新造出来（真机实测：一天内两次）。
-        // Task 12 把那笔 hide 记账搬进 `fence.json` 之后，**v2 的生产路径上再没有
-        // 任何 vault.json 的写者**，所以这里收紧成最直接的断言：文件不该存在。
+        // 幂等分支：上一次已经迁完。**不重跑**（`run()` 本来也是空操作），但验收一条不少 ——
+        // 归档账本 `vault.json.migrated` 还在盘上，逐项 (origin, 文件名, 围栏) 都能从它读回来。
+        // v2 的生产路径上再没有 vault.json 的写者，所以这里直接收紧成：文件不该存在。
         assert!(
             !meta_p.exists(),
             "{} 又出现了 —— 已经归档的旧账本被重新创建，v2 不该再有它的写者：{}",
@@ -366,7 +317,6 @@ fn real_machine_migrate_vault_to_desktop() {
         .map(|e| (e.origin.clone(), e.original_name.clone(), e.fence.clone()))
         .collect();
 
-    // ② 不可逆的那一下
     let r = migrate::run().expect("migrate::run");
     eprintln!(
         "migrate: moved={} skipped={} failed={} id_map={}",
@@ -376,12 +326,11 @@ fn real_machine_migrate_vault_to_desktop() {
         r.id_map.len()
     );
 
-    // ③ 一个都没失败，且搬走的数量等于快照
     assert!(r.failed.is_empty(), "有迁移失败的项：{:?}", r.failed);
     assert_eq!(r.moved, expected.len(), "搬走的数量和 vault 里的项数对不上");
     assert_eq!(r.skipped, 0, "全新迁移不该有 skipped（重跑才会出现）");
 
-    // ④ 文件全到了桌面、vault 清空 —— 「一个图标都不会消失」的可测形式
+    // 「一个图标都不会消失」的可测形式：桌面只多出搬走的那批，vault 清零
     assert_eq!(
         desktop_item_count(),
         desktop_before + expected.len(),
@@ -390,7 +339,6 @@ fn real_machine_migrate_vault_to_desktop() {
     );
     assert_eq!(count_entries(&vault), 0, "vault 目录里还有残留");
 
-    // ⑤ 旧账本归档、新账本（fence.json）第一次落地
     assert!(!meta_p.exists(), "vault.json 应该已经改名");
     assert!(
         meta_p.with_extension("json.migrated").exists(),
@@ -398,11 +346,10 @@ fn real_machine_migrate_vault_to_desktop() {
     );
     let m = meta::load().expect("fence.json");
 
-    // ⑥ 逐项核对：迁移前在哪个围栏，迁移后还在哪个围栏
     let fences = collect_fences().expect("collect_fences");
     check_each_item_kept_its_fence(&fences, &m, &expected);
     check_no_orphan_ids(&fences, &m);
-    // 系统围栏的项数和实现耦合，所以只打印不硬断言 —— 硬编码会在以后变成假失败
+    // 系统围栏的项数和实现耦合，只打印不硬断言（硬编码以后会变成假失败）。
     let total: usize = fences.iter().map(|f| f.items.len()).sum();
     eprintln!(
         "看板共 {total} 项（桌面 {} + 系统 {}）",
@@ -410,7 +357,6 @@ fn real_machine_migrate_vault_to_desktop() {
         total.saturating_sub(expected.len())
     );
 
-    // ⑦ 「最近」没被清空：旧 id 必须已被 remap，且新 id 还在原位
     let recent_after = recent_file_ids();
     let moved_old_ids: std::collections::HashSet<&str> =
         before.iter().map(|e| e.id.as_str()).collect();
@@ -431,8 +377,8 @@ fn real_machine_migrate_vault_to_desktop() {
     eprintln!("最近：{recent_before:?} → {recent_after:?}");
 }
 
-/// 看板上 `label` 这一项落在哪个围栏。「系统」围栏排除在外 ——
-/// 那几个 shell 项的 label 是写死的，同名碰撞只会让断言说谎。
+/// 看板上 `label` 这一项落在哪个围栏。排除「系统」—— 那几个 shell 项的 label 是写死的，
+/// 同名碰撞只会让断言说谎。
 fn fence_of_label(label: &str) -> Option<String> {
     collect_fences()
         .expect("collect_fences")
@@ -441,23 +387,16 @@ fn fence_of_label(label: &str) -> Option<String> {
         .map(|f| f.name)
 }
 
-/// Task 14 的真机验收：新建 → 改名 → 删除，全走**真实桌面**上的生产入口
-/// （`ops::fence_create` / `fence_rename` / `fence_delete` 就是右键菜单点下去调的那三个）。
-///
-/// 计划 Task 14 §4 的手工验收里，有三条是「在真机上看结果」，这里把它们变成断言：
-/// 文件夹真的出现在用户桌面上（落在**看板的读源**里，而不只是"某个地方"）/
-/// 改名后**围栏归属不变** —— 这一条是 §1.5「先写 meta 再动文件」那个顺序的
-/// 唯一可测形式 / 删除后账实两清、`fence.json` 不多不少回到原样。
-/// 剩下一条（剪贴板与资源管理器**双向**）只能留给手：剪贴板是全局资源，
-/// 机器跑一遍会踩掉用户当时正拿着的东西。
-///
+/// 真机验收：新建 → 改名 → 删除，全走**真实桌面**上的生产入口（`ops::fence_create` /
+/// `fence_rename` / `fence_delete` 就是右键菜单点下去调的那三个）。改名后**围栏归属不变**
+/// 是 §1.5「先写 meta 再动文件」那个顺序的唯一可测形式。
+/// 剪贴板与资源管理器**双向**那一条只能留给手：剪贴板是全局资源，机器跑一遍会踩掉用户正拿着的东西。
 /// 跑法：`cargo test -- --ignored real_machine_ops --nocapture`
 #[test]
 #[ignore = "真机：在真实桌面上建/改名/删一个探针文件夹"]
 fn real_machine_ops_create_rename_delete() {
-    /// 探针文件夹。`Drop` 用**裸 `remove_dir_all`**、不用 `fence_delete` ——
-    /// 兜底那一手不能依赖被测代码本身：它要是坏了，兜底也跟着坏，
-    /// 探针就永远留在用户桌面上。
+    /// 探针文件夹。`Drop` 用**裸 `remove_dir_all`**、**不用 `fence_delete`** ——
+    /// 兜底不能依赖被测代码本身，它坏了兜底也跟着坏，探针就永远留在用户桌面上。
     struct DirProbe {
         paths: Vec<PathBuf>,
     }
@@ -474,13 +413,11 @@ fn real_machine_ops_create_rename_delete() {
     let entries_before = meta::load().expect("fence.json").entries.len();
     let root = desktop_dir().expect("desktop dir");
 
-    // ① 新建 —— 右键「新建文件夹」
     let name = "__desk_task14_probe__";
     let path = PathBuf::from(
         ops::fence_create(name.into(), "folder".into(), None).expect("fence_create"),
     );
-    // 新名字先算出来推进兜底清单，再动文件：这样从改名**那一刻**起两个路径
-    // 都在兜底范围内，中间不留窗口。
+    // 新名字先算出来推进兜底清单、再动文件 —— 从改名那一刻起两个路径都在兜底范围内。
     let renamed = root.join(format!("{name}_renamed"));
     // `_probe` 只为它的 `Drop` 活着（`let _ = …` 会当场析构，那就不兜底了）。
     let _probe = DirProbe {
@@ -501,8 +438,8 @@ fn real_machine_ops_create_rename_delete() {
         path.display()
     );
 
-    // ② 给它记一笔偏好：「工具」。选这个围栏是**故意的** —— 目录没有 meta 时
-    //    `fence_of` 兜到「文件夹」，所以「落在工具里」和「没落任何围栏」不会长得一样。
+    // 给它记一笔「工具」：选这个围栏是**故意的** —— 目录没有 meta 时 `fence_of` 兜到
+    // 「文件夹」，这样「落在工具里」和「没落任何围栏」不会长得一样。
     let old_key = meta::key("user", name);
     {
         let mut m = meta::load().expect("fence.json");
@@ -522,7 +459,7 @@ fn real_machine_ops_create_rename_delete() {
         "记了偏好的项没落在「工具」围栏里"
     );
 
-    // ③ 改名 —— 围栏归属必须跟着走（spec §11-3）
+    // 改名 —— 围栏归属必须跟着走（spec §11-3）
     let new_name = format!("{name}_renamed");
     let returned = ops::fence_rename(path.to_string_lossy().to_string(), new_name.clone())
         .expect("fence_rename");
@@ -552,7 +489,7 @@ fn real_machine_ops_create_rename_delete() {
         "改名后项跳到了别的围栏（看板这一侧）—— 用户看得见的错分栏，且不会自己回来"
     );
 
-    // ④ 删除 —— 进回收站（可撤销），账实两清
+    // 删除 —— 进回收站（可撤销），账实两清
     ops::fence_delete(renamed.to_string_lossy().to_string()).expect("fence_delete");
     assert!(!renamed.exists(), "删完还在盘上：{}", renamed.display());
     assert!(
@@ -565,7 +502,7 @@ fn real_machine_ops_create_rename_delete() {
         "删完看板上还留着这一项"
     );
 
-    // ⑤ 账目回到原样：这一趟没在 fence.json 里留下任何痕迹
+    // 账目回到原样：这一趟没在 fence.json 里留下任何痕迹
     assert_eq!(
         meta::load().expect("fence.json").entries.len(),
         entries_before,

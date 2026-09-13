@@ -5,15 +5,14 @@ import { layoutFromFences, normalizeFences, type FenceGroup } from "./model";
 export function useFences(ctx: HostContext) {
   const [fences, setFences] = useState<FenceGroup[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  /** 渲染期同步的一份镜像。**唯一读者是 `persistUi` 的回滚** —— 它必须在
-      `setFences` **之前**读到旧值（渲染后这个 ref 里就已经是新值了）。 */
+  /** 渲染期同步的镜像。**唯一读者是 `persistUi` 的回滚** —— 它必须在 `setFences` **之前**读到旧值。 */
   const fencesRef = useRef(fences);
   fencesRef.current = fences;
 
   const loadFences = useCallback(
     async (cmd: "fence_list" | "fence_rescan" = "fence_list") => {
-      // 冷启动走 `fence_list`：它只读索引 + 把抽图标丢后台，不挡首屏。
-      // `fence_rescan` 是「用户刚做完一件事，等着看新结果」时才用 —— 图标同步补。
+      // 冷启动走 `fence_list`（抽图标丢后台，不挡首屏）；`fence_rescan` 是「用户等着看
+      // 新结果」时才用 —— 图标同步补。
       try {
         const raw = await ctx.invoke(cmd);
         const next = normalizeFences(raw);
@@ -48,15 +47,10 @@ export function useFences(ctx: HostContext) {
   );
 
   /**
-   * 写**显示偏好**（收起 / 高度）。与 `persistOrder` 同形，只多一步**回滚**：
-   *
-   * 「收起」是个一眼可见、点一下就该立刻生效的动作，等一趟 IPC 回来再变会有顿感 ——
-   * 所以先乐观改本地、再落盘、再用返回值对齐。落盘失败就**退回旧值**（不退回的话
-   * 用户会看着一个「已经收起」的围栏，重启之后它自己又展开了，而且中间没有任何提示）。
-   *
-   * 返回值是给调用方弹提示用的错误串（成功 `null`）。
-   * `?? null` 那条：Tauri 的 `Option<T>` 参数**显式发 null**，不缺字段 ——
-   * 与 `fence_create` 的 `target: null` 同一条规矩（`FenceContextMenu.tsx:308`）。
+   * 写**显示偏好**（收起 / 高度）。与 `persistOrder` 同形，只多一步**回滚**：先乐观改本地、
+   * 再落盘、再用返回值对齐；落盘失败就**退回旧值**（不退回的话用户看着一个「已经收起」的
+   * 围栏，重启后它自己又展开了）。返回值是给调用方弹提示用的错误串（成功 `null`）。
+   * `?? null` 那条：Tauri 的 `Option<T>` 参数**显式发 null**、不缺字段。
    */
   const persistUi = useCallback(
     async (
@@ -82,8 +76,7 @@ export function useFences(ctx: HostContext) {
     [ctx]
   );
 
-  /** 只负责「打开」。记入最近由调用方（FencePanel::doLaunch）决定 ——
-      这里是「最近」那条边界的外面，不该知道 recent 的存在。 */
+  /** 只负责「打开」。记入最近由调用方（FencePanel::doLaunch）决定 —— 这里不该知道 recent。 */
   const launch = useCallback(
     (path: string, id?: string) => {
       if (ctx.editing()) return;
@@ -109,10 +102,8 @@ export function useFences(ctx: HostContext) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 真桌面变了（在资源管理器里新建 / 删除 / 改名）→ 后端已经重扫完，把新看板推来。
-  // 这里**直接采用**，不再 invoke 一次：后端那一拍就是最新的，
-  // 再问一遍只会多一趟 IPC，还可能拿回比它更旧的一帧。
-  // 桥在 `bootstrap.ts`（后端事件 → 进程内总线），插件这一侧只看 `ctx.on`。
+  // 真桌面变了 → 后端已重扫完，把新看板推来。这里**直接采用**，不再 invoke 一次：
+  // 再问一遍只会多一趟 IPC，还可能拿回更旧的一帧。
   useEffect(() => {
     return ctx.on("fence:changed", (ev) => {
       const next = normalizeFences(ev.detail);
@@ -128,21 +119,10 @@ export function useFences(ctx: HostContext) {
   /**
    * 「用户主动做完一件事之后」的重扫：强制重扫 + 同步补图标。
    *
-   * ⚠️ **必须是 stable 引用**，不能在这里写 `() => loadFences("fence_rescan")`。
-   * 字面量箭头每次渲染都是新函数，而 `FencePanel` 那个 setup effect 把它放进了
-   * 依赖数组 —— 于是 effect **每次渲染都重跑**：两条一次性读取（`autostart_get`
-   * 与 `fence_icons_visible`）、`fence:changed` 的退订/重订、两条命令的重注册、
-   * document keydown 的摘挂，全都变成「每渲染一次一轮」。
-   *
-   * 实测（2026-09-13，`e2e/fence-interactions.spec.ts` 的静止断言）：这个不稳的
-   * 引用配上**当时** mock 里 `autostart_get` 落到 `default: return {}`（每次新对象，
-   * React 无法 bail out），闭环之后看板**静止不动**也在每秒打两万多次 IPC。
-   * 真机上那是每秒两万多次注册表读。
-   *
-   * ⚠️ 2026-09-14：mock 补了 `autostart_get` 的 case，返回真机那个 `true`（原始值，
-   * React 会 bail out）。**放大器因此没了** —— 再把字面量箭头塞回依赖数组，那条
-   * 静止断言未必还会红。护栏只剩「依赖数组本身必须 stable」这一条，所以改这里时
-   * 不能只看 e2e 绿不绿。
+   * ⚠️ **必须是 stable 引用**，不能写 `() => loadFences("fence_rescan")`：字面量箭头每次渲染
+   * 都是新函数，而 `FencePanel` 的 setup effect 把它放进了依赖数组 —— effect 会**每次渲染
+   * 都重跑**（一次性读取、事件退订重订、命令重注册、keydown 摘挂）。真机上曾以每秒两万多次
+   * 注册表读收场；当年那个放大器（mock 的 `autostart_get`）后来补掉了，护栏只剩这一条。
    */
   const rescan = useCallback(() => loadFences("fence_rescan"), [loadFences]);
 

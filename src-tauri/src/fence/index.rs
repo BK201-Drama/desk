@@ -1,8 +1,4 @@
-//! 桌面目录 → 围栏 DTO。**全程只读**：本模块不移动、不创建、不删除任何文件。
-//! 这是与旧 fence_takeover 最本质的区别（INV-1）。
-
-// Task 12：和 meta.rs 一起删掉 `#![allow(dead_code)]`（读源只剩桌面，本模块全部
-// 成员都在生产路径上，没有「为将来预留」的死代码了）。
+//! 桌面目录 → 围栏 DTO。**全程只读**：不移动、不创建、不删除任何文件（INV-1）。
 
 use super::classify::guess_fence;
 use super::meta::{key as meta_key, FenceMeta};
@@ -13,33 +9,28 @@ use std::time::UNIX_EPOCH;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ScannedItem {
-    /// `{origin}:{文件名}` —— 既是 `fence.json` 的 entry key，也是看板上的 item id。
-    /// Task 12 把两边的口径统一到这个 key 上，所以**不需要**单独的 `origin` 字段：
+    /// `{origin}:{文件名}` —— 既是 `fence.json` 的 entry key，也是看板上的 item id；
     /// 要判断一个项属于哪个桌面根，看 key 的前缀即可。
     pub key: String,
     pub file_name: String,
     pub label: String,
     pub path: PathBuf,
     pub is_dir: bool,
-    /// 抽取图标那一刻的文件时间。设计 §「icons」要求「`mtime` 不一致则重抽」，
-    /// 但**这条还没接线**（`ensure_icons` 目前只看 png 在不在）—— 所以它暂时没有读者。
-    /// 留着是因为补上这条比较正是 Task 16 要记的规格偏离之一，删了就得从 git 里捞回来。
+    /// 抽取图标那一刻的文件时间。设计 §「icons」要求「`mtime` 不一致则重抽」，但**这条还没接线**
+    /// （`ensure_icons` 只看 png 在不在），所以暂时没有读者 —— 删了就得从 git 里捞回来。
     #[allow(dead_code)]
     pub mtime: i64,
 }
 
-/// 围栏显示顺序。沿用旧实现，改动会让用户的既有布局换位置。
+/// 围栏显示顺序。改动会让用户的既有布局换位置。
 const FENCE_ORDER: [&str; 5] = ["游戏", "工具", "工作", "文件夹", "其它"];
 
-/// 自定义高度的上界（行）。**必须和前端 `model.ts` 的 `ROWS_MAX` 一致** ——
-/// 两边各自写一遍是没办法的事（Rust 常量过不去线），所以两边都留了这条注释。
-/// 前端的行数是**类名**（`.fence-grid.rows-N`），后端放出界就会指向一个不存在的类，
-/// 症状是「设了 9 行，网格却是默认 2 行」。这里在**读取时**夹住，手改过的
-/// `fence.json` 也收敛得回来。
+/// 自定义高度的上界（行）。**必须和前端 `model.ts` 的 `ROWS_MAX` 一致**（Rust 常量过不去线，
+/// 两边各写一遍是没办法的事）—— 前端的行数是**类名**（`.fence-grid.rows-N`），放出界就会指向
+/// 一个不存在的类。这里在**读取时**夹住，手改过的 `fence.json` 也收敛得回来。
 pub(crate) const ROWS_MAX: u32 = 5;
 
-/// 一个围栏在 `ui` 里的显示偏好。读的时候就地收敛：
-/// `rows` 超界夹到 `ROWS_MAX`，0 与缺键同义（都表示「自动」）。
+/// 一个围栏在 `ui` 里的显示偏好。读时就地收敛：`rows` 超界夹到 `ROWS_MAX`，0 与缺键同义。
 fn ui_of(name: &str, meta: &FenceMeta) -> (bool, u32) {
     (
         meta.ui.collapsed.contains(name),
@@ -47,8 +38,8 @@ fn ui_of(name: &str, meta: &FenceMeta) -> (bool, u32) {
     )
 }
 
-/// 图标文件名：meta key 含 `:`（Windows 文件名非法字符），转义一次。
-/// 用可读的文件名而不是哈希 —— 出问题时能一眼看出这个 png 属于谁。
+/// 图标文件名：meta key 含 `:` 等 Windows 非法字符，转义一次。
+/// 用可读名而不是哈希 —— 出问题时能一眼看出这个 png 属于谁。
 pub(crate) fn icon_file(key: &str) -> PathBuf {
     let safe: String = key
         .chars()
@@ -63,14 +54,11 @@ pub(crate) fn icon_file(key: &str) -> PathBuf {
     }
 }
 
-/// 枚举一个桌面根目录。纯读操作。跳过 desktop.ini 与 desk 自身的快捷方式。
+/// 枚举一个桌面根目录。纯读。跳过 desktop.ini 与 desk 自身的快捷方式。
 ///
-/// **读不到根目录是 `Err`，不是空列表。** 旧签名直接 `return Vec::new()`，
-/// 于是「这个桌面一时读不到」和「这个桌面是空的」在调用方眼里长得一样 ——
-/// Task 13 驳回「watcher 上挂 `meta::prune`」就是因为这一点：一次读失败会清空整份
-/// 分类偏好（`fence.json` 里的条目，`build_fences` 只遍历扫到的项，所以清掉之后
-/// 那一栏的分类**不会自己回来**）。现在调用方能区分了，`mod.rs` 的
-/// `scan_desktop_checked` 才有条件说「每个根都读成功，所以没扫到的 key 是真的没了」。
+/// ⚠️ **读不到根目录是 `Err`，不是空列表** —— 「一时读不到」和「本来就是空的」在调用方眼里
+/// 不能长得一样，否则一次读失败会被当成「这些 key 真的没了」，清掉整栏分类偏好
+/// 且**不会自己回来**。调用方能区分了，`scan_desktop_checked` 才有条件说「没扫到的 key 是真的没了」。
 ///
 /// 条目级的读失败（`rd.flatten()` 丢掉的）依然静默跳过：一个坏项不该让整次扫描失败。
 pub(crate) fn scan_root(origin: &str, root: &Path) -> Result<Vec<ScannedItem>, String> {
@@ -114,7 +102,7 @@ pub(crate) fn scan_root(origin: &str, root: &Path) -> Result<Vec<ScannedItem>, S
 }
 
 /// 归属判定：meta 里有记录就用记录，否则用 guess_fence 兜底。
-/// **永远返回一个非空围栏名** —— 任何项都不允许因为"没分类"而从看板上消失。
+/// **永远返回非空围栏名** —— 任何项都不允许因为「没分类」而从看板上消失。
 fn fence_of(it: &ScannedItem, meta: &FenceMeta) -> String {
     if let Some(e) = meta.entries.get(&it.key) {
         if !e.fence.is_empty() {
@@ -199,10 +187,7 @@ pub(crate) fn build_fences(items: &[ScannedItem], meta: &FenceMeta) -> Vec<Fence
     fences
 }
 
-/// 为尚无图标缓存的项抽取图标。返回本次抽取数量。
-///
-/// 旧实现是在 fence_takeover 搬文件时顺手抽的；现在没有 takeover 了，
-/// 抽取改为索引的附属步骤 —— 缺什么补什么，天然对迁移后的新 key 自愈。
+/// 为尚无图标缓存的项抽取图标。返回本次抽取数量。缺什么补什么，文件换了位置也能自愈。
 pub(crate) fn ensure_icons(items: &[ScannedItem]) -> usize {
     let mut n = 0;
     for it in items {
@@ -293,8 +278,8 @@ mod tests {
         assert_eq!(fences.last().unwrap().name, "系统");
     }
 
-    /// `ui` 是**按围栏名**发下去的，不是全局的：收了「游戏」不该顺手把「工具」也收掉。
-    /// 顺带钉住默认值 —— 没有任何 ui 记录时，每一栏都是 `collapsed: false, rows: 0`。
+    /// `ui` 是**按围栏名**发下去的：收了「游戏」不该顺手把「工具」也收掉。
+    /// 顺带钉住默认值 —— 没有任何 ui 记录时每一栏都是 `collapsed: false, rows: 0`。
     #[test]
     fn build_reads_collapsed_and_rows_per_fence() {
         let d = scratch();
@@ -321,7 +306,7 @@ mod tests {
         );
         m.ui.collapsed.insert("游戏".into());
         m.ui.rows.insert("工具".into(), 3);
-        // 手改过的 json 可能留下越界的行数：读取时就夹住，别让它指到一个不存在的 CSS 类
+        // 手改过的 json 可能留下越界行数：读取时就夹住，别指到不存在的 CSS 类
         m.ui.rows.insert("系统".into(), 99);
 
         let fences = build_fences(&items, &m);
@@ -335,25 +320,13 @@ mod tests {
     }
 
     /// 真机验证 —— `cargo test real_icons -- --ignored --nocapture` 手动跑。
-    ///
-    /// **这个方法换过一次抽取来源，理由值一看。** Task 10 刚切读源时本机
-    /// `HideIcons=0x1`、34 项还锁在 `vault/` 里，两个桌面目录都是空的 ——
-    /// 照计划原文扫桌面会扫出 0 项，测试照样「通过」，等于**拿空集证明抽取没问题**。
-    /// 那时真正的风险集是 vault/ 里那 34 个条目（「这一步不过，迁移后就是 34 个空白
-    /// 方块」说的就是它们），所以临时把它们当只读的文件来源用。
-    /// Task 11 迁移之后它们就在桌面上了，这里于是换回**真桌面**：
-    /// 风险集没变（同一批文件），来源变正了。
-    ///
     /// 抽取结果写到临时目录，不污染线上图标缓存。
-    ///
-    /// 注意要连**目录**一起测：34 个条目里有目录。第一版我只测 `is_file()`，
-    /// 33 个全过，看着挺好 —— 而漏掉的那个目录条目恰恰是唯一会失败的
-    /// （目录要另走 `SHGetFileInfo`，见 `extract_icon_png` 的注释）。
+    /// ⚠️ 必须连**目录**一起测：目录另走 `SHGetFileInfo`（见 `extract_icon_png`），
+    /// 只测 `is_file()` 会漏掉唯一那类会失败项。
     #[test]
     #[ignore]
     fn real_icons_extract_from_real_files() {
-        // 抽取源 = 两个桌面根上的全部真项。用 `desktop_roots()` 而不是 `desktop_dir()`：
-        // 迁移时公共桌面写不进去会退回用户桌面，只盯一个根可能一个文件都扫不到。
+        // 用 `desktop_roots()` 而不是 `desktop_dir()`：只盯一个根可能一个文件都扫不到。
         let mut targets: Vec<(String, PathBuf)> = Vec::new();
         for (origin, root) in crate::fence::paths::desktop_roots().unwrap() {
             for it in scan_root(&origin, &root).unwrap_or_default() {
@@ -376,11 +349,8 @@ mod tests {
                 failed.push(name.clone());
                 continue;
             }
-            // 返回 true 只说明「写盘成功」，不说明写出来的是真图标。
-            // 尺寸是最省的像素代理，阈值**实测标定过**：
-            //   用同一套 System.Drawing 编码器生成 64×64 全透明 PNG → **146 B**
-            //   迁移前那 34 个真图标 → 最小 406 B / 中位 3929 B（2026-09-13 实测）
-            // 取 400 B：离空图 2.7 倍，离最瘦的真图标还留了一点裕度。
+            // 返回 true 只说明「写盘成功」，不说明写出来的是真图标。尺寸是最省的像素代理，
+            // 阈值实测标定过：同一套编码器生成的全透明 64×64 PNG = 146 B，真图标最小 406 B —— 取 400 B。
             let len = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
             sizes.push(len);
             if len < 400 {
@@ -405,19 +375,10 @@ mod tests {
         for f in &thin {
             println!("   疑似空白: {f}");
         }
-        // ── 非 ASCII 名的覆盖率（2026-09-13 补）─────────────────────────────
-        //
-        // 这条测试**睡过一次**，教训值得写下来：它上一次真正跑是 Task 11 迁移**之前**，
-        // 那时它的抽取源是 `vault/`，而 vault 里的文件名是 `vault_name`
-        // （`user-________-23.lnk` —— **纯 ASCII 下划线**，中文只留在 `original_name` 里）。
-        // 于是「中文路径」这条分支**从来没被这条测试走到过**，它一路绿灯。
-        // 迁移之后源换成了真桌面，中文名第一次进来，14 个条目当场抽不出图标 ——
-        // 而这条测试不再有人跑，直到用户在看板上看见一片紫方块。
-        //
-        // 所以现在把它数出来、喊一声。**不做成 assert**：桌面是用户的，他把中文名
-        // 全改了（或者本来就是英文系统）时，这条断言会变成假失败 ——
-        // 那不是「代码坏了」，是「这台机器上验不了这个分支」。喊一声就够，
-        // 让人知道这次的绿灯**没有覆盖**那个坑。
+        // ── 非 ASCII 名的覆盖率 ─────────────────────────────────────────────
+        // 「中文路径抽不出图标」这条分支曾因抽取源是纯 ASCII 的 vault 名而**从没被走到过**，
+        // 所以现在把它数出来喊一声。**不做成 assert**：用户桌面上可能本来就没有中文名，
+        // 断言会变成假失败 —— 那不是「代码坏了」，是「这台机器上验不了这个分支」。
         let non_ascii: Vec<&String> = targets
             .iter()
             .map(|(n, _)| n)
@@ -431,8 +392,7 @@ mod tests {
         } else {
             println!("[non-ascii] {} 个：{:?}", non_ascii.len(), non_ascii);
         }
-        // 这里刻意**不硬编码 34**：桌面是活的，用户随手放一个文件就该是 35 ——
-        // 硬编码会变成一个假失败。要守的是那个真实踩过的坑：**空集不能算通过**。
+        // 刻意**不硬编码项数**：桌面是活的，硬编码会变成假失败。要守的是**空集不能算通过**。
         assert!(
             !targets.is_empty(),
             "真桌面上一个项都没扫到 —— 这条测试会「通过」，但它什么都没验"

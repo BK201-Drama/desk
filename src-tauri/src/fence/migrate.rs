@@ -1,14 +1,8 @@
 //! 一次性把 vault 里的图标搬回真桌面。**幂等可重入，不做回滚。**
-//!
 //! 判据是「**vault 里的文件还在不在**」，不是「上次跑到哪」——
 //! 所以中途失败 / 断电 / 强杀都能重跑收敛（spec §5.3，INV-5）。
-//!
-//! 本模块是 fence/ 里**唯一**还能移动文件的地方（Task 17 的验收项：
-//! `grep -rn 'fs::rename' src-tauri/src/fence/` 只命中本文件）——
-//! 新架构下文件永远住在桌面，搬动只发生在这唯一一次迁移里。
-//!
-//! Task 10 起生产入口 `run()` 已接到 `fence_restore` 上，本模块的
-//! `#![allow(dead_code)]` 也一并删掉了（Task 9 记的那笔债，这里还清）。
+//! ⚠️ 本模块是 fence/ 里**唯一**还能移动文件的地方
+//! （`grep -rn 'fs::rename' src-tauri/src/fence/` 只该命中本文件）。
 
 use crate::fence::meta;
 use serde::{Deserialize, Serialize};
@@ -16,13 +10,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 // ── 旧架构的账本（vault.json）──────────────────────────────────────────────
-// Task 12 把这些类型从 `mod.rs` 搬到这里：**它们是只剩这一个使用者的历史格式** ——
-// 生产路径上唯一的用途就是「读旧账本、把文件搬回去、归档」。
-// 放在 `mod.rs` 会让人以为围栏还在用它们。
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub(super) struct VaultMeta {
-    /// original desktop path -> vault relative name
     pub items: Vec<VaultEntry>,
 }
 
@@ -83,19 +73,17 @@ pub(crate) fn run() -> Result<MigrateReport, String> {
     let old = load_meta()?;
     let roots = super::paths::desktop_roots()?;
 
-    // vault.json 不存在 → 从没搬过图标，或者早就迁完了。直接返回，别碰任何东西。
+    // vault.json 为空 → 从没搬过图标，或者早就迁完了。直接返回，别碰任何东西。
     if old.items.is_empty() {
         return Ok(MigrateReport::default());
     }
 
-    // 迁移前备份。这一步动的是 33 个真实文件，出事要能人工核对原始映射。
+    // 迁移前备份 —— 这一步动的是真实文件，出事要能人工核对原始映射。
     backup()?;
 
     let report = run_in(&vault, &roots, &old);
 
-    // 分类偏好写进 fence.json。
-    // 用 or_insert 而不是 insert：重跑时 skipped 分支的 id_map 是"最佳猜测"
-    // （文件已经被上一轮搬走，名字可能带过 (2) 后缀），不能让它覆盖第一次写对的值。
+    // 分类偏好写进 fence.json。用 or_insert 而不是 insert：重跑时 skipped 分支的 id_map 是「最佳猜测」（名字可能带过 (2) 后缀），不能覆盖第一次写对的值。
     let mut m = meta::load()?;
     for e in &old.items {
         if let Some(new_key) = report.id_map.get(&e.id) {
@@ -108,7 +96,7 @@ pub(crate) fn run() -> Result<MigrateReport, String> {
     }
     meta::save(&m)?;
 
-    // 最近列表跟着换 id —— 否则用户会觉得"最近"被清空了
+    // 最近列表跟着换 id —— 否则用户会觉得「最近」被清空了
     crate::recent::remap_ids(&report.id_map)?;
 
     // 全部成功才把旧 meta 归档；有失败项则保留原样，下次启动自动重试
@@ -125,26 +113,18 @@ pub(crate) fn run() -> Result<MigrateReport, String> {
     Ok(report)
 }
 
-/// 可测版本：显式传入 vault 目录与桌面根，不碰真实路径。
-///
-/// 刻意是**私有**的（计划里写的是 `pub(crate)`）：它只对 `run()` 和本模块的单测有意义，
-/// 外面该用的入口是 `run()`。写成 `pub(crate)` 会触发 `private_interfaces` 警告 ——
-/// 参数是 `VaultMeta`，而那个类型是 `fence` 私有的；为消警告就得把它也提升到
-/// `pub(crate)`，等于为了一个测试缝把 fence 内部类型摊给整个 crate。收窄函数是更紧的一侧。
+/// 可测版本：显式传入 vault 目录与桌面根，不碰真实路径。**刻意私有**：写成 `pub(crate)` 会因参数是
+/// 私有的 `VaultMeta` 触发 `private_interfaces` 警告，为消警告就得把那个类型摊给整个 crate。
 fn run_in(vault: &Path, roots: &[(String, PathBuf)], old: &VaultMeta) -> MigrateReport {
     let mut r = MigrateReport::default();
-    // 保留 (origin, 路径) 成对：id 是 `{origin}:{文件名}`，而 origin 只能从**实际落点**
-    // 那个根上取，不能从 `e.origin` 取（见 preferred_root 的注释）。
+    // 保留 (origin, 路径) 成对：origin 只能从**实际落点**那个根上取，不能从 `e.origin` 取。
     let user_root = roots.iter().find(|(o, _)| o == "user").cloned();
     let public_root = roots.iter().find(|(o, _)| o == "public").cloned();
 
     for e in &old.items {
         let src = vault.join(&e.vault_name);
 
-        // src 不在了 = 上一轮已经搬过。跳过，但补记 id_map ——
-        // 否则 run() 里写 fence.json 时这一项的分类偏好会丢。
-        // 注意这是"最佳猜测"：若当初发生过重名，实际名字带过 (2) 后缀。
-        // run() 用 or_insert 兜住了这个不准，见那边的注释。
+        // src 不在了 = 上一轮已经搬过。跳过，但**必须补记 id_map** —— 否则 run() 写 fence.json 时这一项的分类偏好会丢（这是「最佳猜测」，run() 用 or_insert 兜住了）。
         if !src.exists() {
             r.skipped += 1;
             r.id_map
@@ -165,7 +145,7 @@ fn run_in(vault: &Path, roots: &[(String, PathBuf)], old: &VaultMeta) -> Migrate
                 r.id_map
                     .insert(e.id.clone(), meta::key(&root_origin, &file_name_of(&dest, e)));
             }
-            // 公共桌面常需管理员；退回用户桌面，避免整批失败（沿用旧 fence_restore 策略）
+            // 公共桌面常需管理员；退回用户桌面，避免整批失败
             Err(_) if e.origin == "public" => match user_root.clone() {
                 Some((user_origin, user)) => {
                     let fallback = unique_dest(&user, &e.original_name, &e.vault_name);
@@ -191,13 +171,8 @@ fn run_in(vault: &Path, roots: &[(String, PathBuf)], old: &VaultMeta) -> Migrate
     r
 }
 
-/// 该项该回哪个桌面根。public 项优先公共桌面，用户桌面永远是保底。
-///
-/// 返回 **(该根的 origin 标签, 路径)** —— 是**实际选中的根**，不一定等于 `e.origin`：
-/// 公共桌面不在、或写不进去时都会退到用户桌面。id 是 `{origin}:{文件名}`，而索引
-/// 是按「文件实际躺在哪个根」算 id 的，所以调用方必须拿这个标签去拼 key。
-/// 拿 `e.origin` 拼的后果是真机实测踩到过的：fence.json 记 `public:星云.lnk`、
-/// 看板算出来 `user:星云.lnk`，两边永远对不上账，这一项的围栏偏好静默丢失。
+/// 该项该回哪个桌面根。public 项优先公共桌面，用户桌面永远是保底。返回 **(实际选中的根的 origin 标签, 路径)**
+/// —— 不一定等于 `e.origin`（会退到用户桌面）。⚠️ 调用方**必须**拿该标签拼 key，否则 fence.json 与看板对不上账。
 fn preferred_root(
     e: &VaultEntry,
     user: &Option<(String, PathBuf)>,
@@ -233,7 +208,6 @@ fn backup() -> Result<(), String> {
 }
 
 /// rename，失败则 copy + 删源（跨卷时 rename 会失败）。
-/// 从 `fence/mod.rs` 整体迁入，行为一字未改 —— 见下面 `unique_dest` 的说明。
 pub(crate) fn move_path(src: &Path, dest: &Path) -> Result<(), std::io::Error> {
     match std::fs::rename(src, dest) {
         Ok(()) => Ok(()),
@@ -252,14 +226,8 @@ pub(crate) fn move_path(src: &Path, dest: &Path) -> Result<(), std::io::Error> {
     }
 }
 
-/// 目标已存在时退回到 vault_name，**绝不覆盖**桌面上已有的东西。
-///
-/// ⚠️ **这个函数是从旧 fence_restore 原样搬来的，行为一字未改** ——
-/// spec §5.3 明说「`unique_dest()` 已处理重名冲突，直接复用」。
-/// 所以它不会产生 `PVZ (2).lnk` 这种带序号的落点，而是 `user-PVZ-0.lnk`。
-/// 结果不算好看（桌面上会多一个带 vault 前缀的文件），但：不覆盖、不丢文件、
-/// 重跑收敛，三条都满足。改成 `(2)` 序号是**改行为**而不是搬代码，
-/// 会连带改掉 fence_restore 的落点 —— 记在 Task 9 完成记录里提请裁决，不擅自做。
+/// 目标已存在时退回到 vault_name，**绝不覆盖**桌面上已有的东西。⚠️ 落点是 `user-PVZ-0.lnk` 这种带 vault
+/// 前缀的名字，**不是** `PVZ (2).lnk`；改成 `(2)` 序号是**改行为**，会连带改掉 `fence_restore` 的落点（spec §5.3）。
 pub(crate) fn unique_dest(desktop: &Path, original_name: &str, vault_name: &str) -> PathBuf {
     let dest = desktop.join(original_name);
     if dest.exists() {
@@ -342,7 +310,7 @@ mod tests {
         assert!(!desktop.join("PVZ (2).lnk").exists());
     }
 
-    /// ⚠️ **计划原文这版测试的场景是不可达的，已重写。**（理由见函数内注释）
+    /// ⚠️ 「桌面和 vault 两边都在」那个场景是**不可达的**（理由见函数内注释）。
     #[test]
     fn resumes_after_partial_failure() {
         let (_d, vault, desktop) = setup();
@@ -352,14 +320,8 @@ mod tests {
                 entry("user-报表-1", "工作", "报表.txt", "user-报表-1.txt"),
             ],
         };
-        // 「上次跑到一半」的真实形态：PVZ 那一项**已经搬完**了 ——
-        // move_path 成功就会删源，所以 vault 里那份已经不在了。报表 还没动。
-        //
-        // 计划原文写的是「桌面放一个 PVZ.lnk，同时 vault 里那份也留着」。那个状态
-        // move_path 跑不出来：rename 成功即删源，两边都在只有「copy 成功但
-        // remove_file 失败」才可能出现。拿它当「重跑收敛」的判据，测的是不会发生的
-        // 场景，而且会推出与 spec §5.3 相矛盾的口径
-        // （spec：判据是**vault 里文件还在不在**，不是「桌面上有没有同名文件」）。
+        // 「上次跑到一半」的真实形态：PVZ 已经搬完（move_path 成功即删源），报表还没动。
+        // ⚠️ 「两边都在」是 move_path 跑不出来的状态；spec §5.3 的判据是**vault 里文件还在不在**。
         std::fs::remove_file(vault.join("user-PVZ-0.lnk")).unwrap();
         std::fs::write(desktop.join("PVZ.lnk"), b"x").unwrap();
         let roots = vec![("user".to_string(), desktop.clone())];
@@ -371,13 +333,11 @@ mod tests {
         assert!(desktop.join("报表.txt").exists());
         // 桌面原来那份一个字节都没被动过
         assert_eq!(std::fs::read(desktop.join("PVZ.lnk")).unwrap(), b"x");
-        // 跳过的那一项也必须补 id_map —— 否则 run() 写 fence.json 时它的分类偏好就丢了。
-        // 计划原文的注释声称了这件事，但四个测试里**一个都没断言它**。
         assert_eq!(r.id_map["user-PVZ-0"], "user:PVZ.lnk");
         assert_eq!(r.id_map["user-报表-1"], "user:报表.txt");
     }
 
-    /// ⚠️ **计划原文断言 `PVZ (2).lnk`，与 spec §5.3 冲突，已按 spec 重写。**
+    /// ⚠️ 落点**不是** `PVZ (2).lnk` —— 按 spec §5.3（见 `unique_dest`）。
     #[test]
     fn name_collision_never_clobbers_the_existing_file() {
         let (_d, vault, desktop) = setup();
@@ -389,16 +349,12 @@ mod tests {
         let r = run_in(&vault, &roots, &old);
 
         assert_eq!(r.moved, 1);
-        // 本测试的**意图**：用户桌面上那份绝不能被覆盖。这一条计划写对了，保留。
+        // 本测试的**意图**：用户桌面上那份绝不能被覆盖。
         assert_eq!(
             std::fs::read(desktop.join("PVZ.lnk")).unwrap(),
             b"already here"
         );
-        // 但落点不是 `PVZ (2).lnk`。spec §5.3 明说「unique_dest() 已处理重名冲突，
-        // **直接复用**」，而现成的 unique_dest 在重名时退回到 vault_name：
-        //     if dest.exists() { desktop.join(vault_name) } else { dest }
-        // 造一个 `(2)` 的新策略属于改行为，不是本任务的范围（而且会连带改掉
-        // fence_restore 的落点）。要改的话是 spec 层的事，已在完成记录里提请裁决。
+        // 重名时 unique_dest 退回 vault_name。造 `(2)` 序号是新策略 = 改行为，会连带改掉 fence_restore 的落点。
         assert!(desktop.join("user-PVZ-0.lnk").exists());
         assert_eq!(r.id_map["user-PVZ-0"], "user:user-PVZ-0.lnk");
     }
@@ -433,18 +389,13 @@ mod tests {
         assert_eq!(r2.moved, 1);
         assert!(r2.failed.is_empty());
         assert!(desktop.join("工具.lnk").exists());
-        // ⚠️ 落点在用户桌面，key 就必须是 `user:`，不是 `public:`。
-        // 索引是按「文件**实际躺在哪个根**」算 id 的；写 `public:工具.lnk` 的后果是
-        // fence.json 和看板永远对不上账，这一项的围栏偏好静默丢失。真机迁移踩到过
-        // （星云.lnk）—— 而当时这段测试**只断言了有公共桌面的那一半**，所以放它过去了。
+        // ⚠️ 落点在用户桌面，key 就必须是 `user:`，不是 `public:` —— 索引按「文件**实际躺在哪个根**」
+        // 算 id，写错的后果是 fence.json 和看板永远对不上账，这一项的围栏偏好静默丢失（真机踩到过）。
         assert_eq!(r2.id_map["public-工具-0"], "user:工具.lnk");
     }
 
     /// 公共桌面**在**、但写进去失败 → 退回用户桌面。
-    ///
-    /// 和上一个测试走的**不是同一行代码**：公共桌面整个不在时是 `preferred_root` 里的
-    /// `or_else` 兜底，这里走的是 `Err(_) if e.origin == "public"` 那条分支 ——
-    /// 真机 (`星云.lnk`) 走的是**这一条**，而它此前零覆盖。
+    /// 和上一个测试走的**不是同一行代码**：这里走的是 `Err(_) if e.origin == "public"` 那条分支。
     #[test]
     fn public_move_failure_falls_back_to_user_and_keys_by_landing_root() {
         let (d, vault, desktop) = setup();
@@ -456,8 +407,7 @@ mod tests {
             items: vec![e],
         };
 
-        // 让 public 这一侧**必然写不进去**：落点和兜底名都占成非空目录，
-        // rename 一个文件过去会报错 → 进降级分支。（真机上是权限不够，等价。）
+        // 让 public 这一侧**必然写不进去**：落点和兜底名都占成非空目录，rename 会报错 → 进降级分支（真机上是权限不够，等价）。
         std::fs::create_dir_all(public.join("工具.lnk")).unwrap();
         std::fs::create_dir_all(public.join("public-工具-0.lnk").join("占位")).unwrap();
         std::fs::write(vault.join("public-工具-0.lnk"), b"z").unwrap();
@@ -499,14 +449,9 @@ mod tests {
         assert!(r.id_map.is_empty());
     }
 
-    /// 真机干跑：**只读，一个字节都不写**。Task 11 真正迁移之前的对账。
-    ///
-    /// 上面 6 个测试都跑在 tempdir 里，对真实数据的形状一无所知。这个测试补的是
-    /// 「**真机上会不会撞名**」—— 撞名是唯一会让迁移结果不好看（落点变成
-    /// `user-XXX-3.lnk` 躺在桌面上）的情况，而它取决于两个桌面目录当前有什么。
-    ///
-    /// 刻意**不调用 `run_in`** —— 那会真的搬文件。这里手工重算一遍它要做的事，
-    /// 最后再断言 vault 目录的文件数没变，用文件系统本身证明这次跑是只读的。
+    /// 真机干跑：**只读，一个字节都不写**。补的是 tempdir 测试看不见的那件事 ——
+    /// 「真机上会不会撞名」（撞名会让落点变成 `user-XXX-3.lnk` 躺在桌面上）。
+    /// 刻意**不调用 `run_in`**（那会真的搬文件），末尾用 vault 文件数证明这次是只读的。
     #[test]
     #[ignore] // 需要真实 vault.json / 桌面，只在真机手动跑
     fn real_vault_dry_run_is_read_only() {
@@ -539,7 +484,7 @@ mod tests {
         for e in &old.items {
             let src = vault.join(&e.vault_name);
             if !src.exists() {
-                // 干跑时就不在 → run() 会判「已搬过」跳过，并**猜测** id_map。
+                // 干跑时就不在 → run() 判「已搬过」跳过并**猜测** id_map。
                 // 真机上出现这个，说明 vault.json 和 vault 目录已经不同步了。
                 missing.push(e.vault_name.clone());
                 continue;
@@ -558,8 +503,7 @@ mod tests {
                 no_root.push(e.original_name.clone());
                 continue;
             };
-            // 撞名 = 桌面上已经有一个同名文件。这正是 unique_dest 会退到
-            // vault_name 的情形，迁移后桌面上会多一个 `user-XXX-N.lnk`。
+            // 撞名 = unique_dest 会退到 vault_name，迁移后桌面上多一个 `user-XXX-N.lnk`。
             let dest = unique_dest(&root, &e.original_name, &e.vault_name);
             if dest.file_name().and_then(|s| s.to_str()) == Some(e.vault_name.as_str()) {
                 collisions.push(format!(
@@ -586,9 +530,8 @@ mod tests {
 
         assert!(missing.is_empty(), "vault.json 与 vault 目录不同步，先别迁移");
         assert!(no_root.is_empty(), "有项找不到可写入的桌面根");
-        // 本机 2026-09-13 实测：两个桌面目录都只有 desktop.ini → 0 处撞名。
-        // 这个断言是**给未来看的** —— 如果哪天它红了，说明迁移会把项落到
-        // `user-XXX-N.lnk` 这种名字上，值得先人工看一眼再迁。
+        // 这个断言是**给未来看的**：哪天它红了，说明迁移会把项落到 `user-XXX-N.lnk`
+        // 这种名字上，值得先人工看一眼再迁。
         assert!(
             collisions.is_empty(),
             "有 {} 项会因重名落到 vault 名字上：{:?}",

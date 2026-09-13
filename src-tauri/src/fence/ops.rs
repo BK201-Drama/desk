@@ -1,34 +1,11 @@
-//! 桌面项的**写操作**：新建 / 改名 / 删除 / 剪切复制粘贴 / 发送到 / 压缩 / 属性 /
-//! 打开方式 / 在资源管理器中定位。
+//! 桌面项的**写操作**（新建 / 改名 / 删除 / 剪贴板 / 发送到 / 压缩 / 属性 / 打开方式 / 定位）：
+//! 整个 fence 子系统里唯一会动**用户文件**的模块。
 //!
-//! 这是整个 fence 子系统里唯一会动**用户文件**的模块。Task 12 之后 desk 对桌面的写
-//! 只剩「记 `fence.json`」和「抽图标 png」，旧的 `move_path` / 改名 / 删除路径是 vault
-//! 时代的产物 —— 那时操作的是我们自己的保险箱，现在操作的是用户的桌面。三个推论：
-//!
-//! 1. **输入要先过闸。** `path` 参数来自前端。前端是我们自己的代码，但一个拼错的路径
-//!    就是一次 `SHFileOperationW` 删掉用户别处的目录。每个接受 `path` 的命令第一件事
-//!    都是 `locate()`（`ensure_inside_desktop` 的实现），只放行「某个桌面根的**直接**
-//!    子项」。嵌套路径不放行 —— 看板只显示顶层项，嵌套路径只可能来自 bug。
-//! 2. **先写 `fence.json`，再动文件。** 见 `fence_rename` 的注释：反过来的话，
-//!    watcher 可能在 meta 落盘前就重扫并推送，那一帧会把改名的项暂时算进
-//!    `guess_fence` 的猜测围栏，而指纹稳定后第二拍不会再来 —— 用户看得见且不可自愈。
-//! 3. **破坏性动作要能撤销。** 删除进回收站（`FOF_ALLOWUNDO`）而不是抹掉；
-//!    重名一律 `(2)`（`unique_name`）而不是覆盖。本模块**没有一处覆盖已有文件**。
-//!
-//! # 为什么不用 `IFileOperation` / OLE
-//!
-//! 计划原本指定删除用 `IFileOperation`、剪贴板未指定实现。两者都是 COM 对象，
-//! 而 COM 要求调用线程有 apartment —— Tauri 命令跑在哪个线程上不是我们能一口咬定的
-//! （同步命令与 `async` 命令的调度不同）。要安全就得自己 `CoInitializeEx` +
-//! 保证配对 `CoUninitialize` + 决定 STA/MTA，**为一个删除动作引入一套线程模型**。
-//!
-//! 换成的两条路语义完全相同，且零 COM：
-//! 删除 → `SHFileOperationW`（同样是 shell32 官方导出，`FOF_ALLOWUNDO` 同样进回收站）；
-//! 剪贴板 → `OpenClipboard` + `SetClipboardData(CF_HDROP)`（资源管理器认的就是这个格式，
-//! 「剪切还是复制」用注册格式 `"Preferred DropEffect"` 传，这也是它的原始约定）。
-//!
-//! 本模块**只在 Windows 上编译**（整个 crate 事实上就是），所以函数不加
-//! `#[cfg(windows)]` 门 —— 加了只会多一堆「另一个分支写什么」的噪音。
+//! ⚠️ **输入必须先过闸。** `path` 来自前端，拼错一次就是 `SHFileOperationW` 删掉用户别处
+//! 的目录 —— 每个接受 `path` 的命令第一件事都是 `locate()`，只放行桌面根的**直接**子项。
+//! ⚠️ **先写 `fence.json` 再动文件**（理由见 `fence_rename`）；破坏性动作一律可撤销。
+//! 不用 `IFileOperation` / OLE 是刻意的：COM 要求调用线程有 apartment，而 Tauri 命令跑在哪个
+//! 线程上不是能一口咬定的。删除用 `SHFileOperationW`、剪贴板用 `CF_HDROP`，零 COM 语义相同。
 
 use super::meta::{self, key as meta_key};
 use std::path::{Path, PathBuf};
@@ -36,18 +13,15 @@ use std::path::{Path, PathBuf};
 // ---------------------------------------------------------------- 护栏
 
 /// 把 `path` 认到一个桌面根的**直接**子项上，返回 `(meta key, 项的文件名)`。
-///
-/// 用 `canonicalize` 的结果取文件名而不是原参数：NTFS 大小写不敏感但**大小写保持**，
-/// `canonicalize` 给出的是盘上的真实拼写，和 `index::scan_root`（走 `read_dir`）一致 ——
-/// key 必须和扫描出来的那一份逐字节相同，否则 meta 记账会对不上。
+/// 用 `canonicalize` 后的文件名而不是原参数：key 必须和 `index::scan_root` 扫出来的那份
+/// **逐字节相同**（NTFS 大小写不敏感但保持原样），否则 meta 记账会对不上。
 fn locate(path: &Path, roots: &[(String, PathBuf)]) -> Result<(String, String), String> {
     let real = path
         .canonicalize()
         .map_err(|e| format!("路径无法解析（{}）：{e}", path.display()))?;
     for (origin, root) in roots {
         let Ok(r) = root.canonicalize() else { continue };
-        // parent 而不是 starts_with：**嵌套路径不放行**。桌面子目录里的东西不在看板上，
-        // 能进来的嵌套路径只可能是调用点写错了。
+        // parent 而不是 starts_with：**嵌套路径不放行**（看板只显示顶层项）。
         if real.parent() == Some(r.as_path()) {
             let name = real
                 .file_name()
@@ -64,10 +38,7 @@ fn locate(path: &Path, roots: &[(String, PathBuf)]) -> Result<(String, String), 
 }
 
 /// 命令入口的统一第一句。桌面根读不出来时直接失败 —— 认不出路径就不许动它。
-///
-/// `pub(crate)` 是为了真机测试能拿**真实路径**验一次护栏：`locate` 的单元测试跑在
-/// tempdir 上，而这条链上有一步 `canonicalize`，真桌面上才可能出现临时目录里
-/// 造不出来的形状（junction / 大小写不一致 / 8.3 短名）。
+/// `pub(crate)` 是给真机测试用的：真桌面才有 tempdir 造不出的形状（junction / 8.3 短名）。
 pub(crate) fn gate(path: &Path) -> Result<(String, String), String> {
     locate(path, &super::paths::desktop_roots()?)
 }
@@ -86,16 +57,14 @@ fn check_name(name: &str) -> Result<(), String> {
     {
         return Err(r#"名字里不能出现 \ / : * ? " < > |"#.into());
     }
-    // Windows 会**悄悄**吃掉结尾的点和空格：`a.` 会变成 `a`。与其让用户看到一个
-    // 和自己输入不符的结果，不如直接说不行。
+    // Windows 会**悄悄**吃掉结尾的点和空格（`a.` → `a`），直接拒掉好过让用户看到不符的结果。
     if n.ends_with('.') || n.ends_with(' ') {
         return Err("名字不能以点或空格结尾".into());
     }
     Ok(())
 }
 
-/// `a.txt` → `("a", "txt")`；`新建文件夹` → `("新建文件夹", "")`；
-/// `.gitignore` → `(".gitignore", "")`（开头的点是名字的一部分，不是扩展名）。
+/// `.gitignore` → `(".gitignore", "")`：开头的点是名字的一部分，不是扩展名。
 fn split_name(name: &str) -> (String, String) {
     match name.rfind('.') {
         Some(i) if i > 0 => (name[..i].to_string(), name[i + 1..].to_string()),
@@ -127,11 +96,8 @@ fn unique_name(dir: &Path, name: &str) -> PathBuf {
 // ---------------------------------------------------------------- PowerShell
 
 /// 跑一段内联 PowerShell 脚本，成功返回 `()`。
-///
-/// 用 `-Command` 而不是同仓 `extract_icon_png` 那种「写临时文件 + `-File`」：
-/// `-File` 那条路要求脚本**纯 ASCII**（PS 5.1 按 ANSI 解码无 BOM 文件，见 `mod.rs:120`），
-/// 而这里必然要带用户的中文路径。`-Command` 的命令行走 `CreateProcessW`，是 UTF-16，
-/// 中文安全。代价是得自己躲引号 —— 单引号字符串里的 `'` 写成 `''` 即可。
+/// 用 `-Command` 而不是 `-File`：`-File` 要求脚本**纯 ASCII**（PS 5.1 按 ANSI 解码无 BOM
+/// 文件），而这里必然要带用户的中文路径；`-Command` 走 `CreateProcessW`，是 UTF-16。
 fn run_ps(script: &str) -> Result<(), String> {
     let out = crate::proc::command("powershell")
         .args([
@@ -162,8 +128,7 @@ fn psq(s: &str) -> String {
     s.replace('\'', "''")
 }
 
-/// 造一个 `.lnk`。`fence_create(kind="lnk")` 与 `fence_send_to` 共用这一份实现 ——
-/// 所以这条能力在真机上一定被走到，不是一条没人走的分支。
+/// 造一个 `.lnk`。`fence_create(kind="lnk")` 与 `fence_send_to` 共用这一份实现。
 fn create_shortcut(target: &str, lnk: &Path) -> Result<(), String> {
     let script = format!(
         "$ErrorActionPreference='Stop';\
@@ -200,8 +165,7 @@ fn create_in(
             p
         }
         "lnk" => {
-            // 没有目标的新建快捷方式只能是个空壳。**不**造指到桌面的占位符 ——
-            // 那是在替用户编一个他没要求的意思。缺 target 就说缺 target。
+            // 没有目标就只能是个空壳：**不**造指到桌面的占位符 —— 那是替用户编一个他没要求的意思。
             let t = target
                 .filter(|t| !t.trim().is_empty())
                 .ok_or("快捷方式需要一个目标")?;
@@ -229,7 +193,6 @@ fn rename_in(path: &Path, new_name: &str) -> Result<PathBuf, String> {
     check_name(new_name)?;
     let parent = path.parent().ok_or("路径没有父目录")?;
     let dest = parent.join(new_name);
-    // 改名**不**自动加序号：用户明确打了一个名字，撞名就说撞名（资源管理器同此）。
     if dest.exists() {
         return Err(format!("已存在同名项：{new_name}"));
     }
@@ -248,7 +211,7 @@ fn recycle(path: &Path) -> Result<(), String> {
         FOF_NOERRORUI, FOF_SILENT,
     };
 
-    // SHFileOperationW 要的是**双 \0 结尾**的路径列表 —— 只有一个路径也要多补一个 \0。
+    // ⚠️ `SHFileOperationW` 要的是**双 \0 结尾**的路径列表 —— 只有一个路径也要多补一个 \0。
     // 这是这个 API 最经典的坑：少补一个它就读到缓冲区外面去了。
     let mut buf: Vec<u16> = path.as_os_str().encode_wide().collect();
     buf.push(0);
@@ -274,9 +237,7 @@ fn recycle(path: &Path) -> Result<(), String> {
 // ---------------------------------------------------------------- 剪贴板
 
 /// `CF_HDROP` 的内存布局：`DROPFILES` 头 + 宽字符路径列表（每项各自 \0）+ 收尾的 \0。
-///
-/// 抽成纯函数是为了能测 —— 这个布局一个字节错位就是「粘贴出来是乱码/空」，
-/// 而它无法在单测里真的过一遍系统剪贴板（那是全局资源，测试会踩用户的剪贴板）。
+/// 抽成纯函数是为了能测 —— 一个字节错位就是「粘贴出来是乱码/空」，而系统剪贴板是全局资源。
 fn hdrop_bytes(paths: &[PathBuf]) -> Vec<u8> {
     use std::os::windows::ffi::OsStrExt;
     use windows::Win32::UI::Shell::DROPFILES;
@@ -310,7 +271,6 @@ fn hdrop_bytes(paths: &[PathBuf]) -> Vec<u8> {
     out
 }
 
-/// 写剪贴板：`paths` + 「是剪切吗」。
 fn clipboard_put(paths: &[PathBuf], cut: bool) -> Result<(), String> {
     use windows::core::w;
     use windows::Win32::Foundation::{HANDLE, HWND};
@@ -344,8 +304,7 @@ fn clipboard_put(paths: &[PathBuf], cut: bool) -> Result<(), String> {
             SetClipboardData(CF_HDROP.0 as u32, HANDLE(hmem.0))
                 .map_err(|e| format!("写剪贴板失败：{e}"))?;
 
-            // 「是剪切吗」靠 Preferred DropEffect —— 资源管理器就是这么传的，
-            // 少了它系统一律按「复制」处理。
+            // 「是剪切吗」靠 Preferred DropEffect —— 少了它系统一律按「复制」处理。
             let fmt = RegisterClipboardFormatW(w!("Preferred DropEffect"));
             if fmt != 0 {
                 let eff = if cut {
@@ -370,7 +329,6 @@ fn clipboard_put(paths: &[PathBuf], cut: bool) -> Result<(), String> {
     out
 }
 
-/// 读剪贴板，返回 `(路径, 是不是剪切)`。
 fn clipboard_take() -> Result<(Vec<PathBuf>, bool), String> {
     use windows::core::w;
     use windows::Win32::System::DataExchange::{
@@ -410,8 +368,8 @@ fn clipboard_take() -> Result<(Vec<PathBuf>, bool), String> {
                 let mut cut = false;
                 if fmt != 0 {
                     if let Ok(hm) = GetClipboardData(fmt) {
-                        // GetClipboardData 给的是 HANDLE，GlobalLock 要 HGLOBAL。
-                        // 两个 newtype 包的都是 `*mut c_void`，但类型不同，得显式转。
+                        // GetClipboardData 给的是 HANDLE、GlobalLock 要 HGLOBAL：包的都是
+                        // `*mut c_void` 但类型不同，得显式转。
                         let hg = HGLOBAL(hm.0);
                         let p = GlobalLock(hg);
                         if !p.is_null() {
@@ -430,8 +388,7 @@ fn clipboard_take() -> Result<(Vec<PathBuf>, bool), String> {
     }
 }
 
-/// 递归复制（`fs::copy` 只管单个文件）。没有引 `walkdir` —— 这里只走一层桌面项，
-/// 自己写十行比多一个依赖划算。
+/// 递归复制（`fs::copy` 只管单个文件）。自己写十行比多一个 `walkdir` 依赖划算。
 fn copy_into(src: &Path, dest: &Path) -> Result<(), String> {
     if src.is_dir() {
         std::fs::create_dir_all(dest).map_err(|e| e.to_string())?;
@@ -448,9 +405,7 @@ fn copy_into(src: &Path, dest: &Path) -> Result<(), String> {
 // ---------------------------------------------------------------- 命令
 
 /// 在**用户桌面**新建一项。返回新项的完整路径。
-///
-/// 只在用户桌面建：公共桌面（`C:\Users\Public\Desktop`）写进去要管理员权限，
-/// 而用户桌面覆盖了全部实际场景。
+/// 只在用户桌面建：公共桌面写进去要管理员权限。
 #[tauri::command]
 pub fn fence_create(
     name: String,
@@ -461,18 +416,11 @@ pub fn fence_create(
     Ok(p.to_string_lossy().to_string())
 }
 
-/// 改名。**围栏归属跟着走**（`meta::rename_key`），所以
-/// 「改名后项跳到别的围栏去」这件事不会发生（spec §11-3）。
+/// 改名。**围栏归属跟着走**（`meta::rename_key`），所以改名后项不会跳到别的围栏（spec §11-3）。
 ///
-/// ⚠️ 顺序是**先 meta、再动文件**，不能反 ——
-/// 反过来的话 watcher 的 250 ms 防抖窗口里就可能已经完成一次重扫并推送，
-/// 那一帧里新名字还没有 meta 记录，`fence_of` 会把它算进 `guess_fence` 猜的围栏，
-/// 而**推送之后指纹就稳定了，第二拍不会再来**（第二拍按定义只管图标）。
-/// 结果就是用户看得见、且永远不会自己回来的错分栏。
-///
-/// 先写 meta 的代价是「可能短暂存在一个指向不存在文件的 key」——
-/// 这个代价是零：`build_fences` 只遍历扫到的项，孤儿 entry 不可见，
-/// 而它正好能被冷启动的 `meta::prune` 收走。
+/// ⚠️ 顺序是**先 meta、再动文件**，不能反 —— 反过来的话，watcher 的 250 ms 防抖窗口里可能
+/// 已经完成一次重扫并推送，那一帧新名字还没有 meta 记录、会被算进 `guess_fence` 猜的围栏，
+/// 而**推送之后指纹就稳定了，第二拍不会再来** —— 用户看得见且永远不会自己回来的错分栏。
 #[tauri::command]
 pub fn fence_rename(path: String, new_name: String) -> Result<String, String> {
     let p = PathBuf::from(&path);
@@ -491,8 +439,7 @@ pub fn fence_rename(path: String, new_name: String) -> Result<String, String> {
 
     match rename_in(&p, &new_name) {
         Ok(dest) => {
-            // 图标缓存是按 key 命名的，旧 key 的那张 png 现在没人引用了。
-            // 不删也不算错（下次同名项会撞上一张旧图），但删掉更干净。
+            // 图标缓存按 key 命名，旧 key 那张 png 没人引用了；不删也不算错，删掉更干净。
             let _ = std::fs::remove_file(super::index::icon_file(&old_key));
             Ok(dest.to_string_lossy().to_string())
         }
@@ -510,10 +457,8 @@ pub fn fence_rename(path: String, new_name: String) -> Result<String, String> {
 }
 
 /// 删除。走回收站（`FOF_ALLOWUNDO`），可撤销。
-///
-/// 和 `fence_rename` 同样**先 meta、再动文件**，失败回滚。meta 这一侧是
-/// **单键 `remove`** 而不是 `meta::prune` —— 「刚删的是谁」是调用方自己知道的，
-/// 不需要（也不该）靠一次扫描去反推（Task 13 驳回 watcher prune 的正是这条理由）。
+/// 和 `fence_rename` 同样**先 meta、再动文件**，失败回滚。用**单键 `remove`** 而不是
+/// `meta::prune` —— 「刚删的是谁」是调用方自己知道的，不该靠一次扫描去反推。
 #[tauri::command]
 pub fn fence_delete(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
@@ -542,8 +487,7 @@ pub fn fence_delete(path: String) -> Result<(), String> {
     }
 }
 
-/// 系统的「属性」对话框。用**原路径**而不是 canonicalize 过的 —— `\\?\` 前缀
-/// 那套扩展长度形式 shell 不认。
+/// 系统的「属性」对话框。用**原路径**而不是 canonicalize 过的：`\\?\` 那套扩展长度形式 shell 不认。
 #[tauri::command]
 pub fn fence_properties(path: String) -> Result<(), String> {
     use windows::core::{w, HSTRING};
@@ -562,9 +506,8 @@ pub fn fence_properties(path: String) -> Result<(), String> {
 }
 
 /// 「打开方式」对话框。
-///
-/// 不用 `ShellExecuteW` 的 `openas` verb —— 它在 Win10 上不可靠（常常直接按默认程序
-/// 打开、根本不弹选择框）。`OpenAs_RunDLL` 才是这个对话框的实际入口。
+/// 不用 `ShellExecuteW` 的 `openas` verb —— 它在 Win10 上不可靠（常常直接按默认程序打开、
+/// 根本不弹选择框）；`OpenAs_RunDLL` 才是实际入口。
 #[tauri::command]
 pub fn fence_open_with(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
@@ -607,9 +550,7 @@ pub fn fence_clipboard(paths: Vec<String>, cut: bool) -> Result<(), String> {
 }
 
 /// 把剪贴板里的项贴到桌面上，返回落点。
-///
-/// **不主动清空剪贴板**：资源管理器的行为是「剪切粘贴完才清」，
-/// 而什么时候算「粘贴完」不该由我们猜 —— 让系统按它自己的约定处理。
+/// **不主动清空剪贴板**：什么时候算「粘贴完」不该由我们猜，让系统按它自己的约定处理。
 #[tauri::command]
 pub fn fence_paste() -> Result<Vec<String>, String> {
     let (srcs, cut) = clipboard_take()?;
@@ -669,10 +610,7 @@ pub fn fence_send_to(path: String) -> Result<(), String> {
 }
 
 /// 发送到 ▸ 压缩包：在旁边生成 `<名字>.zip`。
-///
-/// 不用 shell 的 `Compress` verb —— 它没文档化、随系统版本漂移。
-/// `Compress-Archive` 是文档化 cmdlet，本仓已有大量 PowerShell 先例。
-/// 目标重名走 `(2)`，不覆盖已有的 zip。
+/// 不用 shell 的 `Compress` verb（没文档化、随系统版本漂移），`Compress-Archive` 是文档化 cmdlet。
 #[tauri::command]
 pub fn fence_compress(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
@@ -694,8 +632,7 @@ pub fn fence_compress(path: String) -> Result<(), String> {
     run_ps(&script)
 }
 
-/// `ShellExecuteW` 的返回值约定：**> 32 才算成功**（这是它的历史包袱，
-/// 小于等于 32 的数是错误码，跟 `GetLastError` 不是一套）。
+/// `ShellExecuteW` 的返回值约定：**> 32 才算成功**（≤ 32 的是错误码，跟 `GetLastError` 不是一套）。
 fn ok_shell(rc: usize) -> Result<(), String> {
     if rc <= 32 {
         Err(format!("调用失败（错误码 {rc}）"))
@@ -716,8 +653,6 @@ mod tests {
         vec![("user".to_string(), dir.to_path_buf())]
     }
 
-    // ---- locate / 护栏 ----
-
     #[test]
     fn locate_accepts_a_direct_child_of_the_root() {
         let d = scratch();
@@ -730,7 +665,6 @@ mod tests {
 
     #[test]
     fn locate_refuses_nested_paths() {
-        // 桌面上的子目录**里面**的东西不在看板上：能走到这里的嵌套路径只可能是 bug。
         let d = scratch();
         let sub = d.path().join("sub");
         std::fs::create_dir(&sub).unwrap();
@@ -754,8 +688,6 @@ mod tests {
         assert!(locate(&f, &fakes(d.path())).is_err());
     }
 
-    // ---- 名字 ----
-
     #[test]
     fn check_name_rejects_windows_hostile_names() {
         for bad in ["", "  ", ".", "..", "a/b", r"a\b", "a:b", "a*b", "a?b", "a.b."] {
@@ -772,14 +704,11 @@ mod tests {
         assert_eq!(split_name(".gitignore"), (".gitignore".into(), "".into()));
     }
 
-    // ---- 新建 ----
-
     #[test]
     fn create_folder_lands_and_suffixes_on_collision() {
         let d = scratch();
         let a = create_in(d.path(), "新建文件夹", "folder", None).unwrap();
         assert!(a.is_dir());
-        // 资源管理器的习惯：`新建文件夹` 已存在 → `新建文件夹 (2)`
         let b = create_in(d.path(), "新建文件夹", "folder", None).unwrap();
         assert_eq!(b.file_name().unwrap().to_string_lossy(), "新建文件夹 (2)");
         assert!(b.is_dir());
@@ -797,7 +726,6 @@ mod tests {
 
     #[test]
     fn create_lnk_without_a_target_is_an_error_not_a_placeholder() {
-        // 「新建快捷方式」没有目标就只能是个空壳。宁可明确报错，也不替用户编一个意思。
         let d = scratch();
         assert!(create_in(d.path(), "快捷方式", "lnk", None).is_err());
         assert!(create_in(d.path(), "快捷方式", "lnk", Some("   ")).is_err());
@@ -809,8 +737,6 @@ mod tests {
         assert!(create_in(d.path(), "x", "zip", None).is_err());
     }
 
-    // ---- 改名 ----
-
     #[test]
     fn rename_moves_the_file_and_refuses_collisions() {
         let d = scratch();
@@ -821,7 +747,6 @@ mod tests {
         let dest = rename_in(&a, "c.txt").unwrap();
         assert!(dest.exists() && !a.exists());
 
-        // 撞名直接报错 —— 改名不自动加序号（用户明确打了一个名字）
         assert!(rename_in(&dest, "b.txt").is_err());
         assert!(dest.exists());
     }
@@ -835,14 +760,10 @@ mod tests {
         assert!(a.exists());
     }
 
-    // ---- 删除 ----
-
     #[test]
     fn recycle_sends_the_item_to_the_bin() {
-        // 唯一一个真的走 `SHFileOperationW` 的测试。它会在回收站里留一个带进程号的小
-        // 文件/空目录 —— 这是这个测试的代价，可以接受：**不测它的话，那个「双 \0 结尾」
-        // 的缓冲区就完全没有机器判据**，而那正是这个 API 最经典的坑（少补一个 \0
-        // 它就读出缓冲区边界）。宁可让回收站多个探针，也不能让删除路径靠肉眼保证。
+        // 唯一一个真的走 `SHFileOperationW` 的测试。代价是回收站里会留下带进程号的探针 ——
+        // **不测它的话，那个「双 \0 结尾」的缓冲区就完全没有机器判据**。
         let pid = std::process::id();
         let d = scratch();
 
@@ -864,24 +785,20 @@ mod tests {
         assert!(recycle(&ghost).is_err());
     }
 
-    // ---- 剪贴板内存布局 ----
-
     #[test]
     fn hdrop_layout_is_what_the_shell_expects() {
         let paths = vec![PathBuf::from(r"C:\a\b.txt"), PathBuf::from(r"C:\c")];
         let buf = hdrop_bytes(&paths);
 
-        // DROPFILES.pFiles = 路径列表的起点偏移
+        // buf[0..4]=pFiles（路径列表的起点偏移）；buf[16..20]=fWide（必须为真，否则系统按 ANSI 读）
         let off = u32::from_le_bytes(buf[0..4].try_into().unwrap()) as usize;
         assert_eq!(off, std::mem::size_of::<windows::Win32::UI::Shell::DROPFILES>());
-        // fWide 必须为真，否则系统按 ANSI 去读我们写的 UTF-16
         assert_eq!(u32::from_le_bytes(buf[16..20].try_into().unwrap()), 1);
 
         let wide: Vec<u16> = buf[off..]
             .chunks_exact(2)
             .map(|c| u16::from_le_bytes([c[0], c[1]]))
             .collect();
-        // 结尾必须是双 \0（列表项自己的 \0 + 收尾 \0）
         assert!(wide.len() >= 2);
         assert_eq!(&wide[wide.len() - 2..], &[0, 0]);
 
@@ -901,8 +818,6 @@ mod tests {
         assert!(off < buf.len());
     }
 
-    // ---- 复制 ----
-
     #[test]
     fn copy_into_walks_a_directory_tree() {
         let d = scratch();
@@ -915,11 +830,10 @@ mod tests {
         copy_into(&src, &dest).unwrap();
         assert_eq!(std::fs::read(dest.join("a.txt")).unwrap(), b"a");
         assert_eq!(std::fs::read(dest.join("inner").join("b.txt")).unwrap(), b"b");
-        // 源还在（复制不是移动）
         assert!(src.join("a.txt").exists());
     }
 
-    // ---- 真造一个 .lnk / 一个 .zip（各一次 PowerShell，慢但不碰真桌面） ----
+    // ---- 真造 .lnk / .zip：各起一次 PowerShell，慢，但不碰真桌面 ----
 
     #[test]
     fn create_shortcut_writes_a_real_lnk() {

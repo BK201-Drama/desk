@@ -11,8 +11,7 @@ mod stock;
 mod sys_res;
 #[cfg(windows)]
 mod win_zorder;
-// 命令清单解析器的自校验测试。解析器本身在 `src-tauri/cmd_manifest.rs`，
-// 由 `build.rs` 与这里 `include!` 共享（不复制第二份）。
+// 命令清单解析器的测试；解析器本身在 `src-tauri/cmd_manifest.rs`，与 `build.rs` `include!` 共享。
 #[cfg(test)]
 mod manifest_tests;
 
@@ -37,8 +36,7 @@ fn autostart_off_flag() -> Option<std::path::PathBuf> {
     dirs::data_local_dir().map(|d| d.join("desk").join("autostart-off"))
 }
 
-/// Align the window's right edge to ~40% of the work area width;
-/// vertically center within the work area (excludes taskbar).
+/// Align the window's right edge to ~40% of the work area width; vertically center (excludes taskbar).
 fn place_left(window: &tauri::WebviewWindow) -> Option<(i32, i32)> {
     let monitor = window.current_monitor().ok().flatten()?;
     let wa = monitor.work_area();
@@ -84,7 +82,7 @@ fn set_click_through(app: tauri::AppHandle, enabled: bool) -> Result<(), String>
     let window = app
         .get_webview_window("main")
         .ok_or_else(|| "main window missing".to_string())?;
-    // Keep under other apps even when the board is interactive.
+    // Stay under other apps even while the board is interactive.
     sink_below_apps(&window);
     window
         .set_ignore_cursor_events(enabled)
@@ -155,7 +153,6 @@ pub fn run() {
                     if event.state() != ShortcutState::Pressed {
                         return;
                     }
-                    // Match by key — we only register D (edit) and K (cmdk).
                     match shortcut.key {
                         Code::KeyD => {
                             let _ = app.emit("desk:toggle-edit", ());
@@ -192,9 +189,8 @@ pub fn run() {
             fence::fence_icons_visible,
             fence::fence_set_icons_visible,
             fence::fence_save_order,
-            // 2026-09-13：只写显示偏好（收起 / 高度），不碰归属与顺序。
             fence::fence_save_ui,
-            // Task 14：右键菜单的文件操作。这是全仓**唯一**会动用户文件的命令组，
+            // 右键菜单的文件操作：全仓**唯一**会动用户文件的命令组，
             // 每个入口先过 `ops::locate`（只放行桌面根的直接子项）。
             fence::ops::fence_create,
             fence::ops::fence_rename,
@@ -239,8 +235,7 @@ pub fn run() {
             let locked: Arc<Mutex<Option<(i32, i32)>>> = Arc::new(Mutex::new(None));
 
             if let Some(window) = app.get_webview_window("main") {
-                // Sit under normal apps, but stay interactive — fence icons / 编辑
-                // must receive clicks. Full ignore_cursor_events made the board dead.
+                // Sit under normal apps but stay interactive — full ignore_cursor_events makes the board dead.
                 let _ = window.set_skip_taskbar(true);
                 sink_below_apps(&window);
                 let _ = window.set_always_on_bottom(true);
@@ -278,8 +273,8 @@ pub fn run() {
                     }
                 });
 
-                // Rare fallback: another HWND_BOTTOM app (QQ Music) may slip under us.
-                // Do not restack unless a foreign window is actually below — that flicker.
+                // Rare fallback: another HWND_BOTTOM app (QQ Music) may slip under us. Blind restacking
+                // flickers, so this only re-sinks us periodically.
                 let win_keep = window.clone();
                 std::thread::spawn(move || {
                     loop {
@@ -315,9 +310,8 @@ pub fn run() {
                 }
             });
 
-            // 真桌面的变化监听（Task 13）：在 desk 外面新建 / 删除 / 改名之后，
-            // 看板要自己跟上，而不是干等重启 —— 没有它，看板就是冷启动那一刻的快照。
-            // 失败只记一笔：监听坏掉的后果是「退化回快照」，不该连累整个应用起不来。
+            // 真桌面的变化监听：没有它，看板就是冷启动那一刻的快照。
+            // 失败只记一笔 —— 监听坏掉只是退化回快照，不该连累整个应用起不来。
             if let Err(e) = fence::watch::start(app.handle().clone()) {
                 eprintln!("fence::watch::start: {e}");
             }
@@ -327,8 +321,7 @@ pub fn run() {
             if let Err(e) = app.global_shortcut().register(edit_sc) {
                 eprintln!("global shortcut Win+Shift+D: {e}");
             }
-            // Board sits under apps — in-page Ctrl+K never fires without focus.
-            // Global Ctrl+Shift+K (+ Win+Shift+K) always reaches desk.
+            // Board sits under apps — in-page Ctrl+K never fires without focus; these global ones always reach desk.
             let cmdk_sc =
                 Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyK);
             if let Err(e) = app.global_shortcut().register(cmdk_sc) {

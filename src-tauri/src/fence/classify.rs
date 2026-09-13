@@ -1,11 +1,7 @@
 //! 两个纯字符串启发式：一个认「别碰自己的快捷方式」，一个猜「这东西该归到哪一栏」。
 //!
-//! 从 `mod.rs` 搬来（2026-09-14，架构腐蚀清单 #7）。两者都是 `&str -> …` 的纯函数，
-//! 没有任何 IO，也不认识桌面之外的世界 —— 搬出来之后 `mod.rs` 只剩编排。
-//!
-//! ⚠️ `guess_fence` 只是**兜底**：`meta` 里有记录就用记录（`index.rs:116`）。
-//! 它的关键词表是**硬编码的中文游戏名**，改动它等于改默认分类 —— 那会让
-//! 已经存在于用户 `fence.json` 里的记录与新装机器上的表现分叉。
+//! ⚠️ `guess_fence` 只是**兜底**（`meta` 里有记录就用记录）。它的关键词表是**硬编码的
+//! 中文游戏名**，改动它等于改默认分类 —— 已存在于用户 `fence.json` 的记录与新装机器会分叉。
 
 /// Installer / manual setup may drop `desk.lnk` on the desktop — never vault it.
 pub(super) fn is_self_desk_shortcut(name: &str) -> bool {

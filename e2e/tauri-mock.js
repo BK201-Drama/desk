@@ -15,30 +15,10 @@
   ];
 
   // ── 样式审查 fixture（e2e/style-audit.spec.ts 的输入）────────────────────
-  // 这份数据决定看板围栏区的 DOM 形状，而 e2e/style-baseline.json 是从这个 DOM 录的。
-  // **改这里 = 基线全体失效**：必须同时 `UPDATE_STYLE_BASELINE=1 npm run test:style`
-  // 并逐行 review diff。
-  //
-  // 覆盖围栏样式里所有有分支的形状（Task 17 起这些规则在 panel.css）：
-  //   游戏 / 工具  → --fence-rows: 3
-  //   工作 / 系统  → --fence-rows: 1
-  //   最近         → #fenceRecent，4 列 1 行
-  //
-  // 这里**故意不写 panel.css 行号**：原来那三个（366-369 / 370-374 / 494-503）全漂了，
-  // 而 `#fenceRecent:not([hidden])` 这个选择器已于 2026-09-14 删掉（`:not([hidden])`
-  // 恒真 —— 那个 div 从不带 `hidden`）。要看规则就照选择器在 panel.css 里搜。
-  //
-  // `is_dir` 是 Task 15 加的：右键菜单靠它决定「打开方式」出不出现。
-  // 它**不参与渲染**（没有任何 class / data 属性读它），所以补这个字段
-  // 不会动样式基线 —— 加完请跑一次 `npm run test:style` 复核三个基线零 diff。
-  // 真机线上一定有这个字段（serde 无条件序列化 bool），所以每个条目都写全。
-  //
-  // `collapsed` / `rows` 是 2026-09-13（围栏交互）加的：`FenceDto` 上的两个显示偏好，
-  // 与 `is_dir` 不同，它们**参与渲染**（`.is-collapsed` / `.fence-grid.rows-N` 两个类）。
-  // 于是这份 fixture 的默认值必须是「不收起（false）+ 自动（0）」——
-  // 那正是 `gridClass(0)` 返回裸 `"fence-grid"` 的那一支，既有 6 份基线才能重录成**纯新增**。
-  // 想录「收起」/「自定义高度」两个新状态，请用 `__MOCK_SAVE_UI__` 现改（见下面
-  // `fence_save_ui` 的桩），**不要**把默认值改掉。
+  // **改这里 = e2e/style-baseline.json 全体失效**：必须同时 `UPDATE_STYLE_BASELINE=1
+  // npm run test:style` 并逐行 review diff。规则在 panel.css，照选择器去搜（**别写行号**）。
+  // `collapsed` / `rows` **参与渲染**（`.is-collapsed` / `.fence-grid.rows-N`），默认值必须是
+  // 「不收起 + 自动」才录得出纯新增的基线 —— 想录别的状态用 `__MOCK_SAVE_UI__` 现改，**别改默认值**。
   const FENCE_FIXTURE = [
     {
       name: "游戏",
@@ -95,40 +75,29 @@
     },
   ];
 
-  // 最近：4 条，跨 工作 / 工具 / 游戏 三个围栏。不含 sys- —— useRecents() 会过滤掉
-  // （src/plugins/fence/recent/index.ts），过滤后不足 4 条 #fenceRecent 就不显示。
-  //
-  // ⚠️ 这份数组**按页可变**：recent_push 会就地 unshift，后续 recent_list 就返回新内容。
-  // 所以同一个测试文件里，断言过「最近」的用例必须自己保证顺序，不能假设开局那 4 条。
+  // 最近：不含 `sys-`（useRecents() 会过滤掉它们，过滤后不足 4 条 `#fenceRecent` 就**不渲染**）。
+  // ⚠️ 这份数组**按页可变**：recent_push 会就地 unshift，所以断言过「最近」的用例
+  // 必须自己保证顺序，不能假设开局那 4 条。
   const RECENT_FIXTURE = ["d-feishu-0", "d-cursor-0", "d-lol-0", "d-obsidian-0"];
 
   let config = structuredClone(defaultConfig);
   let callbackId = 1;
 
-  // 给 fence-watch.spec.ts 用：拿一份**克隆**去改，改不到基线那份。
-  // 直接暴露数组引用的话，测试里一 push 就同时污染了 style-audit 的输入。
+  // 给 fence-watch.spec.ts 用：**克隆**着改，改不到基线那份（暴露引用的话，一 push 就污染 style-audit 的输入）。
   window.__FENCE_FIXTURE__ = function () {
     return structuredClone(FENCE_FIXTURE);
   };
 
-  // ── 后端状态（Task 15 加的）─────────────────────────────────────────────
+  // ── 后端状态 ────────────────────────────────────────────────────────────
   // `liveFixture` 是**可变**的那一份：`fence_create` / `fence_rename` / `fence_delete`
-  // 的桩会就地改它，改完由 `__MOCK_PUSH__()` 推一帧给前端 —— 真机上这条链是
-  // 「ops 写桌面 → watcher 推 fence:changed」，mock 里就是这两步，别省。
-  //
-  // 与 `FENCE_FIXTURE` 分开是**必须**的：后者是样式基线的输入，
-  // 一旦被某个用例改脏，style-audit 会在不同状态之间随机飘。
+  // 的桩就地改它，改完由 `__MOCK_PUSH__()` 推一帧（真机是「ops 写桌面 → watcher 推 fence:changed」）。
+  // 与 `FENCE_FIXTURE` 分开是**必须**的：后者是样式基线的输入，被改脏会让 style-audit 在不同状态之间随机飘。
   let liveFixture = structuredClone(FENCE_FIXTURE);
-  // 首帧之前就把显示偏好摆好。**必须在渲染前**：先画成默认态再改，
-  // 样式审查会拍到中间那一帧（收缩态 / 自定义高度态两个基线就靠这个开关）。
+  // 显示偏好必须**在渲染前**摆好（先画默认态再改，样式审查会拍到中间那一帧）：
   //   page.addInitScript(() => { window.__MOCK_UI_PRESET__ = { 工作: { collapsed: true } } })
-  //
-  // ⚠️ **不能在这里就地读 `__MOCK_UI_PRESET__`**。本文件是 `addInitScript` 注册的
-  // 第一个脚本，测试体里再挂一个 `addInitScript` 去设这个开关时，执行顺序是
-  // 「mock 先、开关后」—— 在这里读**永远是 undefined**，而失败方式非常安静：
-  // 基线照样录，只是录到的是默认态。（`__MOCK_ICONS_VISIBLE_THROWS__` 没这个毛病，
-  // 它是 invoke **运行时**才读的。）所以推迟到第一次 invoke：那时所有 init script
-  // 都跑完了，而 `fence_list` 还没被问过，仍早于第一帧。
+  // ⚠️ **不能在这里就地读 `__MOCK_UI_PRESET__`**：本文件是第一个 init script，开关脚本排在
+  // 它后面，读**永远是 undefined** —— 且失败非常安静（基线照录，录的是默认态）。
+  // 所以推迟到第一次 invoke（那时 init script 都跑完了，且仍早于第一帧）。
   let uiPresetApplied = false;
   function applyUiPreset() {
     if (uiPresetApplied) return;
@@ -150,26 +119,16 @@
   };
 
   /**
-   * 每个 `invoke` 的记录，形如 `[{ cmd, args }]`。
-   *
-   * 为什么 e2e 需要它：**命令名**写错这件事，2026-09-14 起由 `default:` 的
-   * `throw` 自己兜住了（以前那里 `return {}`，写错也会「成功」）。但**参数名**
-   * 写错仍然看不出来 —— mock 只按命令名分发，根本不看 args。而「Tauri 2 的命令
-   * 参数默认是 camelCase」这条约束只有断言 args 才拦得住：写成 `new_name` 在真机上
-   * 会 invalid args，在 mock 里一切正常。`e2e/fence-menu.spec.ts` 就是为这个断的。
+   * 每个 `invoke` 的记录，形如 `[{ cmd, args }]`。命令名写错由 `default:` 的 throw 兜住，
+   * 但**参数名**写错仍看不出来 —— mock 只按命令名分发，不看 args。Tauri 2 的命令参数默认
+   * 是 camelCase：写成 `new_name` 真机会 invalid args、mock 里一切正常，只有断言 args 拦得住。
    */
   const mockCalls = [];
   window.__MOCK_CALLS__ = mockCalls;
 
   // ── 事件送达 ────────────────────────────────────────────────────────────
-  // 真机上「后端 emit → 前端 listen 回调」是 Rust 注入的脚本干的
-  // （`window.__TAURI_INTERNALS__.runCallback(handlerId, eventData)`，
-  //  tauri-2.11.5/src/event/mod.rs 的 event_initialization_script）。mock 里
-  // 没有那个脚本，所以这几行是它的替代品 —— Task 13 起 `fence:changed` 要走
-  // 这条路进前端，之前 `plugin:event|listen` 直接 `return 1` 吞掉回调，
-  // 事件根本送不到。
-  //
-  // 改这里**不会**影响样式基线：只加回调登记，DOM 形状一个字节没动。
+  // 真机上「后端 emit → 前端 listen 回调」由 Rust 注入的脚本完成（mock 里没有），这几行是
+  // 它的替代品 —— 缺了它 `fence:changed` 根本送不到前端。只加回调登记，不动 DOM 形状。
   const callbacks = new Map();
   const eventListeners = []; // { eventId, event, handlerId }
   let eventIdSeq = 0;
@@ -178,10 +137,7 @@
     unregisterListener: function () {},
   };
 
-  /**
-   * 模拟一次后端 emit。返回**实际送达的回调数** —— 测试断言它 ≥ 1，
-   * 这样「桥断了」会当场红，而不是安静地什么都没发生。
-   */
+  /** 模拟一次后端 emit。返回**实际送达的回调数** —— 测试断言它 ≥ 1，「桥断了」才会当场红。 */
   window.__deskEmit = function (event, payload) {
     let n = 0;
     for (const l of eventListeners.slice()) {
@@ -194,11 +150,7 @@
     return n;
   };
 
-  /**
-   * 把「后端当前这一帧」推给前端 —— 真机上这是 watcher 干的活
-   * （`watch.rs:29` 是全仓**唯一**发出 `fence:changed` 的地方）。
-   * 返回送达的回调数，测试断言它 ≥ 1，免得「桥断了」被当成「界面没更新」。
-   */
+  /** 把「后端当前这一帧」推给前端 —— 真机上这是 watcher 干的活。返回送达的回调数。 */
   window.__MOCK_PUSH__ = function () {
     return window.__deskEmit("fence:changed", structuredClone(liveFixture));
   };
@@ -220,41 +172,28 @@
       args = args || {};
       // 第一次被问就把显示偏好落到 liveFixture 上（见上方 applyUiPreset 的 ⚠️）。
       applyUiPreset();
-      // 浅拷贝，不用 structuredClone：args 里可能有 Tauri 的回调句柄等
-      // 不可克隆的东西，一次抛错就会把整个 mock 打死（那是 e2e 全红，不是一条失败）。
+      // 浅拷贝，不用 structuredClone：args 里可能有 Tauri 的回调句柄等不可克隆的东西，
+      // 一次抛错会把整个 mock 打死（那是 e2e 全红）。记录先写、再抛，断言里仍能看到调用。
       mockCalls.push({ cmd: cmd, args: Object.assign({}, args) });
-      // 让指定命令失败。弹窗那条路（`alert` 报错）在真机上只有后端出错才走得到，
-      // 没有这个开关就等于没有护栏。与 `__MOCK_ICONS_VISIBLE_THROWS__` 同一套路：
-      // 记录先写、再抛，所以断言里仍能看到「这个命令被调过」。
+      // 让指定命令失败：弹窗那条路（`alert` 报错）真机上只有后端出错才走得到，没这开关就没护栏。
       if ((window.__MOCK_FAIL_CMDS__ || []).indexOf(cmd) !== -1) {
         throw new Error("mock: " + cmd + " 故意失败");
       }
       switch (cmd) {
-        // ── 宿主基础命令（2026-09-14 补）────────────────────────────────────
-        // 这四条原先**一条 case 都没有**，全靠 `default` 兜底静默返回。各条的后果
-        // 都不一样，且都不响：
-        //   · `autostart_get` 拿到 `{}` —— JS 里 **truthy**，于是「开机自启」按钮
-        //     在 e2e 里永远是「开」；样式基线把 `{}` 这个谎话录成了 `.icon-btn.on`。
-        //   · `boot_mark` 拿到 `{}`（真机是 null），冷启动埋点等于没测。
-        //   · `sys_res_snapshot` 拿到 `{}`，被 `normalizeSnapshot` 兜成一张全 0 空表。
+        // ── 宿主基础命令 ───────────────────────────────────────────────────
         case "boot_mark":
           // Rust: `Result<(), String>` —— 成功就是 null。
           return null;
         case "autostart_get":
-          // Rust: `app.autolaunch().is_enabled()` → bool。
-          // 取 `true` 不是随手挑的：**真机就是 true** —— `lib.rs` 启动 3 秒后
-          // 无条件 `mgr.enable()` 重新登记（除非用户写了 autostart-off 标志）。
-          // 顺带保住 `.icon-btn.on` 这条样式分支的基线覆盖：改成 false 会让 8 份
-          // 基线全红，而且 `.on` 从此没有任何基线在看。
+          // Rust: `app.autolaunch().is_enabled()` → bool。**真机就是 true**（`lib.rs` 启动 3 秒后
+          // 无条件重新登记）；改成 false 会让 8 份基线全红，且 `.icon-btn.on` 从此没有覆盖。
           return true;
         case "autostart_set":
           // Rust: 改完回读 `is_enabled()`，返回**新状态**（不是入参）。
           return !!args.enabled;
         case "sys_res_snapshot":
-          // Rust `SysResSnapshotDto`（`sys_res.rs:17`）**没有 serde rename**，
-          // 所以字段就是 snake_case。这里给一张**有内容**的表，不用全 0 空表：
-          // 全 0 正是 `normalizeSnapshot(undefined)` 的输出，画出来和「没接通」一样，
-          // 等于换个方式继续糊。
+          // Rust DTO **没有 serde rename**，字段就是 snake_case。给一张**有内容**的表：
+          // 全 0 正是 `normalizeSnapshot(undefined)` 的输出，画出来和「没接通」一样。
           return {
             mem_used_bytes: 12884901888,
             mem_total_bytes: 34359738368,
@@ -361,9 +300,7 @@
           });
           return config;
         case "set_keyboard_input":
-          // `__MOCK_KEYBOARD_DELAY_MS__` 把「借键盘」这条 IPC 拖慢 —— 用来验
-          // 「租约没到手就不渲染对话框」。真机上这个往返是真有耗时的，只是快；
-          // 不拖慢的话「先渲染后借」和「先借后渲染」在 e2e 里看不出区别。
+          // `__MOCK_KEYBOARD_DELAY_MS__` 拖慢「借键盘」这条 IPC，用来验「租约没到手就不渲染对话框」。
           if (window.__MOCK_KEYBOARD_DELAY_MS__) {
             await new Promise(function (r) {
               setTimeout(r, window.__MOCK_KEYBOARD_DELAY_MS__);
@@ -453,24 +390,14 @@
           };
         case "fence_list":
         case "fence_rescan":
-          // 两个命令返回同一份数据是刻意的：它们读的都是「同一批围栏」，
-          // 数据不一致的话样式审查会在两个状态之间随机飘。
-          // （旧版的 `fence_takeover` 随 Task 10 删掉了 —— 现在读源是真桌面，
-          //  `fence_rescan` 只是「重扫一遍」，结论仍是这份数据。）
-          //
-          // 返回 `liveFixture`（不是 FENCE_FIXTURE）：ops 改完后端状态之后，
-          // 任何一次重读都该看到新结果（Task 15）。开局两者内容相同。
+          // 两个命令返回同一份数据是刻意的：数据不一致的话样式审查会在两个状态之间随机飘。
+          // 返回 `liveFixture`（不是 FENCE_FIXTURE）：ops 改完后端状态后，重读该看到新结果。
           return structuredClone(liveFixture);
         case "fence_save_order": {
-          // 拖拽重排（2026-09-13 起常态可用）。**桩必须真的重排 `liveFixture`**：
-          // 真机上这条命令写 `fence.json` 的归属与 order，再 `collect_fences()`
-          // 回吐**重排后**的看板，而前端 `persistOrder` 是拿这个返回值直接
-          // setFences 的 —— 桩回吐一份没重排的，会把前端刚做的乐观更新顶掉，
-          // 症状是「拖完图标自己弹回去」。那是个**只在 mock 里存在**的假失败，
-          // 正是文件头警告的那类坑。
-          //
-          // 语义对齐 `fence_save_order`（src/fence/mod.rs:623）：只认 `layout` 里
-          // 提到的那些 id 的**归属**，`sys-` 项不参与重排（后端 `continue` 掉它们）。
+          // **桩必须真的重排 `liveFixture`**：真机回吐的是**重排后**的看板，而前端
+          // `persistOrder` 拿返回值直接 setFences —— 回吐没重排的会把乐观更新顶掉，
+          // 症状是「拖完图标自己弹回去」（**只在 mock 里存在的假失败**）。
+          // 语义对齐后端：只认 `layout` 里提到的 id 的**归属**，`sys-` 项不参与重排。
           const layout = Array.isArray(args.layout) ? args.layout : [];
           const byId = new Map();
           liveFixture.forEach(function (f) {
@@ -490,8 +417,7 @@
               })
               .filter(Boolean);
           });
-          // 没被 layout 认领的项（`sys-` 全在这一类里）留在原栏末尾 ——
-          // 一次拖拽把别的图标弄丢的话，断言会变成很难读的「图标不见了」。
+          // 没被 layout 认领的项（`sys-` 全在这一类里）留在原栏末尾。
           const claimed = new Set();
           Object.keys(next).forEach(function (n) {
             next[n].forEach(function (it) {
@@ -509,32 +435,27 @@
           });
           return structuredClone(liveFixture);
         }
-        // 显示偏好（收起 / 高度，2026-09-13）。与 `fence_save_order` 一样，
-        // **返回一帧新看板**而不是 null —— 真机上这条链是
-        // 「前端乐观改 → invoke → 用返回值对齐」，返回 null 的话
-        // `normalizeFences(undefined)` 会把整个看板清空（那是 mock 特有的假失败）。
-        //
-        // ⚠️ **不推 `fence:changed`**：这条命令改的是 `fence.json`（看板自己的偏好），
-        // 不是桌面，真机上的 watcher 也不会为它响。所以前端只能靠返回值更新 ——
-        // 这正是 `useMenuIo` 那个 `ui` 参数存在的原因，别在这里"顺手"补一次推送。
+        // 显示偏好（收起 / 高度）。与 `fence_save_order` 一样**返回一帧新看板**而不是 null ——
+        // 真机这条链是「前端乐观改 → invoke → 用返回值对齐」，返回 null 的话
+        // `normalizeFences(undefined)` 会把整个看板清空（mock 特有的假失败）。
+        // ⚠️ **不推 `fence:changed`**：这条命令改的是 `fence.json` 不是桌面，真机 watcher
+        // 也不会为它响 —— 前端只能靠返回值更新（`useMenuIo` 那个 `ui` 参数的由来）。
         case "fence_save_ui": {
           if (window.__MOCK_SAVE_UI_THROWS__) throw new Error("mock: 显示偏好写入失败");
           const name = String(args.name || "");
           const host = liveFixture.find(function (f) {
             return f.name === name;
           });
-          // 真机上是 `meta::load()` 后按键查表，给一个不存在的名字**不会**报错
-          // （entries 里加一条就是了）。mock 这里抛是为了让"名字传错了"立刻炸 ——
-          // 静默成功的话，用例会断言到一个**根本没生效**的状态上。
+          // 真机给不存在的名字**不会**报错；mock 抛是为了让「名字传错了」立刻炸 ——
+          // 静默成功的话用例会断言到一个**根本没生效**的状态上。
           if (!host) throw new Error("mock: 没有这个围栏 " + name);
-          // `null` = 不改这一项（后端那两个参数是 `Option<T>`）；`rows: 0` = 回到自动。
+          // `null` = 不改这一项；`rows: 0` = 回到自动。
           if (args.collapsed != null) host.collapsed = Boolean(args.collapsed);
           if (args.rows != null) host.rows = Math.max(0, Number(args.rows) || 0);
           return structuredClone(liveFixture);
         }
-        // ── Task 14/15 的十个文件操作命令 ────────────────────────────────
-        // 参数名按**真机**的 camelCase 写（Tauri 2 默认 camelCase）。桩本身很简单，
-        // 但它是「前端发的参数名对不对」这条断言的落点 —— 见 e2e/fence-menu.spec.ts。
+        // ── 文件操作命令 ───────────────────────────────────────────────────
+        // 参数名按**真机**的 camelCase 写 —— 这几个桩是「前端发的参数名对不对」的落点。
         case "fence_launch":
         case "fence_open_with":
         case "fence_reveal":
@@ -546,19 +467,18 @@
           // 只记录调用（已经记在 __MOCK_CALLS__ 里），不改后端状态。
           return null;
         case "fence_create": {
-          // 真机上落到桌面、由 `index.rs` 的 classify 决定进哪个围栏；mock 不模拟
-          // 分类，固定塞进「工作」—— 用例只断言「新项出现在看板上」，不关心落哪一栏。
+          // 真机由后端 classify 决定进哪个围栏；mock 固定塞进「工作」（用例不关心落哪一栏）。
           const name = String(args.name || "");
           const kind = String(args.kind || "");
           const ext = kind === "folder" ? "" : kind === "lnk" ? ".lnk" : ".txt";
-          // 与 `ops::with_ext`（ops.rs:223）同规则：自己带了扩展名就不叠第二层。
+          // 与后端同规则：自己带了扩展名就不叠第二层。
           const fileName =
             !ext || name.toLowerCase().endsWith(ext) ? name : name + ext;
           createdSeq += 1;
           const created = {
-            // 真机的 id 是 `meta::key(origin, file_name)`；mock 用一个不会撞的序号。
+            // 真机的 id 是 `meta::key(origin, file_name)`；mock 用不会撞的序号就够。
             id: "d-new-" + createdSeq,
-            // 看板上文件的 label **没有扩展名**（index.rs:74 取的是 file_stem）。
+            // 看板上文件的 label **没有扩展名**（真机取的是 file_stem）。
             label: ext === ".txt" ? name.replace(/\.txt$/i, "") : name,
             path: "C:\\Desktop\\" + fileName,
             icon: null,
@@ -578,7 +498,7 @@
               if (it.path !== oldPath) return;
               const cut = oldPath.lastIndexOf("\\");
               it.path = (cut < 0 ? "" : oldPath.slice(0, cut + 1)) + newName;
-              // label 同样按 file_stem 规则（开头的点不是扩展名，同 ops::split_name）。
+              // label 同样按 file_stem 规则（开头的点不是扩展名，同后端 split_name）。
               const dot = newName.lastIndexOf(".");
               it.label = dot > 0 ? newName.slice(0, dot) : newName;
             });
@@ -594,9 +514,8 @@
           });
           return null;
         }
-        // 桌面图标开关。`__MOCK_ICONS_VISIBLE_THROWS__` 让测试能主动制造
-        // 「开关读写失败」—— `warn` 态基线就是靠它触发的。默认 falsy，
-        // 所以默认态 / 搜索态仍然是「一切正常」。
+        // 桌面图标开关。`__MOCK_ICONS_VISIBLE_THROWS__` 让测试能主动制造「开关读写失败」
+        // （`warn` 态基线靠它触发）；默认 falsy，默认态照旧「一切正常」。
         case "fence_icons_visible":
           if (window.__MOCK_ICONS_VISIBLE_THROWS__) {
             throw new Error("mock: 读写桌面图标开关失败");
@@ -607,9 +526,8 @@
             throw new Error("mock: 读写桌面图标开关失败");
           }
           return !!args.visible;
-        // `__MOCK_RECENT_EMPTY__` 模拟「首次运行 / 删掉 recent-launches.json」：
-        // 空列表既不能报错，也不能让 #fenceRecent 留一个空壳（旧代码用
-        // `recents.length > 0 ? … : null` 挡住的那个洞）。
+        // `__MOCK_RECENT_EMPTY__` 模拟「首次运行」：空列表既不能报错，
+        // 也不能让 `#fenceRecent` 留一个空壳。
         case "recent_list":
           return window.__MOCK_RECENT_EMPTY__ ? [] : RECENT_FIXTURE.slice();
         case "recent_push": {
@@ -638,16 +556,10 @@
             hint: "mock",
           };
         default:
-          // ⚠️ **不许有兜底返回值。**
-          //
-          // 这里原先按 `/_list$/ → []`、`/_snapshot$/ → {}`、其余 `{}` 静默返回。
-          // 后果是：「这条命令没被 mock」与「这条命令真返回了空」在 e2e 里**完全一样** ——
-          // 面板拿着一个后端永远不会产生的形状去渲染，测试照样绿。
-          // 排查时看不出，加命令时也不会有人想起来补。
-          //
-          // 现在未覆盖就炸，把静默失败变成响亮失败。两条出路：
-          //   · 这是前端真会调的命令 → 在下面补一个 `case`，**写出真实形状**；
-          //   · 这条命令根本不该被调 → 那是前端的 bug，让它炸出来。
+          // ⚠️ **不许有兜底返回值 —— 未 mock 的命令必须炸出来。** 静默返回 `{}` 会让
+          // 「没 mock」与「真返回空」在 e2e 里完全一样：面板拿着后端永远不产生的形状渲染，
+          // 测试全绿而真机 `permission denied`。两条出路：前端真会调 → 补一个写出真实
+          // 形状的 case；根本不该被调 → 那是前端 bug，让它炸。
           throw new Error(
             "mock 未覆盖命令: " +
               cmd +

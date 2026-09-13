@@ -12,8 +12,8 @@ import type {
 
 /** permission → allowed Tauri command names
  *
- * 值的类型是 `CommandName`（由 `src-tauri/build.rs` 从 Rust 注册表生成），
- * 不是 `string` —— 所以在这里写一个后端不存在的命令名是 `tsc` 错误。 */
+ * 值是 `CommandName`（build.rs 生成）：写**错**名字是 `tsc` 错误。⚠️ 但表是手写的，
+ * **漏**一条只有运行时才炸（`permission denied`，`tsc` 与单测都看不见）。 */
 const PERM_COMMANDS: Record<PluginPermission, CommandName[]> = {
   "github.read": ["github_snapshot", "github_cached"],
   "github.write": ["github_set_token"],
@@ -25,15 +25,9 @@ const PERM_COMMANDS: Record<PluginPermission, CommandName[]> = {
     "fence_rescan",
     "fence_restore",
     "fence_save_order",
-    // 显示偏好（收起 / 高度，2026-09-13）。**这张表是手写的白名单，
-    // 漏一个的症状是 `permission denied: <命令名>` —— 而且是在**运行时**才炸
-    // （`tsc` 与单测都看不见），前端还把它当成「落盘失败」回滚 + 弹窗。
-    // 加后端命令时记得同时看这里。
     "fence_save_ui",
     "fence_set_icons_visible",
-    // Task 14 的右键文件操作。**刻意不新开一个权限位**：`fence.write` 现在的含义
-    // 已经包含比删除更重的动作（`fence_restore` 就是迁移 34 个真文件），
-    // 再切一层 `fence.ops` 只会让三处各长一截，而权限边界一点没变。
+    // 文件操作**刻意复用 `fence.write`**，不另开权限位 —— 权限边界没变，只会多一截名单。
     "fence_create",
     "fence_rename",
     "fence_delete",

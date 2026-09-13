@@ -1,17 +1,8 @@
 /**
- * ⚠️ **生成物 —— 不要手改。**
- *
- * 由 `src-tauri/build.rs` 从 `src-tauri/src/lib.rs` 的 `generate_handler![...]`
- * 解析而来（解析器在 `src-tauri/cmd_manifest.rs`）。手改会在下一次 cargo 构建时
- * 被原样覆盖。
- *
- * ## 为什么要有这个文件
- *
- * 命令名原先散在三处手写清单里 —— Rust 的注册表、`src/host/api.ts` 的
- * `PERM_COMMANDS`、`e2e/tauri-mock.js` 的 `case` —— 三者之间没有任何校验，
- * 漏一处只在**运行时**才炸（`permission denied` / mock 静默返回空）。
- *
- * 现在注册表是唯一真相：拼错命令名在这里是 `tsc` 错误，不是线上故障。
+ * ⚠️ **生成物 —— 不要手改**（手改会在下一次 cargo 构建时被原样覆盖）。
+ * 由 `src-tauri/build.rs` 从 `src-tauri/src/lib.rs` 的 `generate_handler![...]` 解析而来，
+ * 解析器在 `src-tauri/cmd_manifest.rs`；新鲜度由 `manifest_tests.rs` 的比对守。
+ * 注册表是唯一真相，所以拼错命令名在这里是 `tsc` 错误，不是线上故障。
  */
 
 export const COMMANDS = [
