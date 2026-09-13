@@ -11,19 +11,30 @@ const sample: FenceGroup[] = [
   {
     name: "游戏",
     items: [
-      { id: "1", label: "英雄联盟", path: "C:/lol.exe", icon: null },
-      { id: "2", label: "Other", path: "C:/o.exe", icon: null },
+      { id: "1", label: "英雄联盟", path: "C:/lol.exe", icon: null, isDir: false },
+      { id: "2", label: "Other", path: "C:/o.exe", icon: null, isDir: false },
     ],
   },
   {
     name: "工具",
-    items: [{ id: "3", label: "飞书", path: "C:/feishu.exe", icon: null }],
+    items: [{ id: "3", label: "飞书", path: "C:/feishu.exe", icon: null, isDir: false }],
   },
 ];
 
 describe("normalizeFences", () => {
   it("null-safe", () => {
     expect(normalizeFences(null)).toEqual([]);
+  });
+
+  it("is_dir 缺字段 / 写成字符串都算「不是目录」", () => {
+    const [f] = normalizeFences([
+      { name: "文件夹", items: [
+        { id: "a", label: "下载", path: "C:/下载", icon: null, is_dir: true },
+        { id: "b", label: "无字段", path: "C:/b", icon: null },
+        { id: "c", label: "字符串", path: "C:/c", icon: null, is_dir: "true" },
+      ] },
+    ]);
+    expect(f.items.map((i) => i.isDir)).toEqual([true, false, false]);
   });
 });
 

@@ -5,6 +5,12 @@ export type FenceItem = {
   label: string;
   path: string;
   icon: string | null;
+  /** 是不是目录。后端算好的（`index.rs:73` → DTO 的 `is_dir`）——
+      前端**不能**自己猜：`label` 里文件的扩展名已经被后端去掉了，
+      而目录名带点是常事，`path` 后缀和 `label` 两条猜法都会错。
+      必填（不是可选）：生产端只有 `normalizeFenceItem` 一个构造点，
+      可选会让 `undefined` 悄悄流进右键菜单的判定。 */
+  isDir: boolean;
 };
 
 export type FenceGroup = {
@@ -18,6 +24,15 @@ export type FenceLayout = {
 };
 
 export const DRAG_THRESHOLD_PX = 6;
+
+/**
+ * 系统围栏那两项的 id 前缀（`sys-recycle` / `sys-pc`，见后端 `system_shell_items`）。
+ *
+ * 它是**跨模块的约定**（右键菜单靠它区分「系统项」与普通项），所以收成一个常量
+ * 而不是三处各写一遍字面量 —— 一旦这里和后端不一致，症状是「回收站的菜单里
+ * 出现了删除」，而那种 bug 读代码是读不出来的。
+ */
+export const SYS_ID_PREFIX = "sys-";
 
 export const SEARCH_ALIASES: Record<string, string[]> = {
   英雄联盟: ["lol", "yxlm", "联盟", "league"],
@@ -41,6 +56,9 @@ export function normalizeFenceItem(raw: unknown): FenceItem | null {
     label: asString(o.label),
     path: asString(o.path),
     icon: o.icon == null ? null : asString(o.icon),
+    // 线上是 snake_case：`FenceItemDto` 没有 `#[serde(rename_all)]`（mod.rs:29）。
+    // 只认字面 `true` —— 缺字段 / 写成字符串都算「不是目录」，与后端默认一致。
+    isDir: o.is_dir === true,
   };
 }
 
@@ -112,10 +130,10 @@ export function applyLayout(fences: FenceGroup[], layout: FenceLayout[]): FenceG
     const items = row.ids
       .map((id) => byId.get(id))
       .filter((x): x is FenceItem => !!x && !x.id.startsWith("sys-"));
-    const sys = f.items.filter((i) => i.id.startsWith("sys-"));
+    const sys = f.items.filter((i) => i.id.startsWith(SYS_ID_PREFIX));
     const seen = new Set(items.map((i) => i.id));
     for (const i of f.items) {
-      if (!i.id.startsWith("sys-") && !seen.has(i.id)) items.push(i);
+      if (!i.id.startsWith(SYS_ID_PREFIX) && !seen.has(i.id)) items.push(i);
     }
     return { name: f.name, items: [...items, ...sys] };
   });

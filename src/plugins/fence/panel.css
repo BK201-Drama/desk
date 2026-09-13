@@ -17,3 +17,126 @@
   line-height: 1.4;
   word-break: break-all;
 }
+
+/* ── 右键菜单（Task 15）────────────────────────────────────────────────────
+   结构与 class 名在子计划 §2 定死了，e2e 与样式基线都依赖它：
+
+     .fence-menu                        容器，fixed
+       ul
+         li.fence-menu-sep              分隔线
+         li.fence-menu-li               一条
+           button.fence-menu-item[data-menu-id]
+           .fence-menu-sub              子菜单，fixed，悬浮时才渲染
+
+   三条**不能改**的约束：
+
+   1. 颜色变量定义在 `.fence-menu` 上，子菜单靠**继承**拿到 —— 子菜单是它的 DOM 后代。
+   2. `.fence-menu` 上**不许**加 `backdrop-filter` / `filter` / `transform`：
+      它们会让 `.fence-menu` 成为 fixed 后代的包含块，而子菜单正是它的 fixed 后代，
+      于是子菜单那对按 `.board` 算出来的 `left`/`top` 会被解释成「相对菜单的偏移」，
+      整個跑到错的地方。所以背景用不透明色，不做毛玻璃。
+   3. 位置（`left`/`top`）由 JS 按实测的缩放写成内联样式，CSS 这一侧不碰 ——
+      写死任何坐标都会在 `--desk-zoom` 变化时悄悄偏掉。 */
+.pane-fences .fence-menu {
+  --menu-bg: rgba(252, 253, 255, 0.985);
+  --menu-line: rgba(26, 35, 50, 0.14);
+  --menu-hover: rgba(45, 106, 79, 0.11);
+  --menu-shadow: 0 10px 28px rgba(26, 35, 50, 0.18);
+
+  position: fixed;
+  /* 40 必须压过 `.slot-overlay` 的 30（styles.css:92）。`#slot-right` 与
+     `.pane-fences` 都是静态定位，所以这里是在 `.board` 的层叠上下文里直接比大小，
+     中间没有任何局部上下文 —— 不需要（也不该）改全局层级定义。 */
+  z-index: 40;
+  min-width: 132px;
+  padding: 4px;
+  border-radius: 10px;
+  background-color: var(--menu-bg);
+  border: 1px solid var(--menu-line);
+  box-shadow: var(--menu-shadow);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  .pane-fences .fence-menu {
+    --menu-bg: rgba(24, 30, 40, 0.985);
+    --menu-line: rgba(255, 255, 255, 0.14);
+    --menu-hover: rgba(255, 255, 255, 0.1);
+    --menu-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  }
+}
+
+.pane-fences .fence-menu ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 条目**刻意**不定位 —— 这不是漏写。子菜单是 fixed，它的包含块必须落在 `.board` 上；
+   一旦这里写成 `position: relative`，包含块就挪进了 `.pane-fences`
+   （`overflow: hidden`，styles.css:184）里面，向左展开的子菜单会被 pane 的左边缘切掉。 */
+.pane-fences .fence-menu-li {
+  position: static;
+}
+
+.pane-fences .fence-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pane-fences .fence-menu-item:hover,
+.pane-fences .fence-menu-item:focus-visible {
+  background-color: var(--menu-hover);
+}
+
+.pane-fences .fence-menu-item:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* 今天没有任何一项会走到这里（`enabled` 恒为 true，可用性一律用「不在菜单里」表达）。
+   留着是因为它是未来「只读项」这类局部禁用的唯一落点。 */
+.pane-fences .fence-menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pane-fences .fence-menu-label {
+  flex: 1 1 auto;
+}
+
+.pane-fences .fence-menu-arrow {
+  flex: 0 0 auto;
+  opacity: 0.5;
+}
+
+.pane-fences .fence-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background-color: var(--menu-line);
+}
+
+.pane-fences .fence-menu-sub {
+  position: fixed;
+  /* 不必设 z-index：它是 `.fence-menu` 那个层叠上下文里的一个**定位**后代，
+     定位元素本来就画在所有静态内容之上（`.fence-menu-li` 是 static）。 */
+  min-width: 124px;
+  padding: 4px;
+  border-radius: 10px;
+  background-color: var(--menu-bg);
+  border: 1px solid var(--menu-line);
+  box-shadow: var(--menu-shadow);
+}

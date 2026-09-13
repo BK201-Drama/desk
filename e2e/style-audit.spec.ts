@@ -219,6 +219,36 @@ async function openBoard(page: Page) {
   await expect(page.locator("#fenceRecent")).toBeVisible();
 }
 
+/**
+ * 在「工具」围栏的 Cursor 上开右键菜单（Task 15 的两个菜单态都要它）。
+ *
+ * 两点是**为了可复现**而不是随手写的：
+ *   · `:not(#fenceRecent)` —— 那一行的 `.fence-app` 用的是同一套 `data-id`，
+ *     不过滤的话 querySelector 会挑到「最近」那一份（同一个条目，但位置不同）。
+ *   · 点击点写死 (900, 300) —— 菜单坐标由 JS 按实测缩放写成内联样式，
+ *     不固定点击点就录不到确定的值（而且在右下角会被 clamp 拉回去）。
+ */
+async function openContextMenu(page: Page) {
+  await page.evaluate(() => {
+    const el = document.querySelector(
+      '#fences .fence:not(#fenceRecent) .fence-app[data-id="d-cursor-0"]'
+    );
+    if (!el) throw new Error("找不到 d-cursor-0");
+    el.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        button: 2,
+        clientX: 900,
+        clientY: 300,
+      })
+    );
+  });
+  // 摆位是在 useLayoutEffect 里完成的：先在 visibility:hidden 下量尺寸再定位。
+  // 等它可见 = 等摆位完成，否则录到的是一份还没定位的菜单。
+  await expect(page.locator('[data-testid="fence-menu"]')).toBeVisible();
+}
+
 test.describe("样式审查（fence 重构护栏）", () => {
   test("默认态", async ({ page }) => {
     await openBoard(page);
@@ -279,5 +309,60 @@ test.describe("样式审查（fence 重构护栏）", () => {
       "警告条没进快照，warn 态等于空护栏"
     ).toBe(true);
     check("warn", snap);
+  });
+
+  /**
+   * 右键菜单态 —— Task 15 新增的 UI，必须单开状态录（GOAL §4.5）。
+   *
+   * 选中**文件**条目（d-cursor-0）而不是空白或 sys：文件那一档的项最多
+   * （打开 / 打开方式 / 在资源管理器中显示 / 剪切 / 复制 / 重命名 / 删除 /
+   * 发送到 ▸ / 属性），一个状态就把菜单项、分隔线、子菜单入口全录进去了。
+   *
+   * 点击点固定 (900, 300)：菜单是 `position: fixed` 且坐标由 JS 写成内联样式，
+   * 只有固定点击点才能录到确定的值。`rect-w/h` 也不受影响 —— GEOMETRY 白名单里
+   * 没有 `.fence-menu`（它的宽度是内容驱动的，`min-width` 已由 padding /
+   * font-size 这些属性间接覆盖了）。
+   */
+  test("右键菜单态", async ({ page }) => {
+    await openBoard(page);
+    await openContextMenu(page);
+    const snap = await snapshot(page);
+    expect(Object.keys(snap).length).toBeGreaterThan(MIN_ELEMENTS);
+    // 这个状态存在的意义就是那个菜单。录不到它 = 录了个假的菜单态。
+    expect(
+      Object.keys(snap).some((k) => k.includes("fence-menu")),
+      "菜单没进快照，menu 态等于空护栏"
+    ).toBe(true);
+    check("menu", snap);
+  });
+
+  /**
+   * 子菜单展开态。**必须单独录**：子菜单只在悬停时渲染，它那套
+   * padding / border / background / min-width 在 `menu` 态里一个元素都没有。
+   */
+  test("右键菜单 · 子菜单展开态", async ({ page }) => {
+    await openBoard(page);
+    await openContextMenu(page);
+    // 用派发 pointerover 而不是 page.hover()：真实鼠标会把 :hover 带到
+    // 条目上，录到的 background-color 就取决于鼠标最后停在哪 —— 那是不确定量。
+    await page.evaluate(() => {
+      const el = document.querySelector('[data-menu-id="send-to"]');
+      if (!el) throw new Error("菜单里没有 send-to");
+      el.dispatchEvent(
+        new PointerEvent("pointerover", {
+          bubbles: true,
+          cancelable: true,
+          relatedTarget: document.body,
+        })
+      );
+    });
+    await expect(page.locator('[data-testid="fence-menu-sub"]')).toBeVisible();
+    const snap = await snapshot(page);
+    expect(Object.keys(snap).length).toBeGreaterThan(MIN_ELEMENTS);
+    expect(
+      Object.keys(snap).some((k) => k.includes("fence-menu-sub")),
+      "子菜单没进快照，menu-sub 态等于空护栏"
+    ).toBe(true);
+    check("menu-sub", snap);
   });
 });

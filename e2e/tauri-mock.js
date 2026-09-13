@@ -23,48 +23,53 @@
   //   游戏 / 工具  → --fence-rows: 3   (styles.css:1084-1086)
   //   工作 / 系统  → --fence-rows: 1   (styles.css:1088-1090)
   //   最近         → #fenceRecent:not([hidden])，4 列 1 行 (styles.css:1236-1244)
+  //
+  // `is_dir` 是 Task 15 加的：右键菜单靠它决定「打开方式」出不出现。
+  // 它**不参与渲染**（没有任何 class / data 属性读它），所以补这个字段
+  // 不会动样式基线 —— 加完请跑一次 `npm run test:style` 复核三个基线零 diff。
+  // 真机线上一定有这个字段（serde 无条件序列化 bool），所以每个条目都写全。
   const FENCE_FIXTURE = [
     {
       name: "游戏",
       items: [
-        { id: "d-lol-0", label: "英雄联盟", path: "C:\\Desktop\\英雄联盟.lnk", icon: null },
-        { id: "d-cs2-0", label: "counter-strike 2", path: "C:\\Desktop\\counter-strike 2.lnk", icon: null },
-        { id: "d-cf-0", label: "穿越火线", path: "C:\\Desktop\\穿越火线.lnk", icon: null },
-        { id: "d-dst-0", label: "饥荒联机版", path: "C:\\Desktop\\饥荒联机版.lnk", icon: null },
-        { id: "d-terraria-0", label: "Terraria", path: "C:\\Desktop\\Terraria.lnk", icon: null },
+        { id: "d-lol-0", label: "英雄联盟", path: "C:\\Desktop\\英雄联盟.lnk", icon: null, is_dir: false },
+        { id: "d-cs2-0", label: "counter-strike 2", path: "C:\\Desktop\\counter-strike 2.lnk", icon: null, is_dir: false },
+        { id: "d-cf-0", label: "穿越火线", path: "C:\\Desktop\\穿越火线.lnk", icon: null, is_dir: false },
+        { id: "d-dst-0", label: "饥荒联机版", path: "C:\\Desktop\\饥荒联机版.lnk", icon: null, is_dir: false },
+        { id: "d-terraria-0", label: "Terraria", path: "C:\\Desktop\\Terraria.lnk", icon: null, is_dir: false },
       ],
     },
     {
       name: "工具",
       items: [
-        { id: "d-cursor-0", label: "Cursor", path: "C:\\Desktop\\Cursor.lnk", icon: null },
-        { id: "d-gitbash-0", label: "Git Bash", path: "C:\\Desktop\\Git Bash.lnk", icon: null },
-        { id: "d-pwsh-0", label: "PowerShell", path: "C:\\Desktop\\PowerShell.lnk", icon: null },
-        { id: "d-taskmgr-0", label: "任务管理器", path: "C:\\Desktop\\任务管理器.lnk", icon: null },
+        { id: "d-cursor-0", label: "Cursor", path: "C:\\Desktop\\Cursor.lnk", icon: null, is_dir: false },
+        { id: "d-gitbash-0", label: "Git Bash", path: "C:\\Desktop\\Git Bash.lnk", icon: null, is_dir: false },
+        { id: "d-pwsh-0", label: "PowerShell", path: "C:\\Desktop\\PowerShell.lnk", icon: null, is_dir: false },
+        { id: "d-taskmgr-0", label: "任务管理器", path: "C:\\Desktop\\任务管理器.lnk", icon: null, is_dir: false },
       ],
     },
     {
       name: "工作",
       items: [
-        { id: "d-feishu-0", label: "飞书", path: "C:\\Desktop\\飞书.lnk", icon: null },
-        { id: "d-paper-0", label: "文献批量阅读助手", path: "C:\\Desktop\\文献批量阅读助手.lnk", icon: null },
-        { id: "d-yuque-0", label: "语雀", path: "C:\\Desktop\\语雀.lnk", icon: null },
-        { id: "d-obsidian-0", label: "Obsidian", path: "C:\\Desktop\\Obsidian.lnk", icon: null },
+        { id: "d-feishu-0", label: "飞书", path: "C:\\Desktop\\飞书.lnk", icon: null, is_dir: false },
+        { id: "d-paper-0", label: "文献批量阅读助手", path: "C:\\Desktop\\文献批量阅读助手.lnk", icon: null, is_dir: false },
+        { id: "d-yuque-0", label: "语雀", path: "C:\\Desktop\\语雀.lnk", icon: null, is_dir: false },
+        { id: "d-obsidian-0", label: "Obsidian", path: "C:\\Desktop\\Obsidian.lnk", icon: null, is_dir: false },
       ],
     },
     {
       name: "文件夹",
       items: [
-        { id: "d-downloads-0", label: "下载", path: "C:\\Desktop\\下载", icon: null },
-        { id: "d-proj-0", label: "项目", path: "C:\\Desktop\\项目", icon: null },
-        { id: "d-shots-0", label: "截图", path: "C:\\Desktop\\截图", icon: null },
+        { id: "d-downloads-0", label: "下载", path: "C:\\Desktop\\下载", icon: null, is_dir: true },
+        { id: "d-proj-0", label: "项目", path: "C:\\Desktop\\项目", icon: null, is_dir: true },
+        { id: "d-shots-0", label: "截图", path: "C:\\Desktop\\截图", icon: null, is_dir: true },
       ],
     },
     {
       name: "系统",
       items: [
-        { id: "sys-recycle", label: "回收站", path: "shell:RecycleBinFolder", icon: null },
-        { id: "sys-pc", label: "此电脑", path: "shell:MyComputerFolder", icon: null },
+        { id: "sys-recycle", label: "回收站", path: "shell:RecycleBinFolder", icon: null, is_dir: true },
+        { id: "sys-pc", label: "此电脑", path: "shell:MyComputerFolder", icon: null, is_dir: true },
       ],
     },
   ];
@@ -84,6 +89,32 @@
   window.__FENCE_FIXTURE__ = function () {
     return structuredClone(FENCE_FIXTURE);
   };
+
+  // ── 后端状态（Task 15 加的）─────────────────────────────────────────────
+  // `liveFixture` 是**可变**的那一份：`fence_create` / `fence_rename` / `fence_delete`
+  // 的桩会就地改它，改完由 `__MOCK_PUSH__()` 推一帧给前端 —— 真机上这条链是
+  // 「ops 写桌面 → watcher 推 fence:changed」，mock 里就是这两步，别省。
+  //
+  // 与 `FENCE_FIXTURE` 分开是**必须**的：后者是样式基线的输入，
+  // 一旦被某个用例改脏，style-audit 会在不同状态之间随机飘。
+  let liveFixture = structuredClone(FENCE_FIXTURE);
+  let createdSeq = 0;
+
+  /** 当前「后端认为的」看板。测试用它拼断言，不要用 __FENCE_FIXTURE__。 */
+  window.__MOCK_BOARD__ = function () {
+    return structuredClone(liveFixture);
+  };
+
+  /**
+   * 每个 `invoke` 的记录，形如 `[{ cmd, args }]`。
+   *
+   * 为什么 e2e 需要它：`default:` 分支返回 `{}`，**命令名写错也会「成功」**，
+   * 光看界面根本分不出来。而「Tauri 2 的参数是 camelCase」这条约束更是
+   * 只有断言 args 才拦得住（写成 `new_name` 在真机上会 invalid args，
+   * 在 mock 里却一切正常）。
+   */
+  const mockCalls = [];
+  window.__MOCK_CALLS__ = mockCalls;
 
   // ── 事件送达 ────────────────────────────────────────────────────────────
   // 真机上「后端 emit → 前端 listen 回调」是 Rust 注入的脚本干的
@@ -118,6 +149,15 @@
     return n;
   };
 
+  /**
+   * 把「后端当前这一帧」推给前端 —— 真机上这是 watcher 干的活
+   * （`watch.rs:29` 是全仓**唯一**发出 `fence:changed` 的地方）。
+   * 返回送达的回调数，测试断言它 ≥ 1，免得「桥断了」被当成「界面没更新」。
+   */
+  window.__MOCK_PUSH__ = function () {
+    return window.__deskEmit("fence:changed", structuredClone(liveFixture));
+  };
+
   window.__TAURI_INTERNALS__ = {
     transformCallback: function (cb) {
       callbackId += 1;
@@ -133,6 +173,9 @@
     },
     invoke: async function (cmd, args) {
       args = args || {};
+      // 浅拷贝，不用 structuredClone：args 里可能有 Tauri 的回调句柄等
+      // 不可克隆的东西，一次抛错就会把整个 mock 打死（那是 e2e 全红，不是一条失败）。
+      mockCalls.push({ cmd: cmd, args: Object.assign({}, args) });
       switch (cmd) {
         case "plugin_get_config":
           return config;
@@ -316,9 +359,74 @@
           // 数据不一致的话样式审查会在两个状态之间随机飘。
           // （旧版的 `fence_takeover` 随 Task 10 删掉了 —— 现在读源是真桌面，
           //  `fence_rescan` 只是「重扫一遍」，结论仍是这份数据。）
-          return structuredClone(FENCE_FIXTURE);
+          //
+          // 返回 `liveFixture`（不是 FENCE_FIXTURE）：ops 改完后端状态之后，
+          // 任何一次重读都该看到新结果（Task 15）。开局两者内容相同。
+          return structuredClone(liveFixture);
         case "fence_snapshot":
-          return { fences: structuredClone(FENCE_FIXTURE), icons: [] };
+          return { fences: structuredClone(liveFixture), icons: [] };
+        // ── Task 14/15 的十个文件操作命令 ────────────────────────────────
+        // 参数名按**真机**的 camelCase 写（Tauri 2 默认 camelCase）。桩本身很简单，
+        // 但它是「前端发的参数名对不对」这条断言的落点 —— 见 e2e/fence-menu.spec.ts。
+        case "fence_launch":
+        case "fence_open_with":
+        case "fence_reveal":
+        case "fence_clipboard":
+        case "fence_paste":
+        case "fence_send_to":
+        case "fence_compress":
+        case "fence_properties":
+          // 只记录调用（已经记在 __MOCK_CALLS__ 里），不改后端状态。
+          return null;
+        case "fence_create": {
+          // 真机上落到桌面、由 `index.rs` 的 classify 决定进哪个围栏；mock 不模拟
+          // 分类，固定塞进「工作」—— 用例只断言「新项出现在看板上」，不关心落哪一栏。
+          const name = String(args.name || "");
+          const kind = String(args.kind || "");
+          const ext = kind === "folder" ? "" : kind === "lnk" ? ".lnk" : ".txt";
+          // 与 `ops::with_ext`（ops.rs:223）同规则：自己带了扩展名就不叠第二层。
+          const fileName =
+            !ext || name.toLowerCase().endsWith(ext) ? name : name + ext;
+          createdSeq += 1;
+          const created = {
+            // 真机的 id 是 `meta::key(origin, file_name)`；mock 用一个不会撞的序号。
+            id: "d-new-" + createdSeq,
+            // 看板上文件的 label **没有扩展名**（index.rs:74 取的是 file_stem）。
+            label: ext === ".txt" ? name.replace(/\.txt$/i, "") : name,
+            path: "C:\\Desktop\\" + fileName,
+            icon: null,
+            is_dir: kind === "folder",
+          };
+          const host = liveFixture.find(function (f) {
+            return f.name === "工作";
+          });
+          if (host) host.items.push(created);
+          return null;
+        }
+        case "fence_rename": {
+          const oldPath = String(args.path || "");
+          const newName = String(args.newName || "");
+          liveFixture.forEach(function (f) {
+            f.items.forEach(function (it) {
+              if (it.path !== oldPath) return;
+              const cut = oldPath.lastIndexOf("\\");
+              it.path = (cut < 0 ? "" : oldPath.slice(0, cut + 1)) + newName;
+              // label 同样按 file_stem 规则（开头的点不是扩展名，同 ops::split_name）。
+              const dot = newName.lastIndexOf(".");
+              it.label = dot > 0 ? newName.slice(0, dot) : newName;
+            });
+          });
+          return null;
+        }
+        case "fence_delete": {
+          const p = String(args.path || "");
+          liveFixture.forEach(function (f) {
+            f.items = f.items.filter(function (it) {
+              return it.path !== p;
+            });
+          });
+          return null;
+        }
         // 桌面图标开关。`__MOCK_ICONS_VISIBLE_THROWS__` 让测试能主动制造
         // 「开关读写失败」—— `warn` 态基线就是靠它触发的。默认 falsy，
         // 所以默认态 / 搜索态仍然是「一切正常」。

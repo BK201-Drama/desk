@@ -11,10 +11,12 @@ import { setEditing, toggleEditing } from "../../host/edit";
 import { useKeyboardInput } from "../../lib/useKeyboardInput";
 import { useDeskShellOptional } from "../../app/providers/DeskShellProvider";
 import { useFences } from "./useFences";
-import { searchFences, totalFenceItems, type FenceItem } from "./model";
+import { findItemById, searchFences, totalFenceItems, type FenceItem } from "./model";
 import { fenceIconStyle, highlightLabelParts } from "./iconStyle";
 import { useFenceDnD } from "./useFenceDnD";
 import { useRecents, RecentRow } from "./recent";
+import { FenceContextMenu, useMenuIo } from "./FenceContextMenu";
+import { targetFor, type MenuTarget } from "./contextMenuModel";
 
 function AppButton({
   ctx,
@@ -63,6 +65,10 @@ export function FencePanel({ ctx }: PluginComponentProps) {
   const [iconsVisible, setIconsVisible] = useState(true);
   const [iconsError, setIconsError] = useState<string | null>(null);
   const [editingOn, setEditingOn] = useState(() => ctx.editing());
+  /** 打开中的右键菜单。`at` 是打开那一刻的指针位置（屏幕像素）。 */
+  const [menu, setMenu] = useState<{ target: MenuTarget; at: { x: number; y: number } } | null>(
+    null
+  );
   const searchRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -97,6 +103,11 @@ export function FencePanel({ ctx }: PluginComponentProps) {
     [ctx, launch, pushRecent]
   );
 
+  // 菜单的命令通道。`open` 接的就是上面那个 doLaunch —— 于是「从右键菜单打开」
+  // 与「点图标打开」走的是同一条路（含「记进最近」）。
+  const menuIo = useMenuIo(ctx, doLaunch);
+  const closeMenu = useCallback(() => setMenu(null), []);
+
   useEffect(() => {
     const host = document.querySelector<HTMLElement>('[data-plugin="fence"]');
     host?.classList.add("pane-fences");
@@ -118,6 +129,9 @@ export function FencePanel({ ctx }: PluginComponentProps) {
           void ctx.invoke("fence_restore").then(() => loadFences());
         },
       }),
+      // 桌面推来新的一帧 → 关掉菜单。条目可能已经不在了（刚被删掉的那个），
+      // 留着菜单就是留着一个**已经失效的 path**，下一次点击会拿它去发命令。
+      ctx.on("fence:changed", () => setMenu(null)),
     ];
     const focusSearch = () => {
       void setKeyboard(true);
@@ -201,6 +215,26 @@ export function FencePanel({ ctx }: PluginComponentProps) {
       ref={rootRef}
       className="fence-panel-root"
       data-testid="fence-panel"
+      onContextMenu={(e) => {
+        const t = e.target as HTMLElement | null;
+        // 搜索框上的右键留给 WebView 原生菜单（剪切/粘贴/全选）。在输入框上盖一层
+        // 「新建 ▸ / 粘贴」既没用，又把原生那几项弄没了。
+        if (isTextField(t)) return;
+        // WebView2 的默认右键菜单是**开着**的（wry 只透传、tauri 没暴露开关），
+        // 不挡下来就会弹出 Edge 那套「重新加载 / 另存为 / 检查」。
+        e.preventDefault();
+        // 编辑态不开菜单：这个模式下左键是拖拽，`doLaunch` 那道 `ctx.editing()` 闸
+        // 会让「打开」静默无操作 —— 与其给一个半死的菜单，不如让两种模式不重叠。
+        if (editingOn) return;
+        // 搜索结果行也是条目（带 data-id），一视同仁地给条目菜单；
+        // 只有真正的空白（工具栏、围栏标题、网格空地）才出「新建 ▸ / 粘贴」。
+        const host = t?.closest<HTMLElement>(".fence-app, .fence-search-row");
+        const item = host?.dataset.id ? findItemById(fences, host.dataset.id) : null;
+        setMenu({
+          target: item ? targetFor(item) : { kind: "blank" },
+          at: { x: e.clientX, y: e.clientY },
+        });
+      }}
       onPointerMove={(e) => {
         const t = (e.target as HTMLElement | null)?.closest<HTMLElement>(
           ".fence-app, .icon-btn, button, a, input, textarea, select, [role='button']"
@@ -524,6 +558,20 @@ export function FencePanel({ ctx }: PluginComponentProps) {
           ))
         )}
       </div>
+
+      {/* 右键菜单渲染在面板根内部（但它是 fixed，不受 pane 的 overflow 约束，见
+          FenceContextMenu 的文件头）。`key` 让「在另一个条目上再点右键」= 重挂载，
+          于是上一轮展开的子菜单不会带过来。 */}
+      {menu ? (
+        <FenceContextMenu
+          key={menu.target.kind === "blank" ? "blank" : menu.target.item.id}
+          target={menu.target}
+          io={menuIo}
+          at={menu.at}
+          zoomEl={rootRef.current}
+          onClose={closeMenu}
+        />
+      ) : null}
     </div>
   );
 }

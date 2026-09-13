@@ -136,6 +136,7 @@ pub(crate) fn build_fences(items: &[ScannedItem], meta: &FenceMeta) -> Vec<Fence
                 label: it.label.clone(),
                 path: it.path.to_string_lossy().to_string(),
                 icon,
+                is_dir: it.is_dir,
             },
         ));
     }

@@ -32,6 +32,17 @@ pub struct FenceItemDto {
     pub label: String,
     pub path: String,
     pub icon: Option<String>,
+    /// 是不是目录 —— 右键菜单按它决定「打开方式」出不出现。
+    ///
+    /// 前端**猜不出来**，所以必须传：`index.rs:74` 已经把文件的扩展名从 `label`
+    /// 里去掉了（`Cursor.lnk` → `Cursor`），而目录名带点是常事（`v1.2 备份`），
+    /// 两条猜法都会错。`ScannedItem.is_dir` 早就算好了（`index.rs:73`），
+    /// 这里只是把它送到线上去。
+    ///
+    /// ⚠️ 前端**先**看 id 前缀（`sys-`）再看这个字段：下面那两个系统项在这里是
+    /// `true`（它们确实是 shell 文件夹），但 sys 目标的菜单只剩「打开」，
+    /// 那个分支永远轮不到 `is_dir`。
+    pub is_dir: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -394,6 +405,7 @@ fn system_shell_items(icons: &Path) -> Vec<FenceItemDto> {
             icon: recycle_icon
                 .exists()
                 .then(|| recycle_icon.to_string_lossy().to_string()),
+            is_dir: true,
         },
         FenceItemDto {
             id: "sys-pc".into(),
@@ -402,6 +414,7 @@ fn system_shell_items(icons: &Path) -> Vec<FenceItemDto> {
             icon: pc_icon
                 .exists()
                 .then(|| pc_icon.to_string_lossy().to_string()),
+            is_dir: true,
         },
     ]
 }

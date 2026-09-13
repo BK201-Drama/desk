@@ -198,6 +198,8 @@ mod tests {
             label: id.into(),
             path: format!(r"C:\Desktop\{id}"),
             icon: icon.map(|s| s.to_string()),
+            // 指纹/图标这些测试不关心目录属性，一律当文件。
+            is_dir: false,
         }
     }
 
