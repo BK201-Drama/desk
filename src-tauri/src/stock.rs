@@ -226,15 +226,8 @@ pub async fn stock_quotes(codes: Option<Vec<String>>) -> Result<Vec<StockQuote>,
     }
 }
 
-fn app_data_dir() -> Result<PathBuf, String> {
-    let base = dirs::data_local_dir().ok_or("no local app data")?;
-    let dir = base.join("desk");
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir)
-}
-
 fn cache_path() -> Result<PathBuf, String> {
-    Ok(app_data_dir()?.join("stock-cache.json"))
+    Ok(crate::paths::app_data_dir()?.join("stock-cache.json"))
 }
 
 fn load_cache() -> Option<Vec<StockQuote>> {

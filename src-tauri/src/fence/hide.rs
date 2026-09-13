@@ -128,8 +128,7 @@ fn set_flag_at(p: &Path, v: bool) -> Result<(), String> {
 }
 
 fn visible_flag_path() -> Result<PathBuf, String> {
-    let base = dirs::data_local_dir().ok_or("no local app data")?;
-    Ok(base.join("desk").join("icons-visible"))
+    Ok(crate::paths::app_data_dir()?.join("icons-visible"))
 }
 
 /// 用户是否明确要求「显示桌面图标」。

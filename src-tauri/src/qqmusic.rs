@@ -47,8 +47,8 @@ fn find_install() -> Option<PathBuf> {
     candidate_paths().into_iter().next()
 }
 
-fn artwork_cache_path() -> Option<PathBuf> {
-    dirs::data_local_dir().map(|d| d.join("desk").join("qqmusic-art.bin"))
+fn artwork_cache_path() -> Result<PathBuf, String> {
+    Ok(crate::paths::app_data_dir()?.join("qqmusic-art.bin"))
 }
 
 fn empty_np(hint: &str) -> QqmusicNowPlaying {
@@ -156,7 +156,7 @@ mod smtc {
         let mut bytes = vec![0u8; size as usize];
         reader.ReadBytes(&mut bytes).ok()?;
 
-        let base = artwork_cache_path()?;
+        let base = artwork_cache_path().ok()?;
         if let Some(parent) = base.parent() {
             let _ = std::fs::create_dir_all(parent);
         }

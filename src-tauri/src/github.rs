@@ -55,19 +55,12 @@ struct GithubConfig {
     token: Option<String>,
 }
 
-fn app_data_dir() -> Result<PathBuf, String> {
-    let base = dirs::data_local_dir().ok_or("no local app data")?;
-    let dir = base.join("desk");
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir)
-}
-
 fn config_path() -> Result<PathBuf, String> {
-    Ok(app_data_dir()?.join("github.json"))
+    Ok(crate::paths::app_data_dir()?.join("github.json"))
 }
 
 fn cache_path() -> Result<PathBuf, String> {
-    Ok(app_data_dir()?.join("github-cache.json"))
+    Ok(crate::paths::app_data_dir()?.join("github-cache.json"))
 }
 
 fn load_config() -> GithubConfig {

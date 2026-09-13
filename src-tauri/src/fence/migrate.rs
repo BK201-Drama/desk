@@ -34,13 +34,13 @@ fn default_origin() -> String {
 }
 
 pub(super) fn vault_dir() -> Result<PathBuf, String> {
-    let dir = super::paths::app_data_dir()?.join("vault");
+    let dir = crate::paths::app_data_dir()?.join("vault");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
 
 pub(super) fn meta_path() -> Result<PathBuf, String> {
-    Ok(super::paths::app_data_dir()?.join("vault.json"))
+    Ok(crate::paths::app_data_dir()?.join("vault.json"))
 }
 
 pub(super) fn load_meta() -> Result<VaultMeta, String> {

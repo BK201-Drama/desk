@@ -44,15 +44,8 @@ fn load_config() -> Result<MulticaConfig, String> {
     serde_json::from_str(&raw).map_err(|e| format!("parse multica config: {e}"))
 }
 
-fn app_data_dir() -> Result<PathBuf, String> {
-    let base = dirs::data_local_dir().ok_or("no local app data")?;
-    let dir = base.join("desk");
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir)
-}
-
 fn cache_path() -> Result<PathBuf, String> {
-    Ok(app_data_dir()?.join("multica-cache.json"))
+    Ok(crate::paths::app_data_dir()?.join("multica-cache.json"))
 }
 
 fn save_cache(snap: &MulticaSnapshotDto) -> Result<(), String> {

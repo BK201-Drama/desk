@@ -82,10 +82,7 @@ pub(crate) fn key(origin: &str, file_name: &str) -> String {
 }
 
 pub(crate) fn path() -> Result<PathBuf, String> {
-    let base = dirs::data_local_dir().ok_or("no local app data")?;
-    let dir = base.join("desk");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join("fence.json"))
+    Ok(crate::paths::app_data_dir()?.join("fence.json"))
 }
 
 pub(crate) fn load() -> Result<FenceMeta, String> {

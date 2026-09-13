@@ -21,15 +21,8 @@ struct Store {
     items: Vec<ReminderDto>,
 }
 
-fn app_data_dir() -> Result<PathBuf, String> {
-    let base = dirs::data_local_dir().ok_or("no local app data")?;
-    let dir = base.join("desk");
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir)
-}
-
 fn store_path() -> Result<PathBuf, String> {
-    Ok(app_data_dir()?.join("reminders.json"))
+    Ok(crate::paths::app_data_dir()?.join("reminders.json"))
 }
 
 fn now_secs() -> u64 {

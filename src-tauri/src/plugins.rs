@@ -214,24 +214,18 @@ fn migrate_config(cfg: &mut PluginsConfig) {
     cfg.custom_name = None;
 }
 
-fn desk_root() -> Result<PathBuf, String> {
-    dirs::data_local_dir()
-        .map(|d| d.join("desk"))
-        .ok_or_else(|| "no local data dir".into())
-}
-
 fn plugins_user_dir() -> Result<PathBuf, String> {
-    let dir = desk_root()?.join("plugins");
+    let dir = crate::paths::app_data_dir()?.join("plugins");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
 
 fn plugins_config_path() -> Result<PathBuf, String> {
-    Ok(desk_root()?.join("plugins.json"))
+    Ok(crate::paths::app_data_dir()?.join("plugins.json"))
 }
 
 fn plugin_storage_dir(plugin_id: &str) -> Result<PathBuf, String> {
-    let dir = desk_root()?.join("plugin-data").join(plugin_id);
+    let dir = crate::paths::app_data_dir()?.join("plugin-data").join(plugin_id);
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }

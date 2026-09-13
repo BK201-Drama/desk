@@ -2,6 +2,7 @@ mod cursor;
 mod fence;
 mod github;
 mod multica;
+mod paths;
 mod plugins;
 mod proc;
 mod qqmusic;
@@ -32,8 +33,8 @@ fn sink_below_apps(window: &tauri::WebviewWindow) {
     let _ = window.set_always_on_bottom(true);
 }
 
-fn autostart_off_flag() -> Option<std::path::PathBuf> {
-    dirs::data_local_dir().map(|d| d.join("desk").join("autostart-off"))
+fn autostart_off_flag() -> Result<std::path::PathBuf, String> {
+    Ok(crate::paths::app_data_dir()?.join("autostart-off"))
 }
 
 /// Align the window's right edge to ~40% of the work area width; vertically center (excludes taskbar).
@@ -93,10 +94,7 @@ fn set_click_through(app: tauri::AppHandle, enabled: bool) -> Result<(), String>
 /// Frontend reports plugins-ready ms for cold-start tuning.
 #[tauri::command]
 fn boot_mark(ms: u32) -> Result<(), String> {
-    let dir = dirs::data_local_dir()
-        .ok_or("no local app data")?
-        .join("desk");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dir = crate::paths::app_data_dir()?;
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -114,15 +112,12 @@ fn autostart_get(app: tauri::AppHandle) -> Result<bool, String> {
 fn autostart_set(app: tauri::AppHandle, enabled: bool) -> Result<bool, String> {
     let mgr = app.autolaunch();
     if enabled {
-        if let Some(flag) = autostart_off_flag() {
+        if let Ok(flag) = autostart_off_flag() {
             let _ = std::fs::remove_file(flag);
         }
         mgr.enable().map_err(|e| e.to_string())?;
     } else {
-        if let Some(flag) = autostart_off_flag() {
-            if let Some(parent) = flag.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
+        if let Ok(flag) = autostart_off_flag() {
             let _ = std::fs::write(&flag, b"1");
         }
         mgr.disable().map_err(|e| e.to_string())?;

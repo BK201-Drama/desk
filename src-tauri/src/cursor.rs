@@ -240,15 +240,8 @@ pub async fn cursor_usage() -> Result<CursorUsage, String> {
     Ok(usage)
 }
 
-fn app_data_dir() -> Result<PathBuf, String> {
-    let base = dirs::data_local_dir().ok_or("no local app data")?;
-    let dir = base.join("desk");
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir)
-}
-
 fn cache_path() -> Result<PathBuf, String> {
-    Ok(app_data_dir()?.join("cursor-cache.json"))
+    Ok(crate::paths::app_data_dir()?.join("cursor-cache.json"))
 }
 
 fn load_cache() -> Option<CursorUsage> {
