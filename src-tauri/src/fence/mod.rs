@@ -773,32 +773,40 @@ fn list_fences_inner(meta: &VaultMeta) -> Result<Vec<FenceDto>, String> {
 /// Persist custom icon order (and optional cross-fence moves). System fence is ignored.
 #[tauri::command]
 pub fn fence_save_order(layout: Vec<FenceLayoutDto>) -> Result<Vec<FenceDto>, String> {
-    let mut meta = load_meta()?;
-    let mut by_id: std::collections::HashMap<String, VaultEntry> = meta
-        .items
-        .drain(..)
-        .map(|e| (e.id.clone(), e))
-        .collect();
-
-    let mut new_items: Vec<VaultEntry> = Vec::new();
+    // v2 的写路径：**只写 fence.json**。
+    //
+    // 迁移前这里写的是 `vault.json`，而那个文件在 Task 11 之后已被归档成
+    // `vault.json.migrated` —— 继续写它等于**当场复活一个空的 vault.json**
+    // （真机实测：迁移当天的 16:59 复现，内容 `{"items": [], "hide_icons_applied": true}`）：
+    // 拖拽布局静默丢失，还在盘上留下一个引信 —— 万一旧的 release 构建再被拉起，
+    // 它看到「vault.json 在 + 桌面是满的」就会走完整接管，把 34 项重新吸回 vault。
+    //
+    // 看板项的 id 就是 meta key（`index.rs` 用的是 `it.key`），所以这里零换算。
+    let mut m = meta::load()?;
     for block in &layout {
         if block.name == "系统" {
             continue;
         }
+        // order 只在同一个围栏内部比大小（`index.rs` 按 (order, label) 排），
+        // 所以每个围栏各自从 0 数，不必用全局计数。
+        let mut order = 0u32;
         for id in &block.ids {
             if id.starts_with("sys-") {
                 continue;
             }
-            if let Some(mut e) = by_id.remove(id) {
-                e.fence = block.name.clone();
-                new_items.push(e);
-            }
+            // or_insert 而不是 get_mut：还没记过账的项（比如迁移时落点换过根、
+            // key 与账本对不上的那种）在这里被补上 —— 用户拖一下就把归属**显式**记下来。
+            let e = m.entries.entry(id.clone()).or_insert_with(|| meta::Entry {
+                fence: block.name.clone(),
+                order,
+                mtime: 0,
+            });
+            e.fence = block.name.clone();
+            e.order = order;
+            order += 1;
         }
     }
-    // keep any leftover entries (shouldn't normally happen)
-    new_items.extend(by_id.into_values());
-    meta.items = new_items;
-    save_meta(&meta)?;
+    meta::save(&m)?;
     // 返回的是**合并读源**（桌面 + vault），不是 `list_fences_inner(&meta)`。
     // 拖一下图标就只回吐 vault 那一半的话，桌面项的图标会当场从看板上消失 ——
     // 前端 persistOrder 是拿这个返回值直接 setFences 的。
@@ -988,6 +996,9 @@ mod tests {
 ///
 /// 跑法：`cargo test -- --ignored real_machine`
 ///
+/// ⚠️ 其中 `real_machine_migrate_vault_to_desktop` 是**不可逆**的那一条，必须**单独**跑
+/// （`cargo test -- --ignored real_machine_migrate`）：它搬真实文件，和别的真机测试并行会互相打架。
+///
 /// 计划 Task 10 Step 7 的四条手工验收，要的都是「读一次真数据看看」——
 /// 那就没必要非得开 `tauri dev` 用眼睛看：这里直接调生产函数 `collect_fences()`，
 /// 读的是同一份真实数据，还比肉眼多两条断言（图标仍在桌面上、vault 一个文件都没动）。
@@ -1068,9 +1079,16 @@ mod real_machine_tests {
         );
     }
 
+    /// 迁移**之后**的稳态：看板上一个 vault 项都不该再有。
+    ///
+    /// 这条取代了迁移前的 `real_machine_vault_items_still_listed_and_untouched`
+    /// （它断言 `from_vault > 0`）。那条是过渡期的守卫 —— 「切读源的那一刻图标不能消失」，
+    /// 现在这件事由迁移测试的 `desktop_item_count() == 迁移前 + 34` 直接守住，
+    /// 原断言留在原地只会变成一个必然失败的假警报。改成守反方向：
+    /// **vault 层已经不在读路径上了**，Task 12 删掉读源之后这条仍是有效的回归网。
     #[test]
-    #[ignore = "真机：读真实桌面 + 真实 vault"]
-    fn real_machine_vault_items_still_listed_and_untouched() {
+    #[ignore = "真机：读真实桌面"]
+    fn real_machine_no_item_comes_from_vault() {
         let vault = vault_dir().expect("vault dir");
         let listing = |d: &PathBuf| -> Vec<String> {
             let mut v: Vec<String> = std::fs::read_dir(d)
@@ -1084,16 +1102,316 @@ mod real_machine_tests {
         let before = listing(&vault);
 
         let items = all_items();
-        let from_vault = items
+        let from_vault: Vec<&String> = items
             .iter()
             .filter(|i| Path::new(&i.path).parent() == Some(vault.as_path()))
-            .count();
+            .map(|i| &i.id)
+            .collect();
 
         assert_eq!(before, listing(&vault), "collect_fences 动了 vault 目录");
-        eprintln!("围栏共 {} 项，其中 vault 来的 {from_vault} 项", items.len());
+        eprintln!("围栏共 {} 项，其中 vault 来的 {} 项", items.len(), from_vault.len());
         assert!(
-            from_vault > 0,
-            "迁移（Task 11）之前，vault 里的项必须继续显示 —— 否则切换读源的这一刻用户的图标就消失了"
+            from_vault.is_empty(),
+            "迁移（Task 11）之后读源只剩桌面，这些项却还从 vault 来：{from_vault:?}"
         );
+    }
+
+    /// `%LOCALAPPDATA%\desk` 下的两个文件路径，测试直接读盘核对（不经过 recent:: 的私有类型）。
+    fn desk_file(name: &str) -> PathBuf {
+        dirs::data_local_dir()
+            .expect("local app data")
+            .join("desk")
+            .join(name)
+    }
+
+    /// 目录里的条目数（文件 + 子目录）。
+    fn count_entries(d: &Path) -> usize {
+        std::fs::read_dir(d).map(|it| it.flatten().count()).unwrap_or(0)
+    }
+
+    /// 另一个桌面根。迁移时公共桌面不可写会退回用户桌面，key 里的 origin 也就跟着变。
+    fn other_origin(origin: &str) -> &'static str {
+        if origin == "public" {
+            "user"
+        } else {
+            "public"
+        }
+    }
+
+    /// 逐项核对：迁移前在哪个围栏，迁移后还在哪个围栏。
+    ///
+    /// `expected` 是 `(迁移前 origin, 原文件名, 迁移前围栏)`。**只读**，所以首次跑和
+    /// 事后重跑都能用同一份断言 —— 重跑时 `expected` 从归档的 `vault.json.migrated` 读回来。
+    fn check_each_item_kept_its_fence(
+        fences: &[FenceDto],
+        m: &meta::FenceMeta,
+        expected: &[(String, String, String)],
+    ) {
+        let where_is: std::collections::HashMap<&str, &str> = fences
+            .iter()
+            .flat_map(|f| f.items.iter().map(move |it| (it.id.as_str(), f.name.as_str())))
+            .collect();
+
+        for (origin, name, fence) in expected {
+            // 落点在哪个桌面根上，代码自己可能改主意（公共桌面不可写时退回用户桌面），
+            // 所以两个 origin 都试一遍。
+            //
+            // ⚠️ key 必须从**看板**里挑，不能从迁移账本里挑。看板是扫桌面算出来的 ——
+            // 「文件躺在哪个根上」对它来说是地面真相；从账本里挑等于让被告自己作证：
+            // 账本把 key 写错（public 项退回用户桌面却记 public:）时，两边"自洽"地
+            // 一起错，断言照样通过。真机迁移就是这么放过去一条的（星云.lnk）。
+            let want = meta::key(origin, name);
+            let k = [want.clone(), meta::key(other_origin(origin), name)]
+                .into_iter()
+                .find(|k| where_is.contains_key(k.as_str()))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{name} 不在看板里 —— 迁移后这个图标看不见了\
+                         （围栏账本里记的是 {origin} 一侧的 key：{:?}）",
+                        m.entries
+                            .keys()
+                            .filter(|x| x.as_str().ends_with(name.as_str()))
+                            .collect::<Vec<_>>()
+                    )
+                });
+            if k != want {
+                eprintln!("注意：{name} 的落点换了桌面根（期望 {want}，实际 {k}），围栏不变");
+            }
+            assert_eq!(
+                m.entries.get(&k).map(|e| e.fence.as_str()),
+                Some(fence.as_str()),
+                "fence.json 里 {k} 的围栏归属和迁移前不一致"
+            );
+            assert_eq!(
+                where_is.get(k.as_str()).copied(),
+                Some(fence.as_str()),
+                "{k} 没落在「{fence}」围栏里（看板这一侧）"
+            );
+        }
+    }
+
+    /// 看板上的每一项（系统项除外）都得在 `fence.json` 里有账。
+    ///
+    /// 孤儿 id = 这一项丢了围栏偏好，只能靠 `guess_fence` 碰运气 —— 正是
+    /// 「public 项退回用户桌面、账本却记 public:」那个 bug 的形状。
+    fn check_no_orphan_ids(fences: &[FenceDto], m: &meta::FenceMeta) {
+        let orphans: Vec<&str> = fences
+            .iter()
+            .flat_map(|f| f.items.iter())
+            .map(|it| it.id.as_str())
+            .filter(|id| !id.starts_with("sys-") && !m.entries.contains_key(*id))
+            .collect();
+        assert!(
+            orphans.is_empty(),
+            "这些项在 fence.json 里没有账，围栏偏好已丢：{orphans:?}"
+        );
+    }
+
+    /// 「最近」那一行不该指向已经不存在的条目。
+    ///
+    /// 这里只能查**单向**（id 在 fence.json 里有账），因为重跑时拿不到原来的 id 映射 ——
+    /// 「旧 id 已被改写」那条更强的断言只在首次跑的路径上做（那里才有 `id_map`）。
+    fn check_recent_ids_are_backed(m: &meta::FenceMeta) {
+        for id in recent_file_ids() {
+            if id.starts_with("sys-") {
+                continue;
+            }
+            assert!(
+                m.entries.contains_key(&id),
+                "最近列表里的 {id} 在 fence.json 里没有账 —— 这一行指向一条不存在的条目"
+            );
+        }
+    }
+
+    /// 两个桌面根上的**真项**数：排除 `desktop.ini`（系统自己放的，不算图标）。
+    fn desktop_item_count() -> usize {
+        desktop_roots()
+            .expect("desktop roots")
+            .iter()
+            .map(|(_, root)| {
+                std::fs::read_dir(root)
+                    .map(|it| {
+                        it.flatten()
+                            .filter(|e| {
+                                e.file_name() != std::ffi::OsStr::new("desktop.ini")
+                            })
+                            .count()
+                    })
+                    .unwrap_or(0)
+            })
+            .sum()
+    }
+
+    /// `recent-launches.json` 里的 id 列表。**故意直接读文件、不调 `recent_list()`** ——
+    /// 要验的是磁盘上到底存了什么，`recent_list()` 会顺手 normalize，把问题洗掉。
+    fn recent_file_ids() -> Vec<String> {
+        let p = desk_file("recent-launches.json");
+        if !p.exists() {
+            return Vec::new();
+        }
+        let s = std::fs::read_to_string(&p).expect("read recent");
+        let v: serde_json::Value = serde_json::from_str(&s).expect("parse recent");
+        v.get("ids")
+            .and_then(|a| a.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Task 11 的真机迁移。**本仓库唯一会动真实数据的测试。**
+    ///
+    /// 走的是 `migrate::run()` —— 和工具栏「还原到系统桌面」按钮点下去**同一个生产入口**，
+    /// 区别只是验收由机器做。计划 Task 11 Step 5 那七条手工核对，这里逐条变成断言：
+    /// vault 清零 / 桌面多出且只多出 34 项 / `vault.json` 归档 / `fence.json` 记账逐项不串 /
+    /// 看板这一侧归属一致 / 「最近」没被清空。
+    ///
+    /// 跑法（**单独跑，别和别的真机测试并行**）：
+    /// `cargo test -- --ignored real_machine_migrate --nocapture`
+    #[test]
+    #[ignore = "真机：不可逆，把 vault 里的文件搬回真桌面"]
+    fn real_machine_migrate_vault_to_desktop() {
+        let vault = vault_dir().expect("vault dir");
+        let meta_p = meta_path().expect("meta path");
+
+        // ① 先取快照 —— 只能在 run() 之前，跑完 vault.json 就改名了，真相只剩这份内存里的
+        let before = load_meta().expect("vault meta").items;
+
+        if before.is_empty() {
+            // 幂等分支：上一次已经迁完（或从没搬过图标）。**不重跑** —— `run()` 本来也是
+            // 空操作，但这里连文件系统都不该再碰一下。
+            //
+            // 但"不重跑"不等于"少验收"：旧账本 `vault.json.migrated` **还在盘上**，
+            // 迁移前每一项的 (origin, 文件名, 围栏) 都能从它读回来。于是重跑这条测试
+            // 依然能做**逐项**复核 —— 而且是只读的，可以随便多跑几遍。
+            // `vault.json` 会被**每次启动**重新创建出来 —— `hide_desktop_icons_on_start`
+            // 还在往它里面写 `hide_icons_applied`（Task 12 要连这块记账一起搬走，
+            // 见完成记录里那条「第三个写者」）。所以这里不硬断言「文件不存在」，
+            // 而是断言**危险的形状不存在**：一个非空的 items 才是真出事 ——
+            // 那意味着有旧构建把桌面重新吸回 vault 了。
+            if meta_p.exists() {
+                let residual = load_meta().expect("读残留的 vault.json");
+                assert!(
+                    residual.items.is_empty(),
+                    "vault.json 里出现了 {} 条接管记录 —— 桌面被重新吸回 vault 了：{:?}",
+                    residual.items.len(),
+                    residual
+                        .items
+                        .iter()
+                        .map(|e| e.original_name.as_str())
+                        .collect::<Vec<_>>()
+                );
+                eprintln!(
+                    "注意：vault.json 被重新创建为空账本（hide 记账仍在写它，Task 12 搬走）"
+                );
+            }
+            let archived = meta_p.with_extension("json.migrated");
+            assert!(
+                archived.exists(),
+                "vault.json 不在、归档的 vault.json.migrated 也不在 —— 旧账本两边都没了"
+            );
+            assert_eq!(count_entries(&vault), 0, "vault 目录里还有残留");
+
+            let s = std::fs::read_to_string(&archived).expect("读归档账本");
+            let old: VaultMeta =
+                serde_json::from_str(&s).expect("解析 vault.json.migrated（归档的是原始 JSON）");
+            let expected: Vec<(String, String, String)> = old
+                .items
+                .iter()
+                .map(|e| (e.origin.clone(), e.original_name.clone(), e.fence.clone()))
+                .collect();
+            assert_eq!(
+                expected.len(),
+                34,
+                "归档账本里应有 34 项 —— 少了说明归档的不是迁移前那份"
+            );
+
+            let fences = collect_fences().expect("collect_fences");
+            let m = meta::load().expect("fence.json");
+            check_each_item_kept_its_fence(&fences, &m, &expected);
+            check_no_orphan_ids(&fences, &m);
+            check_recent_ids_are_backed(&m);
+
+            let total: usize = fences.iter().map(|f| f.items.len()).sum();
+            eprintln!(
+                "迁移此前已完成（vault.json 已归档）；幂等复核**逐项**通过：\
+                 看板 {total} 项、fence.json {} 条、34 项归属与归档账本一致",
+                m.entries.len()
+            );
+            return;
+        }
+
+        let recent_before = recent_file_ids();
+        let desktop_before = desktop_item_count();
+        let expected: Vec<(String, String, String)> = before
+            .iter()
+            .map(|e| (e.origin.clone(), e.original_name.clone(), e.fence.clone()))
+            .collect();
+
+        // ② 不可逆的那一下
+        let r = migrate::run().expect("migrate::run");
+        eprintln!(
+            "migrate: moved={} skipped={} failed={} id_map={}",
+            r.moved,
+            r.skipped,
+            r.failed.len(),
+            r.id_map.len()
+        );
+
+        // ③ 一个都没失败，且搬走的数量等于快照
+        assert!(r.failed.is_empty(), "有迁移失败的项：{:?}", r.failed);
+        assert_eq!(r.moved, expected.len(), "搬走的数量和 vault 里的项数对不上");
+        assert_eq!(r.skipped, 0, "全新迁移不该有 skipped（重跑才会出现）");
+
+        // ④ 文件全到了桌面、vault 清空 —— 「一个图标都不会消失」的可测形式
+        assert_eq!(
+            desktop_item_count(),
+            desktop_before + expected.len(),
+            "桌面上的项数对不上：应该只多出 {} 项",
+            expected.len()
+        );
+        assert_eq!(count_entries(&vault), 0, "vault 目录里还有残留");
+
+        // ⑤ 旧账本归档、新账本（fence.json）第一次落地
+        assert!(!meta_p.exists(), "vault.json 应该已经改名");
+        assert!(
+            meta_p.with_extension("json.migrated").exists(),
+            "找不到 vault.json.migrated"
+        );
+        let m = meta::load().expect("fence.json");
+
+        // ⑥ 逐项核对：迁移前在哪个围栏，迁移后还在哪个围栏
+        let fences = collect_fences().expect("collect_fences");
+        check_each_item_kept_its_fence(&fences, &m, &expected);
+        check_no_orphan_ids(&fences, &m);
+        // 系统围栏的项数和实现耦合，所以只打印不硬断言 —— 硬编码会在以后变成假失败
+        let total: usize = fences.iter().map(|f| f.items.len()).sum();
+        eprintln!(
+            "看板共 {total} 项（桌面 {} + 系统 {}）",
+            expected.len(),
+            total.saturating_sub(expected.len())
+        );
+
+        // ⑦ 「最近」没被清空：旧 id 必须已被 remap，且新 id 还在原位
+        let recent_after = recent_file_ids();
+        let moved_old_ids: std::collections::HashSet<&str> =
+            before.iter().map(|e| e.id.as_str()).collect();
+        for id in &recent_after {
+            assert!(
+                !moved_old_ids.contains(id.as_str()),
+                "最近列表里还留着旧 id {id} —— remap_ids 没生效，这一行会指向不存在的条目"
+            );
+        }
+        for old in &recent_before {
+            if let Some(new) = r.id_map.get(old) {
+                assert!(
+                    recent_after.iter().any(|x| x == new),
+                    "最近列表里的 {old} 应该被改写成 {new} 后留在原位"
+                );
+            }
+        }
+        eprintln!("最近：{recent_before:?} → {recent_after:?}");
     }
 }

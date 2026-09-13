@@ -81,11 +81,10 @@ pub(crate) fn run() -> Result<MigrateReport, String> {
 /// `pub(crate)`，等于为了一个测试缝把 fence 内部类型摊给整个 crate。收窄函数是更紧的一侧。
 fn run_in(vault: &Path, roots: &[(String, PathBuf)], old: &VaultMeta) -> MigrateReport {
     let mut r = MigrateReport::default();
-    let user_root = roots.iter().find(|(o, _)| o == "user").map(|(_, p)| p.clone());
-    let public_root = roots
-        .iter()
-        .find(|(o, _)| o == "public")
-        .map(|(_, p)| p.clone());
+    // 保留 (origin, 路径) 成对：id 是 `{origin}:{文件名}`，而 origin 只能从**实际落点**
+    // 那个根上取，不能从 `e.origin` 取（见 preferred_root 的注释）。
+    let user_root = roots.iter().find(|(o, _)| o == "user").cloned();
+    let public_root = roots.iter().find(|(o, _)| o == "public").cloned();
 
     for e in &old.items {
         let src = vault.join(&e.vault_name);
@@ -101,7 +100,7 @@ fn run_in(vault: &Path, roots: &[(String, PathBuf)], old: &VaultMeta) -> Migrate
             continue;
         }
 
-        let Some(primary) = preferred_root(e, &user_root, &public_root) else {
+        let Some((root_origin, primary)) = preferred_root(e, &user_root, &public_root) else {
             r.failed
                 .push(format!("{}: 找不到可写入的桌面目录", e.original_name));
             continue;
@@ -112,18 +111,19 @@ fn run_in(vault: &Path, roots: &[(String, PathBuf)], old: &VaultMeta) -> Migrate
             Ok(()) => {
                 r.moved += 1;
                 r.id_map
-                    .insert(e.id.clone(), meta::key(&e.origin, &file_name_of(&dest, e)));
+                    .insert(e.id.clone(), meta::key(&root_origin, &file_name_of(&dest, e)));
             }
             // 公共桌面常需管理员；退回用户桌面，避免整批失败（沿用旧 fence_restore 策略）
             Err(_) if e.origin == "public" => match user_root.clone() {
-                Some(user) => {
+                Some((user_origin, user)) => {
                     let fallback = unique_dest(&user, &e.original_name, &e.vault_name);
                     match move_path(&src, &fallback) {
                         Ok(()) => {
                             r.moved += 1;
+                            // key 用**实际落点**的 origin，见 preferred_root 的注释。
                             r.id_map.insert(
                                 e.id.clone(),
-                                meta::key(&e.origin, &file_name_of(&fallback, e)),
+                                meta::key(&user_origin, &file_name_of(&fallback, e)),
                             );
                         }
                         Err(err) => r.failed.push(format!("{}: {err}", e.original_name)),
@@ -140,11 +140,17 @@ fn run_in(vault: &Path, roots: &[(String, PathBuf)], old: &VaultMeta) -> Migrate
 }
 
 /// 该项该回哪个桌面根。public 项优先公共桌面，用户桌面永远是保底。
+///
+/// 返回 **(该根的 origin 标签, 路径)** —— 是**实际选中的根**，不一定等于 `e.origin`：
+/// 公共桌面不在、或写不进去时都会退到用户桌面。id 是 `{origin}:{文件名}`，而索引
+/// 是按「文件实际躺在哪个根」算 id 的，所以调用方必须拿这个标签去拼 key。
+/// 拿 `e.origin` 拼的后果是真机实测踩到过的：fence.json 记 `public:星云.lnk`、
+/// 看板算出来 `user:星云.lnk`，两边永远对不上账，这一项的围栏偏好静默丢失。
 fn preferred_root(
     e: &VaultEntry,
-    user: &Option<PathBuf>,
-    public: &Option<PathBuf>,
-) -> Option<PathBuf> {
+    user: &Option<(String, PathBuf)>,
+    public: &Option<(String, PathBuf)>,
+) -> Option<(String, PathBuf)> {
     if e.origin == "public" {
         public.clone().or_else(|| user.clone())
     } else {
@@ -381,6 +387,49 @@ mod tests {
         assert_eq!(r2.moved, 1);
         assert!(r2.failed.is_empty());
         assert!(desktop.join("工具.lnk").exists());
+        // ⚠️ 落点在用户桌面，key 就必须是 `user:`，不是 `public:`。
+        // 索引是按「文件**实际躺在哪个根**」算 id 的；写 `public:工具.lnk` 的后果是
+        // fence.json 和看板永远对不上账，这一项的围栏偏好静默丢失。真机迁移踩到过
+        // （星云.lnk）—— 而当时这段测试**只断言了有公共桌面的那一半**，所以放它过去了。
+        assert_eq!(r2.id_map["public-工具-0"], "user:工具.lnk");
+    }
+
+    /// 公共桌面**在**、但写进去失败 → 退回用户桌面。
+    ///
+    /// 和上一个测试走的**不是同一行代码**：公共桌面整个不在时是 `preferred_root` 里的
+    /// `or_else` 兜底，这里走的是 `Err(_) if e.origin == "public"` 那条分支 ——
+    /// 真机 (`星云.lnk`) 走的是**这一条**，而它此前零覆盖。
+    #[test]
+    fn public_move_failure_falls_back_to_user_and_keys_by_landing_root() {
+        let (d, vault, desktop) = setup();
+        let public = d.path().join("public");
+        std::fs::create_dir_all(&public).unwrap();
+        let mut e = entry("public-工具-0", "工具", "工具.lnk", "public-工具-0.lnk");
+        e.origin = "public".into();
+        let old = VaultMeta {
+            items: vec![e],
+            hide_icons_applied: true,
+        };
+
+        // 让 public 这一侧**必然写不进去**：落点和兜底名都占成非空目录，
+        // rename 一个文件过去会报错 → 进降级分支。（真机上是权限不够，等价。）
+        std::fs::create_dir_all(public.join("工具.lnk")).unwrap();
+        std::fs::create_dir_all(public.join("public-工具-0.lnk").join("占位")).unwrap();
+        std::fs::write(vault.join("public-工具-0.lnk"), b"z").unwrap();
+
+        let roots = vec![
+            ("user".to_string(), desktop.clone()),
+            ("public".to_string(), public.clone()),
+        ];
+        let r = run_in(&vault, &roots, &old);
+
+        assert_eq!(r.moved, 1);
+        assert!(r.failed.is_empty());
+        assert!(desktop.join("工具.lnk").exists(), "应退回用户桌面");
+        assert_eq!(
+            r.id_map["public-工具-0"], "user:工具.lnk",
+            "落点在用户桌面，key 就必须是 user: —— 否则 fence.json 与看板对不上账"
+        );
     }
 
     /// 两个桌面根都拿不到 → 记进 failed，不 panic、不丢文件。
