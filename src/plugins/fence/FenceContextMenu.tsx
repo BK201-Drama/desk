@@ -272,13 +272,22 @@ function SubMenu({
  *
  * 每个调用都 `.catch(alert)`：右键菜单是个不显眼的地方，静默失败最坏 ——
  * 用户以为点过了、其实什么都没发生。与同文件里 autostart / restore 的处理一致。
+ *
+ * `withKeyboard` 是**弹原生对话框的必要条件**，不是锦上添花：窗口是
+ * `WS_EX_NOACTIVATE` 的，不先借键盘，`prompt()` 的框会画出来但打不进字。
+ * 完整因果写在 `FencePanel.tsx` 的 `withKeyboard` 上。
  */
-export function useMenuIo(ctx: HostContext, open: (path: string, id: string) => void): MenuIo {
+export function useMenuIo(
+  ctx: HostContext,
+  open: (path: string, id: string) => void,
+  withKeyboard: <T>(fn: () => T) => Promise<T>
+): MenuIo {
   const call = useCallback(
     (cmd: string, args?: Record<string, unknown>) => {
-      void ctx.invoke(cmd, args).catch((e) => alert(String(e)));
+      // 报错也要弹 alert —— 同一条约束：alert 也需要键盘（Esc / 回车关掉它）。
+      void ctx.invoke(cmd, args).catch((e) => void withKeyboard(() => alert(String(e))));
     },
-    [ctx]
+    [ctx, withKeyboard]
   );
 
   return useMemo<MenuIo>(
@@ -301,18 +310,22 @@ export function useMenuIo(ctx: HostContext, open: (path: string, id: string) => 
         // 旧名从 **path 的 basename** 取，不能从 label 取：看板上文件的 label
         // 已经被后端去掉了扩展名（`index.rs:74` → `Cursor.lnk` 显示成 `Cursor`）。
         const old = baseName(path);
-        const input = prompt("重命名为", old);
-        if (input == null) return; // 用户取消
-        const name = withPreservedExtension(old, input);
-        if (!name) return; // 只打了空格
-        call("fence_rename", { path, newName: name });
+        void withKeyboard(() => {
+          const input = prompt("重命名为", old);
+          if (input == null) return; // 用户取消
+          const name = withPreservedExtension(old, input);
+          if (!name) return; // 只打了空格
+          call("fence_rename", { path, newName: name });
+        });
       },
       // 多一层确认是**故意**偏离资源管理器的（它不弹）：desk 的删除对象是用户的真文件，
       // 而这里没有 Ctrl+Z。进回收站虽然可还原，但用户得先知道它去哪了。
       // 同文件 `fence_restore` 已有同样的先例（`FencePanel.tsx:117`）。
       remove: (path) => {
-        if (!confirm(`删除「${baseName(path)}」？\n会进回收站，可以还原。`)) return;
-        call("fence_delete", { path });
+        void withKeyboard(() => {
+          if (!confirm(`删除「${baseName(path)}」？\n会进回收站，可以还原。`)) return;
+          call("fence_delete", { path });
+        });
       },
       sendTo: (path) => call("fence_send_to", { path }),
       compress: (path) => call("fence_compress", { path }),

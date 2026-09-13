@@ -94,6 +94,13 @@ export function FencePanel({ ctx }: PluginComponentProps) {
    * 定义必须**早于**下面那个键盘 useEffect —— 它出现在依赖数组里，
    * 而依赖数组是在渲染期求值的，晚定义会踩 `const` 的 TDZ。
    */
+  /**
+   * 「菜单现在开着吗」。给搜索框的 `onBlur` 用 —— 见那一处注释。
+   * 与上面的 ref 们一样在渲染期同步，读取者都是事件回调，不在渲染期读。
+   */
+  const menuOpenRef = useRef(false);
+  menuOpenRef.current = menu !== null;
+
   const doLaunch = useCallback(
     (path: string, id?: string) => {
       if (ctx.editing()) return;
@@ -103,10 +110,52 @@ export function FencePanel({ ctx }: PluginComponentProps) {
     [ctx, launch, pushRecent]
   );
 
+  /**
+   * 弹原生对话框前先「借键盘」，用完再还。
+   *
+   * **为什么非这样不可**：desk 的窗口是 `WS_EX_NOACTIVATE` 的（`win_zorder.rs:16`
+   * 起整份文件都在讲这件事）—— 桌面看板刻意不抢焦点。代价是**原生对话框也抢不到
+   * 键盘**：`prompt()` 的框会照常画出来，但敲进去的字进不去（Task 15 真机症状：
+   * 「重命名无法输入内容」）；`confirm` / `alert` 同理，只剩鼠标能点按钮。
+   *
+   * `set_keyboard_input(true)` 会清掉那个扩展位再 `setFocus()`（`lib.rs:63`）——
+   * 就是搜索框打字用的那条路，这里复用同一条。
+   *
+   * ⚠️ 借的动作必须在**弹框之前完成**，所以 `fn` 是 `await` 之后才跑的：
+   * IPC 没回来就弹框，框还是落在一个不可激活的窗口上，症状一模一样。
+   */
+  const withKeyboard = useCallback(
+    async <T,>(fn: () => T): Promise<T> => {
+      await setKeyboard(true);
+      try {
+        return fn();
+      } finally {
+        // 还的时候要避让文本框：搜索框聚焦时把键盘收走，用户就没法打字了。
+        // 与搜索框 `onBlur` 那条守卫同源（下面 `<input>` 那一处）。
+        if (!isTextField(document.activeElement)) void setKeyboard(false);
+      }
+    },
+    [setKeyboard]
+  );
+
   // 菜单的命令通道。`open` 接的就是上面那个 doLaunch —— 于是「从右键菜单打开」
   // 与「点图标打开」走的是同一条路（含「记进最近」）。
-  const menuIo = useMenuIo(ctx, doLaunch);
-  const closeMenu = useCallback(() => setMenu(null), []);
+  const menuIo = useMenuIo(ctx, doLaunch, withKeyboard);
+  /**
+   * 关菜单**并还键盘**。
+   *
+   * 菜单开着的时候键盘租约在我们手上（见 `onContextMenu`），关掉就该还 ——
+   * 不还的话看板从此变成「点一下就把焦点从别的程序抢过来」的窗口，而那正是它
+   * 一开始就被设计成不做的事。
+   *
+   * 与「选中一项后弹对话框」不冲突：`pick()` 是**先关菜单、再跑动作**
+   * （`FenceContextMenu.tsx` 的 `pick`），而对话框那几步自己会再借一次
+   * （`withKeyboard`）。两次 IPC 有先后无重叠，最后落在「借」上。
+   */
+  const closeMenu = useCallback(() => {
+    setMenu(null);
+    if (!isTextField(document.activeElement)) void setKeyboard(false);
+  }, [setKeyboard]);
 
   useEffect(() => {
     const host = document.querySelector<HTMLElement>('[data-plugin="fence"]');
@@ -226,6 +275,10 @@ export function FencePanel({ ctx }: PluginComponentProps) {
         // 编辑态不开菜单：这个模式下左键是拖拽，`doLaunch` 那道 `ctx.editing()` 闸
         // 会让「打开」静默无操作 —— 与其给一个半死的菜单，不如让两种模式不重叠。
         if (editingOn) return;
+        // 右键菜单是个**键盘**界面：Esc 要能关、重命名/删除要弹原生对话框。
+        // 而这个窗口默认不可激活（`WS_EX_NOACTIVATE`），不先把键盘借过来，
+        // 这两件事都会以「看得见、用不了」的方式失败（真机症状见 `withKeyboard`）。
+        void setKeyboard(true);
         // 搜索结果行也是条目（带 data-id），一视同仁地给条目菜单；
         // 只有真正的空白（工具栏、围栏标题、网格空地）才出「新建 ▸ / 粘贴」。
         const host = t?.closest<HTMLElement>(".fence-app, .fence-search-row");
@@ -441,7 +494,13 @@ export function FencePanel({ ctx }: PluginComponentProps) {
           onFocus={() => void setKeyboard(true)}
           onBlur={() => {
             window.setTimeout(() => {
-              if (!isTextField(document.activeElement)) void setKeyboard(false);
+              // `menuOpenRef` 那道闸不是防御性编程，是**时序**：右键一个搜索结果行时，
+              // 浏览器会先让输入框失焦（本回调排进 0ms 定时器），随后才派发
+              // contextmenu（那里借键盘）。这个定时器在**之后**才跑，不挡的话
+              // 它会立刻把菜单刚借到的租约还掉 —— 菜单开着，Esc 与原生对话框又都失效了。
+              if (!isTextField(document.activeElement) && !menuOpenRef.current) {
+                void setKeyboard(false);
+              }
             }, 0);
           }}
         />

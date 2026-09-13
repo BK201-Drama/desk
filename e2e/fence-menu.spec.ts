@@ -334,6 +334,98 @@ test("删除：确认了才调，取消一次都不调", async ({ page }) => {
     .toEqual([{ path: "C:\\Desktop\\语雀.lnk" }]);
 });
 
+/**
+ * 键盘租约 —— **Task 15 真机 bug 的回归护栏**。
+ *
+ * 症状（用户实测）：「重命名无法输入内容」。根因不是 `prompt` 不可用，而是
+ * desk 的窗口是 `WS_EX_NOACTIVATE` 的（桌面看板刻意不抢焦点，`win_zorder.rs`），
+ * 于是**原生对话框也抢不到键盘**：框照常画出来，敲进去的字进不去。
+ * 修法是把搜索框那条路复用一遍 —— 菜单开着时借键盘、关掉时还，
+ * 要弹对话框的动作（重命名 / 删除 / alert）再自己借一次。
+ *
+ * 这条测的是**顺序**，因为顺序就是正确性本身：
+ *   · 借必须发生在对话框**弹出之前**（`withKeyboard` 里是 `await` 完才跑 `fn`）
+ *   · 还必须在对话框**关掉之后**（`finally`），否则框一出来窗口又不可激活了
+ * `__MOCK_CALLS__` 是有序日志，所以这两条都能直接读出来。
+ *
+ * 注意这条在 mock 里**不可能**验出「真机上到底能不能打字」（那要真键盘），
+ * 它验的是「代码把租约的顺序摆对了」。真机那一下仍要用户肉眼过。
+ */
+test("键盘租约：开菜单借、关菜单还；对话框弹出前租约必须已在手上", async ({ page }) => {
+  await openBoard(page);
+  const keyboard = () => callsTo(page, "set_keyboard_input");
+
+  // ① 右键打开 → 借（菜单是键盘界面：Esc 要能关）
+  await rightClick(page, app("d-cursor-0"), 900, 300);
+  await expect.poll(keyboard).toEqual([{ active: true }]);
+
+  // ② Escape 关掉 → 还（不还的话看板从此点一下就抢焦点）
+  await page.evaluate(() => {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true })
+    );
+  });
+  await closeMenu(page);
+  await expect.poll(keyboard).toEqual([{ active: true }, { active: false }]);
+
+  // ③ 重命名：把「借/还」与「命令」拼成一条有顺序的时间线
+  page.once("dialog", (d) => void d.accept("新名字"));
+  await rightClick(page, app("d-cursor-0"), 900, 300);
+  await clickMenu(page, "rename");
+  await expect.poll(async () => callsTo(page, "fence_rename")).toHaveLength(1);
+
+  const timeline = await page.evaluate(() =>
+    (
+      window as unknown as {
+        __MOCK_CALLS__: Array<{ cmd: string; args: { active?: boolean } }>;
+      }
+    ).__MOCK_CALLS__
+      .filter((c) => c.cmd === "set_keyboard_input" || c.cmd === "fence_rename")
+      .map((c) =>
+        c.cmd === "fence_rename" ? "rename" : c.args.active ? "借" : "还"
+      )
+  );
+
+  // 读法：借(开菜单) → 还(Esc) → 借(再开) → 还(pick 先关菜单) → 借(弹框前) → rename → 还(框关了)
+  expect(timeline.join(" ")).toBe("借 还 借 还 借 rename 还");
+  // 单把最关键的那一步再钉一次：rename 之前紧邻的那次键盘操作必须是「借」
+  expect(timeline[timeline.indexOf("rename") - 1]).toBe("借");
+
+  // ④ 时序：搜索框**失焦**排下的那个释放，不能把菜单刚借到的租约还掉。
+  //    真实顺序是「先失焦（释放排进 0ms 定时器）→ 再派发 contextmenu（借）」，
+  //    定时器后跑就会把租约还掉 —— 菜单开着，Esc 与原生对话框又都失效。
+  //    FencePanel 的 `onBlur` 里那道 `menuOpenRef` 闸就是为这个存在的。
+  //
+  //    ⚠️ 三步必须在**同一个任务**里做完：中间一旦 `await` 回一趟 Node，
+  //    那个 0ms 定时器就先跑了，释放排在借之前 —— 那时没有 bug 可测，
+  //    这条会变成一条永远绿的假护栏（第一版就是这么写错的）。
+  const before = (await keyboard()).length;
+  await page.evaluate(() => {
+    const input = document.querySelector<HTMLInputElement>(".fence-search")!;
+    input.focus(); // 聚焦本身借一次键盘
+    input.blur(); // 释放排进 0ms 定时器，此刻还没跑
+    const el = document.querySelector(
+      '#fences .fence:not(#fenceRecent) .fence-app[data-id="d-cursor-0"]'
+    );
+    if (!el) throw new Error("找不到 d-cursor-0");
+    el.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        button: 2,
+        clientX: 900,
+        clientY: 300,
+      })
+    );
+  });
+  await expect(page.locator(MENU)).toBeVisible();
+  // 等那个定时器**真的跑过**再断言，否则这条会在定时器之前通过，同样等于没测
+  await page.waitForTimeout(80);
+  const seq = (await keyboard()).slice(before).map((a) => (a as { active: boolean }).active);
+  // 没有那道闸的话这里会是 [true, false, true]：「失焦的释放」把菜单的租约还掉了
+  expect(seq, "失焦的释放把菜单的租约还掉了").toEqual([true, true]);
+});
+
 test("推来新的一帧会关掉菜单（不让它拿一个已经失效的 path 去发命令）", async ({ page }) => {
   await openBoard(page);
   await rightClick(page, app("d-yuque-0"), 900, 300);
