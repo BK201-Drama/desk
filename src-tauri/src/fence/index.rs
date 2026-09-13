@@ -338,6 +338,26 @@ mod tests {
         ))
     }
 
+    /// 从源码里抠出 `decl` 那一行 `=` 右边的原文（已掐掉行首空白与行尾分号）。
+    ///
+    /// ⚠️ **必须卡词法边界**：单纯 `starts_with("export const ROWS_MAX")` 会让 `ROWS_MAX_X`
+    /// 也命中，于是「改了名」被读成「没改名」，守卫静默通过。两个语言的常量都靠这个抠。
+    fn decl_value<'a>(src: &'a str, decl: &str, file: &str) -> &'a str {
+        let line = src
+            .lines()
+            .map(str::trim_start)
+            .find(|l| {
+                l.strip_prefix(decl).is_some_and(|rest| {
+                    !rest.starts_with(|c: char| c.is_alphanumeric() || c == '_')
+                })
+            })
+            .unwrap_or_else(|| panic!("{file} 里找不到 `{decl}` —— 改了名就得同步改这条守卫"));
+        line.split('=')
+            .nth(1)
+            .map(|v| v.trim().trim_end_matches(';').trim())
+            .unwrap_or_else(|| panic!("{file} 的 `{decl}` 这行没有 `=`：{line}"))
+    }
+
     /// `ROWS_MAX` 在三个地方各写一遍：这里（读取时夹住）、`model.ts`（生成菜单项）、
     /// `panel.css`（`.rows-N` 类）。漂移的症状是**静默的** —— 菜单多出一项，点下去产出一个
     /// 不存在的类名，高度悄悄回落默认值，`tsc` 与全部测试都不响。
@@ -373,28 +393,42 @@ mod tests {
             );
         }
 
-        // ⚠️ 必须卡词法边界：单纯 `starts_with("export const ROWS_MAX")` 会让
-        // `ROWS_MAX_X` 也命中，于是「改名」被当成「没改名」，测试静默通过。
-        let line = ts
-            .lines()
-            .find(|l| {
-                l.trim_start()
-                    .strip_prefix("export const ROWS_MAX")
-                    .is_some_and(|rest| {
-                        !rest.starts_with(|c: char| c.is_alphanumeric() || c == '_')
-                    })
-            })
-            .unwrap_or_else(|| {
-                panic!("model.ts 里找不到 `export const ROWS_MAX` —— 改了名就得同步改这条测试")
-            });
-        let ts_max: u32 = line
-            .split('=')
-            .nth(1)
-            .and_then(|s| s.trim().trim_end_matches(';').trim().parse().ok())
-            .unwrap_or_else(|| panic!("model.ts 的 ROWS_MAX 解析不出数字：{line}"));
+        let raw = decl_value(&ts, "export const ROWS_MAX", "src/plugins/fence/model.ts");
+        let ts_max: u32 = raw
+            .parse()
+            .unwrap_or_else(|_| panic!("model.ts 的 ROWS_MAX 解析不出数字：{raw}"));
         assert_eq!(
             ts_max, ROWS_MAX,
             "model.ts 的 ROWS_MAX 与本文件的 ROWS_MAX 不一致"
+        );
+    }
+
+    /// `SYS_ID_PREFIX` 在两个语言里各写一遍：`fence::mod.rs`（造回收站/此电脑的 id、
+    /// 跳过记账与孤儿检测）与 `src/plugins/fence/model.ts`（前端拿它判断「系统项」，
+    /// 不可重命名 / 删除 / 拖拽）。
+    ///
+    /// 漂移的症状同样是**静默的**，两侧各丢一样东西：Rust 少认 → 系统项被记进 `fence.json`
+    /// 并被孤儿检测盯上；TS 少认 → 右键菜单给 `sys-recycle` 摆出「重命名 / 删除」，
+    /// 而它们在桌面上根本没有对应文件。两边判据都是 `starts_with`，没有类型挡得住。
+    ///
+    /// 放在这里而不是 `mod.rs`：紧挨上面那条 —— 「Rust 常量必须等于 `model.ts` 里那个」
+    /// 这一类守卫集中一处，好找。
+    #[test]
+    fn sys_id_prefix_matches_frontend() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let ts = std::fs::read_to_string(root.join("src/plugins/fence/model.ts"))
+            .unwrap_or_else(|e| panic!("读不到 src/plugins/fence/model.ts：{e}"));
+
+        let raw = decl_value(&ts, "export const SYS_ID_PREFIX", "src/plugins/fence/model.ts");
+        let ts_prefix = raw
+            .strip_prefix('"')
+            .and_then(|s| s.strip_suffix('"'))
+            .unwrap_or_else(|| panic!("model.ts 的 SYS_ID_PREFIX 不是字符串字面量：{raw}"));
+
+        assert_eq!(
+            ts_prefix,
+            crate::fence::SYS_ID_PREFIX,
+            "model.ts 的 SYS_ID_PREFIX 与 fence::mod.rs 的不一致 —— 前端会按另一个前缀认「系统项」"
         );
     }
 

@@ -192,7 +192,7 @@ fn check_no_orphan_ids(fences: &[FenceDto], m: &meta::FenceMeta) {
         .iter()
         .flat_map(|f| f.items.iter())
         .map(|it| it.id.as_str())
-        .filter(|id| !id.starts_with("sys-") && !m.entries.contains_key(*id))
+        .filter(|id| !id.starts_with(SYS_ID_PREFIX) && !m.entries.contains_key(*id))
         .collect();
     assert!(
         orphans.is_empty(),
@@ -204,7 +204,7 @@ fn check_no_orphan_ids(fences: &[FenceDto], m: &meta::FenceMeta) {
 /// 「旧 id 已被改写」那条更强的断言只在首次跑的路径上做（那里才有 `id_map`）。
 fn check_recent_ids_are_backed(m: &meta::FenceMeta) {
     for id in recent_file_ids() {
-        if id.starts_with("sys-") {
+        if id.starts_with(SYS_ID_PREFIX) {
             continue;
         }
         assert!(

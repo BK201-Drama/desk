@@ -22,6 +22,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::Path;
 
+/// 宿主自己造的项（回收站 / 此电脑）的 id 前缀 —— 它们**不在**真桌面上。
+///
+/// 这是一个**跨语言约定**：`src/plugins/fence/model.ts` 的同名常量决定前端把哪些项当
+/// 「系统项」（不可重命名 / 删除 / 拖拽），Rust 侧用它跳过记账与孤儿检测。两边一分家，
+/// 其中一侧就会**静默**少认一类项 —— 由 `index::sys_id_prefix_matches_frontend` 钉住。
+///
+/// 下面造 id 写 `format!("{SYS_ID_PREFIX}recycle")` 而不是字面量 `"sys-recycle"`，
+/// 是为了让「改这个常量」带不动 id：写死的话，只改常量的人会把前缀和 id 劈成两家。
+pub(crate) const SYS_ID_PREFIX: &str = "sys-";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FenceItemDto {
     pub id: String,
@@ -66,7 +76,7 @@ fn system_shell_items(icons: &Path) -> Vec<FenceItemDto> {
 
     vec![
         FenceItemDto {
-            id: "sys-recycle".into(),
+            id: format!("{SYS_ID_PREFIX}recycle"),
             label: "回收站".into(),
             path: "shell:RecycleBinFolder".into(),
             icon: recycle_icon
@@ -75,7 +85,7 @@ fn system_shell_items(icons: &Path) -> Vec<FenceItemDto> {
             is_dir: true,
         },
         FenceItemDto {
-            id: "sys-pc".into(),
+            id: format!("{SYS_ID_PREFIX}pc"),
             label: "此电脑".into(),
             path: "shell:MyComputerFolder".into(),
             icon: pc_icon
@@ -233,7 +243,7 @@ pub fn fence_save_order(layout: Vec<FenceLayoutDto>) -> Result<Vec<FenceDto>, St
         // order 只在同一个围栏内部比大小，所以每个围栏各自从 0 数。
         let mut order = 0u32;
         for id in &block.ids {
-            if id.starts_with("sys-") {
+            if id.starts_with(SYS_ID_PREFIX) {
                 continue;
             }
             // or_insert 而不是 get_mut：还没记过账的项在这里被补上 —— 拖一下就把归属记下来。
