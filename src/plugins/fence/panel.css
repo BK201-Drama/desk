@@ -4,7 +4,7 @@
  * 2026-09-13（Task 17）从 `src/styles.css` 搬来 —— 在那之前 fence 的规则散在
  * `styles.css` 的**五个地方**：`:root` 里的三个变量、`.pane-fences` 那一组、
  * `.fences-head` 起的一大段（`.fences-head` → `.fence-search-row.is-selected`）、
- * `#fenceRecent:not([hidden])` 那 10 行、以及暗色 media query 里夹在别的插件
+ * `#fenceRecent` 那 10 行、以及暗色 media query 里夹在别的插件
  * 规则之间的一段。搬走之后，`styles.css` 里与 fence 有关的只剩一条
  * `.pane-left` 的暗色背景 —— 它原本和 `.pane-fences` 写在同一个混合选择器里，
  * **外科手术**把 `, .pane-fences` 那一行摘走、那一半留在了原地。
@@ -155,10 +155,14 @@
 .pane-fences.is-searching #fences {
   display: none !important;
 }
-#fenceSearchResults[hidden],
-#fenceRecent[hidden] {
-  display: none !important;
-}
+/* 这里原本还有一条 `#fenceSearchResults[hidden], #fenceRecent[hidden] {
+   display: none !important }`（2026-09-14 删）。两条都是**永远不会匹配**的死规则：
+     · `#fenceRecent` 从不带 `hidden` —— 空的时候 `RecentRow` 直接 `return null`，
+       元素根本不存在；非空时那个 div（`RecentRow.tsx:34`）也没有这个属性。
+     · `#fenceSearchResults` 这个 id **全仓不存在** —— 搜索结果渲染的是
+       `className="fence-search-results"`（`FencePanel.tsx:527`），没有 id。
+   搜索态的隐藏靠上面那条 `.is-searching #fences`，与 `[hidden]` 无关。
+   留着它们不只是没用：「元素不能带 hidden」会被读成一条承重契约。 */
 .pane-fences.is-searching .fence-search {
   border-color: rgba(45, 106, 79, 0.55);
   background: rgba(255, 255, 255, 0.95);
@@ -477,13 +481,21 @@
   box-shadow: 0 0 0 1px rgba(45, 106, 79, 0.12);
 }
 
-#fenceRecent:not([hidden]) {
+/* 2026-09-14：这三条原本写的是 `#fenceRecent:not([hidden])`（含暗色那一份）。
+   `:not([hidden])` 恒真 —— 那个 div 从不带 `hidden`（`RecentRow.tsx:32` 空则
+   `return null`），所以去掉它不改任何一条声明「会不会生效」。
+   **特异性确实降了一档**（1,1,0 → 1,0,0）。有没有别的规则因此翻上来：没有 ——
+   本文件另外两条带 id 的规则打的都是**后代元素**（`#fenceRecent .fence-grid`、
+   `.pane-fences #fences .fence-grid.rows-N`），而落在这同一个 div 上的选择器
+   只有 `.fence` / `.is-collapsed` 这类类选择器，够不到 1,0,0。
+   真正的判据仍是那 8 份基线：`npm run test:style` 期望 0 处漂移。 */
+#fenceRecent {
   margin-bottom: 0;
   border-style: solid;
   border-color: rgba(45, 106, 79, 0.2);
   background: rgba(45, 106, 79, 0.08);
 }
-#fenceRecent:not([hidden]) .fence-grid {
+#fenceRecent .fence-grid {
   grid-template-columns: repeat(4, 1fr);
   --fence-rows: 1;
 }
@@ -560,7 +572,7 @@
   .fence-title em {
     color: #6b7a8c;
   }
-  #fenceRecent:not([hidden]) {
+  #fenceRecent {
     border-color: rgba(82, 183, 136, 0.25);
     background: rgba(82, 183, 136, 0.08);
   }

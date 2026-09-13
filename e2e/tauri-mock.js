@@ -20,9 +20,13 @@
   // 并逐行 review diff。
   //
   // 覆盖围栏样式里所有有分支的形状（Task 17 起这些规则在 panel.css）：
-  //   游戏 / 工具  → --fence-rows: 3   (panel.css:366-369)
-  //   工作 / 系统  → --fence-rows: 1   (panel.css:370-374)
-  //   最近         → #fenceRecent:not([hidden])，4 列 1 行 (panel.css:494-503)
+  //   游戏 / 工具  → --fence-rows: 3
+  //   工作 / 系统  → --fence-rows: 1
+  //   最近         → #fenceRecent，4 列 1 行
+  //
+  // 这里**故意不写 panel.css 行号**：原来那三个（366-369 / 370-374 / 494-503）全漂了，
+  // 而 `#fenceRecent:not([hidden])` 这个选择器已于 2026-09-14 删掉（`:not([hidden])`
+  // 恒真 —— 那个 div 从不带 `hidden`）。要看规则就照选择器在 panel.css 里搜。
   //
   // `is_dir` 是 Task 15 加的：右键菜单靠它决定「打开方式」出不出现。
   // 它**不参与渲染**（没有任何 class / data 属性读它），所以补这个字段
