@@ -1,6 +1,7 @@
 //! Desktop icon vault: icons live only in fences, not on the Windows desktop.
 
 pub(crate) mod hide;
+pub(crate) mod index;
 pub(crate) mod meta;
 
 use serde::{Deserialize, Serialize};
@@ -167,6 +168,14 @@ fn extract_icon_png(src: &Path, dest: &Path) -> bool {
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
+        // ⚠️ 下面 `script` 里的内容**必须保持纯 ASCII**，包括注释和 C# 源码。
+        //
+        // 脚本由 `fs::write` 落盘，是 UTF-8 **无 BOM**；Windows PowerShell 5.1
+        // 读无 BOM 文件时按 **ANSI** 解码 —— 非 ASCII 字节会被拆成乱码字符，
+        // 轻则字符串变样，重则把 `@'...'@` here-string 的边界冲掉，
+        // 报满屏 `ParserError: ParentContainsErrorRecordException`（实测踩过）。
+        // 中文解释写在这层 Rust 注释里，别写进脚本。
+        //
         // Resolve .lnk/.url → target (or IconLocation) so Windows does NOT bake in
         // the shortcut-arrow overlay. ExtractAssociatedIcon(.lnk) always overlays.
         let src_s = src.to_string_lossy().replace('\'', "''");
@@ -207,9 +216,52 @@ public static class DeskCleanIcon {{
     return true;
   }}
 }}
+
+// Directory-only: SHGetFileInfo returns the shell's standard folder icon.
+// Neither of the other two APIs works on a directory -- PrivateExtractIcons
+// returns 0, ExtractAssociatedIcon throws.
+public static class DeskShellIcon {{
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  private struct SHFILEINFO {{
+    public IntPtr hIcon; public int iIcon; public uint dwAttributes;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szDisplayName;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)] public string szTypeName;
+  }}
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+  private static extern IntPtr SHGetFileInfo(string pszPath, uint dwFileAttributes, ref SHFILEINFO psfi, uint cbFileInfo, uint uFlags);
+  [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr h);
+  public static bool Save(string path, int px, string dest) {{
+    const uint SHGFI_ICON = 0x100;
+    SHFILEINFO fi = new SHFILEINFO();
+    IntPtr r = SHGetFileInfo(path, 0, ref fi, (uint)Marshal.SizeOf(typeof(SHFILEINFO)), SHGFI_ICON);
+    if (r == IntPtr.Zero || fi.hIcon == IntPtr.Zero) return false;
+    try {{
+      using (Icon icon = (Icon)Icon.FromHandle(fi.hIcon).Clone())
+      using (Bitmap bmp = new Bitmap(px, px, PixelFormat.Format32bppArgb))
+      using (Graphics g = Graphics.FromImage(bmp)) {{
+        g.Clear(Color.Transparent);
+        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+        g.DrawIcon(icon, new Rectangle(0, 0, px, px));
+        bmp.Save(dest, ImageFormat.Png);
+      }}
+    }} finally {{ DestroyIcon(fi.hIcon); }}
+    return true;
+  }}
+}}
 '@
   if (-not ("DeskCleanIcon" -as [type])) {{
     Add-Type -TypeDefinition $code -ReferencedAssemblies System.Drawing
+  }}
+  # Directories go through SHGetFileInfo. Must stay AFTER Add-Type, since the
+  # type only exists once the C# above has been compiled.
+  #
+  # Why not let a directory fall through to ExtractAssociatedIcon below: that API
+  # throws on directories, and $ErrorActionPreference='Stop' promotes an exception
+  # raised inside a function to a terminating error, so the script dies before
+  # reaching its own last-ditch `Save-Icon $src 0` fallback. Measured on
+  # user-opc-thinking-14.lnk (points at a directory) -- that is why it had no icon.
+  if ((Get-Item -LiteralPath $path -ErrorAction SilentlyContinue).PSIsContainer) {{
+    return [DeskShellIcon]::Save($path, 64, $dest)
   }}
   if ([DeskCleanIcon]::Save($path, $index, 64, $dest)) {{ return $true }}
   $i = [System.Drawing.Icon]::ExtractAssociatedIcon($path)
@@ -679,7 +731,10 @@ fn purge_self_desk_entries(meta: &mut VaultMeta) -> Result<bool, String> {
 }
 
 /// v2 = extract from .lnk target (no Windows shortcut-arrow overlay).
-const ICON_CACHE_VER: &str = "2";
+/// v3 = 图标文件名随 meta key 改为「origin_文件名」的转义形式（index.rs::icon_file）。
+///      旧名 `user-PVZ-0.png` 和新名对不上，所以这里必须升版；否则 refresh 会以为
+///      缓存还在、直接跳过，迁移后就是一堆空白方块。旧文件留着无害。
+const ICON_CACHE_VER: &str = "3";
 
 fn refresh_icon_cache_if_needed(meta: &VaultMeta) -> Result<(), String> {
     let marker = app_data_dir()?.join(format!("icon-cache-v{ICON_CACHE_VER}"));
