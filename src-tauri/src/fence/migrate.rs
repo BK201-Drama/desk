@@ -3,22 +3,12 @@
 //! 判据是「**vault 里的文件还在不在**」，不是「上次跑到哪」——
 //! 所以中途失败 / 断电 / 强杀都能重跑收敛（spec §5.3，INV-5）。
 //!
-//! Task 12 之后，本模块会是 fence/ 里**唯一**还能 `fs::rename` 的地方
-//! （Task 17 的验收项：`grep -rn 'fs::rename' src-tauri/src/fence/` 只命中本文件）——
+//! 本模块是 fence/ 里**唯一**还能移动文件的地方（Task 17 的验收项：
+//! `grep -rn 'fs::rename' src-tauri/src/fence/` 只命中本文件）——
 //! 新架构下文件永远住在桌面，搬动只发生在这唯一一次迁移里。
 //!
-//! 现在还没到那一步：`mod.rs:545` / `569` 仍在 `fence_takeover` 里把图标**搬进** vault，
-//! 那正是 Task 12 要删掉的那条写路径。所以上面那条 grep 现在会多两处，不是漏改。
-
-// 本模块和它的单测是 Task 9 的产物，生产入口 `run()` 由 Task 10 接到
-// `fence_restore` 上。在那之前 lib 构建会有 dead_code。
-//
-// 这是**债**，不是设计 —— 和 Task 2/6/7/8 的 `#![allow(dead_code)]` 同性质。
-// Task 10 把 `fence_restore` 改成调 `migrate::run()` 之后，这行必须回来删掉。
-//
-// 连带影响：`recent::remap_ids` 的唯一消费者就是本模块的 `run()`，
-// 所以 recent.rs 那笔债也跟着顺延到 Task 10 —— 两笔一起还。
-#![allow(dead_code)]
+//! Task 10 起生产入口 `run()` 已接到 `fence_restore` 上，本模块的
+//! `#![allow(dead_code)]` 也一并删掉了（Task 9 记的那笔债，这里还清）。
 
 use super::{vault_dir, VaultEntry, VaultMeta};
 use crate::fence::meta;

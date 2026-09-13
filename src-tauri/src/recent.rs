@@ -4,14 +4,11 @@
 //! `fence::migrate` 知道**。前端不碰格式，只拿 id 去围栏里查条目
 //! （`src/plugins/fence/recent/index.ts`）。
 
-// 本模块是有意建在使用者前面的：remap / remap_ids 是给 Task 9 的 fence::migrate 准备的
+// 本模块是有意建在使用者前面的：remap / remap_ids 是给 fence::migrate 准备的
 // （图标 id 从 `user-PVZ-3` 改成 `user:PVZ.lnk` 时要就地改写磁盘上的列表）。
-// 在那之前 lib 构建会有 2 条 dead_code。
-//
-// 这是**债**，不是设计 —— 和 Task 2/6/7 的 `#![allow(dead_code)]` 同性质。
-// 区别在于这笔债很短命：Task 9 的 migrate.rs 一调上 remap_ids，两条警告就自己消失，
-// 那一步完成时必须回来把这行删掉，让编译器重新盯着本模块剩下的东西。
-#![allow(dead_code)]
+// Task 9 起 `migrate::run()` 已经在调 `remap_ids`，Task 10 把 `run()` 接到了
+// `fence_restore` 上 —— 生产者接到了消费者，这行 `#![allow(dead_code)]` 也随之删掉：
+// 让编译器重新盯着本模块剩下的东西。
 
 use serde::{Deserialize, Serialize};
 use std::fs;

@@ -258,11 +258,12 @@
             hint: "mock",
           };
         case "fence_list":
-        case "fence_takeover":
+        case "fence_rescan":
         case "fence_save_order":
-          // 三个命令返回同一份数据是刻意的：useFences.ts:117-134 有冷启动双定时器，
-          // 250ms 走 fence_list、2500ms 走 fence_takeover 再覆盖一次。两边数据不一致
-          // 的话，样式审查会在两个状态之间随机飘。
+          // 三个命令返回同一份数据是刻意的：它们读的都是「同一批围栏」，
+          // 数据不一致的话样式审查会在两个状态之间随机飘。
+          // （旧版的 `fence_takeover` 随 Task 10 删掉了 —— 现在读源是真桌面，
+          //  `fence_rescan` 只是「重扫一遍」，结论仍是这份数据。）
           return structuredClone(FENCE_FIXTURE);
         case "fence_snapshot":
           return { fences: structuredClone(FENCE_FIXTURE), icons: [] };

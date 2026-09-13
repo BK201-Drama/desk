@@ -179,7 +179,7 @@ pub fn run() {
             remind::remind_add,
             remind::remind_toggle,
             remind::remind_remove,
-            fence::fence_takeover,
+            fence::fence_rescan,
             fence::fence_list,
             fence::fence_launch,
             fence::fence_restore,

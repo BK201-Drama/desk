@@ -18,7 +18,7 @@ const PERM_COMMANDS: Record<PluginPermission, string[]> = {
   "remind.write": ["remind_add", "remind_toggle", "remind_remove"],
   "fence.read": ["fence_list", "fence_status", "fence_icons_visible"],
   "fence.write": [
-    "fence_takeover",
+    "fence_rescan",
     "fence_restore",
     "fence_save_order",
     "fence_set_icons_visible",
