@@ -7,7 +7,10 @@ import {
   memPct,
   normalizeSnapshot,
   ringOffset,
+  softSeriesMax,
+  smoothSeries,
   sparklinePath,
+  sparklineSmooth,
   topApps,
 } from "./model";
 import type { SysResSnapshot } from "./model";
@@ -71,6 +74,39 @@ describe("sparklinePath", () => {
     const p = sparklinePath([0, 50, 100], 100, 20, 0);
     expect(p.startsWith("M")).toBe(true);
     expect((p.match(/L/g) ?? []).length).toBe(2);
+  });
+});
+
+describe("sparklineSmooth", () => {
+  it("builds smooth line and closed area", () => {
+    const { line, area } = sparklineSmooth([0, 50, 100, 40], 100, 24, 2);
+    expect(line.startsWith("M")).toBe(true);
+    expect(line.includes("Q") || line.includes("T") || line.includes("L")).toBe(
+      true
+    );
+    expect(area.endsWith("Z")).toBe(true);
+  });
+
+  it("respects sharedMax so quiet series stays low", () => {
+    const a = sparklineSmooth([10, 10], 100, 20, 0, 100);
+    const b = sparklineSmooth([10, 10], 100, 20, 0, 10);
+    expect(a.line).not.toBe(b.line);
+  });
+});
+
+describe("softSeriesMax", () => {
+  it("does not let one spike dominate", () => {
+    const max = softSeriesMax([100, 120, 110, 5000]);
+    expect(max).toBeLessThan(5000);
+    expect(max).toBeGreaterThan(120);
+  });
+});
+
+describe("smoothSeries", () => {
+  it("keeps length and damps a spike", () => {
+    const out = smoothSeries([0, 0, 1000, 0], 0.5);
+    expect(out).toHaveLength(4);
+    expect(out[2]!).toBeLessThan(1000);
   });
 });
 

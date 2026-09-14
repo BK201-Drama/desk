@@ -4,7 +4,9 @@ import {
   buildRingSegments,
   formatRate,
   memPct,
-  sparklinePath,
+  softSeriesMax,
+  smoothSeries,
+  sparklineSmooth,
   type RingSegment,
   type SysResSnapshot,
 } from "./model";
@@ -18,8 +20,9 @@ const C = 2 * Math.PI * R;
 const CX = 39;
 const CY = 39;
 
-const SPARK_W = 72;
-const SPARK_H = 36;
+/** 与双环同高的单图 */
+const CHART_W = 80;
+const CHART_H = 36;
 
 function segmentStroke(seg: RingSegment, appIndex: number): string {
   if (seg.kind === "rest") return REST_COLOR;
@@ -35,7 +38,6 @@ function formatMemSub(used: number, total: number): string {
   return `${toG(used)}/${toG(total)}G`;
 }
 
-/** 环心很窄：常见进程缩写，避免 msedgewebview2 之类顶破空心 */
 function shortAppName(name: string): string {
   const n = name.replace(/\.exe$/i, "").trim();
   const map: Record<string, string> = {
@@ -130,30 +132,43 @@ function NetSpark({
   downBps: number;
   upBps: number;
 }) {
-  const downPath = sparklinePath(hist.down, SPARK_W, SPARK_H);
-  const upPath = sparklinePath(hist.up, SPARK_W, SPARK_H);
+  const down = smoothSeries(hist.down);
+  const up = smoothSeries(hist.up);
+  const max = softSeriesMax([...down, ...up]);
+  const dl = sparklineSmooth(down, CHART_W, CHART_H, 3, max);
+  const ul = sparklineSmooth(up, CHART_W, CHART_H, 3, max);
 
   return (
     <div className="sys-res-net" aria-label="网络">
       <svg
-        className="sys-res-spark"
-        viewBox={`0 0 ${SPARK_W} ${SPARK_H}`}
+        className="sys-res-chart"
+        viewBox={`0 0 ${CHART_W} ${CHART_H}`}
         preserveAspectRatio="none"
       >
-        {downPath ? (
-          <path d={downPath} className="sys-res-spark-dl" fill="none" />
+        <line
+          className="sys-res-chart-base"
+          x1="0"
+          y1={CHART_H - 3}
+          x2={CHART_W}
+          y2={CHART_H - 3}
+        />
+        {dl.area ? <path d={dl.area} className="sys-res-chart-fill" /> : null}
+        {dl.line ? (
+          <path d={dl.line} className="sys-res-chart-dl" fill="none" />
         ) : null}
-        {upPath ? (
-          <path d={upPath} className="sys-res-spark-ul" fill="none" />
+        {ul.line ? (
+          <path d={ul.line} className="sys-res-chart-ul" fill="none" />
         ) : null}
       </svg>
-      <div className="sys-res-net-rates">
-        <span className="is-dl">
-          DL {formatRate(downBps)}
-        </span>
-        <span className="is-ul">
-          UL {formatRate(upBps)}
-        </span>
+      <div className="sys-res-rates">
+        <div className="sys-res-rate is-dl">
+          <span className="sys-res-rate-arrow">↓</span>
+          {formatRate(downBps)}
+        </div>
+        <div className="sys-res-rate is-ul">
+          <span className="sys-res-rate-arrow">↑</span>
+          {formatRate(upBps)}
+        </div>
       </div>
     </div>
   );

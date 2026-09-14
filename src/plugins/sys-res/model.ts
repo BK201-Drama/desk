@@ -116,25 +116,110 @@ export function formatRate(bps: number): string {
   return m >= 10 ? `${Math.round(m)}M` : `${m.toFixed(1)}M`;
 }
 
-/** 折线 path：series 归一化到 viewBox h，y=0 在底部 */
+/** 抑制单点尖刺：用偏高分位做纵轴，尖峰仍画出但不会压扁整段历史 */
+export function softSeriesMax(series: number[]): number {
+  if (series.length === 0) return 1;
+  const sorted = [...series]
+    .filter((n) => Number.isFinite(n) && n >= 0)
+    .sort((a, b) => a - b);
+  if (sorted.length === 0) return 1;
+  const peak = sorted[sorted.length - 1]!;
+  if (peak <= 0) return 1;
+  // 避开最后一个尖峰点再取分位
+  const rank = Math.max(
+    0,
+    Math.min(sorted.length - 2, Math.floor((sorted.length - 1) * 0.85))
+  );
+  const high = sorted[rank] ?? peak;
+  return Math.max(high * 1.35, peak * 0.45, 1);
+}
+
+/** 展示用轻平滑，减轻锯齿/毛刺（不改真实读数） */
+export function smoothSeries(series: number[], alpha = 0.35): number[] {
+  if (series.length === 0) return [];
+  const out: number[] = [];
+  let prev = series[0]!;
+  for (const v of series) {
+    const n = Number.isFinite(v) ? Math.max(0, v) : 0;
+    prev = prev * (1 - alpha) + n * alpha;
+    out.push(prev);
+  }
+  return out;
+}
+
+type Pt = { x: number; y: number };
+
+function sparkPoints(
+  series: number[],
+  width: number,
+  height: number,
+  padY: number,
+  sharedMax?: number
+): Pt[] {
+  if (series.length === 0) return [];
+  const max = Math.max(1, sharedMax ?? softSeriesMax(series));
+  const usable = Math.max(1, height - padY * 2);
+  const n = series.length;
+  const step = n <= 1 ? 0 : width / (n - 1);
+  return series.map((v, i) => {
+    const clipped = Math.min(Math.max(0, v), max);
+    return {
+      x: n <= 1 ? width / 2 : i * step,
+      y: height - padY - (clipped / max) * usable,
+    };
+  });
+}
+
+/** 中点二次平滑：比折线柔和，适合迷你 spark */
+function smoothLine(pts: Pt[]): string {
+  if (pts.length === 0) return "";
+  if (pts.length === 1) return `M${pts[0]!.x.toFixed(1)},${pts[0]!.y.toFixed(1)}`;
+  if (pts.length === 2) {
+    return `M${pts[0]!.x.toFixed(1)},${pts[0]!.y.toFixed(1)} L${pts[1]!.x.toFixed(1)},${pts[1]!.y.toFixed(1)}`;
+  }
+  let d = `M${pts[0]!.x.toFixed(1)},${pts[0]!.y.toFixed(1)}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p = pts[i]!;
+    const n = pts[i + 1]!;
+    const mx = (p.x + n.x) / 2;
+    const my = (p.y + n.y) / 2;
+    d += ` Q${p.x.toFixed(1)},${p.y.toFixed(1)} ${mx.toFixed(1)},${my.toFixed(1)}`;
+  }
+  const last = pts[pts.length - 1]!;
+  d += ` T${last.x.toFixed(1)},${last.y.toFixed(1)}`;
+  return d;
+}
+
+/** 折线 path（兼容旧调用）；新 UI 用 sparklineSmooth */
 export function sparklinePath(
   series: number[],
   width: number,
   height: number,
-  padY = 2
+  padY = 2,
+  sharedMax?: number
 ): string {
-  if (series.length === 0) return "";
-  const max = Math.max(...series, 1);
-  const usable = Math.max(1, height - padY * 2);
-  const n = series.length;
-  const step = n <= 1 ? 0 : width / (n - 1);
-  return series
-    .map((v, i) => {
-      const x = n <= 1 ? width / 2 : i * step;
-      const y = height - padY - (Math.max(0, v) / max) * usable;
-      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
+  const pts = sparkPoints(series, width, height, padY, sharedMax);
+  if (pts.length === 0) return "";
+  return pts
+    .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
     .join(" ");
+}
+
+export function sparklineSmooth(
+  series: number[],
+  width: number,
+  height: number,
+  padY = 2,
+  sharedMax?: number
+): { line: string; area: string } {
+  const pts = sparkPoints(series, width, height, padY, sharedMax);
+  if (pts.length === 0) return { line: "", area: "" };
+  const line = smoothLine(pts);
+  const first = pts[0]!;
+  const last = pts[pts.length - 1]!;
+  const base = height - padY;
+  const area = `${line} L${last.x.toFixed(1)},${base.toFixed(1)} L${first.x.toFixed(1)},${base.toFixed(1)} Z`;
+  return { line, area };
 }
 
 /** SVG circle circumference helper: r=16 → C≈100.53 */
