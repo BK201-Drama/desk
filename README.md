@@ -2,16 +2,16 @@
 
 Windows 桌面玻璃看板 —— 把常用信息与桌面图标收进一块常驻底栏。
 
-用 **Tauri 2 + WebView2** 做透明置底窗口：GitHub 贡献、本地 Multica 看板、待办、QQ 音乐卡片，以及**真桌面**图标围栏。面板可热插拔，布局可一键切换。
+用 **Tauri 2 + WebView2** 做透明置底窗口：GitHub 贡献、本地 Multica 看板、待办、QQ 音乐卡片，以及**真桌面**图标围栏。面板可热插拔，布局可一键切换；支持**日间 / 夜间**外观（夜间玻璃更透，壁纸色会渗进板子）。
 
 <p align="center">
-  <img src="docs/screenshots/00-desktop.png" alt="desk on desktop" width="720" />
+  <img src="docs/screenshots/00-desktop.png" alt="desk on desktop (night)" width="720" />
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/01-board.png" alt="desk board" width="320" />
+  <img src="docs/screenshots/01-board.png" alt="desk board night" width="320" />
   &nbsp;
-  <img src="docs/screenshots/02-cmdk.png" alt="command palette" width="320" />
+  <img src="docs/screenshots/02-cmdk.png" alt="command palette night" width="320" />
 </p>
 
 ## 功能
@@ -22,8 +22,9 @@ Windows 桌面玻璃看板 —— 把常用信息与桌面图标收进一块常�
 - **待办**：轻量提醒列表
 - **QQ 音乐**：系统媒体会话 + 多媒体键播控；点封面拉前台
 - **系统资源**：内存/CPU 环 + Top 应用（默认关，命令面板启用）
-- **布局预设**：程序员 / 极简 / 仅围栏 / 自定义（启停 + **顺序**）
-- **命令面板**：全局快捷键打开；插件用 switch 开关，↑↓ 调顺序；编辑态可拖拽左栏
+- **布局预设**：程序员 / 极简 / 仅围栏 / 方案（启停 + **顺序**）
+- **日间 / 夜间**：命令面板「外观 → 夜间模式」开关；偏好记在本机，不跟随 Windows 深色模式
+- **命令面板**：全局快捷键打开；插件与夜间模式用 switch；↑↓ 调插件顺序；编辑态可拖拽左栏
 
 ## 环境
 
