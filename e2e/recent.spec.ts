@@ -110,6 +110,7 @@ test("搜索后回车启动 → 同样进「最近」", async ({ page }) => {
   await expect.poll(() => recentLabels(page)).toHaveLength(4);
 
   await pressKey(page, "/");
+  await page.waitForSelector(".fence-search", { state: "visible", timeout: 5_000 });
   await typeInto(page, ".fence-search", "powershell");
   await page.waitForSelector(".fence-search-row", { state: "visible", timeout: 10_000 });
 

@@ -261,6 +261,14 @@ test("命令失败 → 自己的 alert：只有「知道了」，错误原文在
 test("搜索态下开弹窗：Escape 只关框，不清搜索框", async ({ page }) => {
   await openBoard(page);
   await page.evaluate(() => {
+    const btn = document.querySelector<HTMLButtonElement>(
+      '.head-actions button[aria-label="搜索图标"]'
+    );
+    if (!btn) throw new Error("找不到搜索图标按钮");
+    btn.click();
+  });
+  await page.waitForSelector(".fence-search", { state: "visible", timeout: 5_000 });
+  await page.evaluate(() => {
     const input = document.querySelector<HTMLInputElement>(".fence-search")!;
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
     setter.call(input, "e");

@@ -17,7 +17,6 @@ import {
   findItemById,
   gridClass,
   searchFences,
-  totalFenceItems,
   type FenceItem,
 } from "./model";
 import { fenceIconStyle, highlightLabelParts } from "./iconStyle";
@@ -70,6 +69,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
     persistOrder
   );
   const [filter, setFilter] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [selected, setSelected] = useState(-1);
   const [autostartOn, setAutostartOn] = useState(false);
   const [iconsError, setIconsError] = useState<string | null>(null);
@@ -80,6 +80,8 @@ export function FencePanel({ ctx }: PluginComponentProps) {
   );
   const searchRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const searchOpenRef = useRef(false);
+  searchOpenRef.current = searchOpen;
 
   const q = filter.trim().toLowerCase();
   const hits = searchFences(fences, filter);
@@ -89,7 +91,6 @@ export function FencePanel({ ctx }: PluginComponentProps) {
   filterRef.current = filter;
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
-  const total = totalFenceItems(fences);
 
   /**
    * 启动的**唯一入口**：真正打开 + 记入最近。
@@ -182,6 +183,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
         if (on && filterRef.current) {
           setFilter("");
           setSelected(-1);
+          setSearchOpen(false);
         }
       }),
       ctx.registerCommand({
@@ -229,9 +231,12 @@ export function FencePanel({ ctx }: PluginComponentProps) {
       ctx.on("fence:changed", () => setMenu(null)),
     ];
     const focusSearch = () => {
+      setSearchOpen(true);
       void setKeyboard(true);
-      searchRef.current?.focus();
-      searchRef.current?.select();
+      window.setTimeout(() => {
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }, 0);
     };
     shell?.registerFocusFenceSearch(focusSearch);
     void ctx.invoke<boolean>("autostart_get").then(setAutostartOn).catch(() => {});
@@ -256,11 +261,13 @@ export function FencePanel({ ctx }: PluginComponentProps) {
         return;
       }
       if (e.key === "Escape") {
-        if (curFilter.trim() || inSearch) {
+        if (curFilter.trim() || inSearch || searchOpenRef.current) {
           e.preventDefault();
           setFilter("");
           setSelected(-1);
+          setSearchOpen(false);
           if (inSearch) (active as HTMLElement).blur();
+          else if (!isTextField(document.activeElement)) void setKeyboard(false);
         }
         return;
       }
@@ -387,13 +394,53 @@ export function FencePanel({ ctx }: PluginComponentProps) {
     >
       <div className="fences-toolbar">
         <div className="fences-head">
-          <h2>
-            全部图标{" "}
-            <span style={{ fontWeight: 400, opacity: 0.6 }}>
-              {q ? `· ${hits.length} 匹配` : `· ${total}`}
-            </span>
-          </h2>
           <div className="head-actions">
+            <button
+              type="button"
+              className={`icon-btn${searchOpen || q ? " on" : ""}`}
+              title="搜索图标 (/)"
+              aria-label="搜索图标"
+              aria-pressed={searchOpen || Boolean(q)}
+              onMouseDown={(e) => {
+                // 输入框聚焦时点按钮会先 blur：空词 blur 会收起搜索，随后 click
+                // 看到已收起又走「打开」——看起来像重刷。拦住默认失焦，由 click 自己 toggle。
+                e.preventDefault();
+              }}
+              onClick={() => {
+                if (searchOpen || Boolean(q)) {
+                  setSearchOpen(false);
+                  setFilter("");
+                  setSelected(-1);
+                  searchRef.current?.blur();
+                  void setKeyboard(false);
+                  return;
+                }
+                setSearchOpen(true);
+                void setKeyboard(true);
+                window.setTimeout(() => {
+                  searchRef.current?.focus();
+                  searchRef.current?.select();
+                }, 0);
+              }}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <circle
+                  cx="6.5"
+                  cy="6.5"
+                  r="4.2"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                />
+                <path
+                  d="M9.8 9.8L13.2 13.2"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
             <button
               type="button"
               className={`icon-btn${autostartOn ? " on" : ""}`}
@@ -486,32 +533,38 @@ export function FencePanel({ ctx }: PluginComponentProps) {
             </button>
           </div>
         </div>
-        <input
-          ref={searchRef}
-          type="text"
-          className="fence-search"
-          placeholder="搜索图标…  /"
-          autoComplete="off"
-          spellCheck={false}
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            void setKeyboard(true);
-          }}
-          onFocus={() => void setKeyboard(true)}
-          onBlur={() => {
-            window.setTimeout(() => {
-              // `menuOpenRef` 那道闸不是防御性编程，是**时序**：右键一个搜索结果行时，
-              // 浏览器会先让输入框失焦（本回调排进 0ms 定时器），随后才派发
-              // contextmenu（那里借键盘）。这个定时器在**之后**才跑，不挡的话
-              // 它会立刻把菜单刚借到的租约还掉 —— 菜单开着，Esc 与原生对话框又都失效了。
-              if (!isTextField(document.activeElement) && !menuOpenRef.current) {
-                void setKeyboard(false);
-              }
-            }, 0);
-          }}
-        />
+        {(searchOpen || Boolean(q)) && (
+          <input
+            ref={searchRef}
+            type="text"
+            className="fence-search"
+            placeholder="搜索图标…  /"
+            autoComplete="off"
+            spellCheck={false}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              void setKeyboard(true);
+            }}
+            onFocus={() => void setKeyboard(true)}
+            onBlur={() => {
+              window.setTimeout(() => {
+                // `menuOpenRef` 那道闸不是防御性编程，是**时序**：右键一个搜索结果行时，
+                // 浏览器会先让输入框失焦（本回调排进 0ms 定时器），随后才派发
+                // contextmenu（那里借键盘）。这个定时器在**之后**才跑，不挡的话
+                // 它会立刻把菜单刚借到的租约还掉 —— 菜单开着，Esc 与原生对话框又都失效了。
+                if (!isTextField(document.activeElement) && !menuOpenRef.current) {
+                  void setKeyboard(false);
+                  if (!filterRef.current.trim()) {
+                    setSearchOpen(false);
+                    setSelected(-1);
+                  }
+                }
+              }, 0);
+            }}
+          />
+        )}
       </div>
 
       {/* 桌面图标开关的读写失败提示。spec §8：HideIcons 写失败不许阻塞启动，

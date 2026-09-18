@@ -121,7 +121,7 @@
       "position": "static",
       "flex-direction": "row",
       "align-items": "center",
-      "justify-content": "space-between",
+      "justify-content": "flex-end",
       "gap": "normal",
       "row-gap": "normal",
       "column-gap": "normal",
@@ -151,83 +151,7 @@
       "text-overflow": "clip"
     }
   },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>h2:nth-child(1)": {
-    "tag": "h2",
-    "cls": "",
-    "props": {
-      "display": "block",
-      "position": "static",
-      "flex-direction": "row",
-      "align-items": "normal",
-      "justify-content": "normal",
-      "gap": "normal",
-      "row-gap": "normal",
-      "column-gap": "normal",
-      "padding-top": "0px",
-      "padding-right": "0px",
-      "padding-bottom": "0px",
-      "padding-left": "0px",
-      "margin-top": "0px",
-      "margin-right": "0px",
-      "margin-bottom": "0px",
-      "margin-left": "0px",
-      "grid-template-columns": "none",
-      "grid-template-rows": "none",
-      "overflow-x": "visible",
-      "overflow-y": "visible",
-      "background-color": "rgba(0, 0, 0, 0)",
-      "color": "rgb(61, 74, 92)",
-      "border-top-width": "0px",
-      "border-top-style": "none",
-      "border-top-color": "rgb(61, 74, 92)",
-      "border-top-left-radius": "0px",
-      "font-size": "8px",
-      "font-weight": "600",
-      "line-height": "normal",
-      "letter-spacing": "0.8px",
-      "white-space": "normal",
-      "text-overflow": "clip"
-    }
-  },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>h2:nth-child(1)>span:nth-child(1)": {
-    "tag": "span",
-    "cls": "",
-    "props": {
-      "display": "inline",
-      "position": "static",
-      "flex-direction": "row",
-      "align-items": "normal",
-      "justify-content": "normal",
-      "gap": "normal",
-      "row-gap": "normal",
-      "column-gap": "normal",
-      "padding-top": "0px",
-      "padding-right": "0px",
-      "padding-bottom": "0px",
-      "padding-left": "0px",
-      "margin-top": "0px",
-      "margin-right": "0px",
-      "margin-bottom": "0px",
-      "margin-left": "0px",
-      "grid-template-columns": "none",
-      "grid-template-rows": "none",
-      "overflow-x": "visible",
-      "overflow-y": "visible",
-      "background-color": "rgba(0, 0, 0, 0)",
-      "color": "rgb(61, 74, 92)",
-      "border-top-width": "0px",
-      "border-top-style": "none",
-      "border-top-color": "rgb(61, 74, 92)",
-      "border-top-left-radius": "0px",
-      "font-size": "8px",
-      "font-weight": "400",
-      "line-height": "normal",
-      "letter-spacing": "0.8px",
-      "white-space": "normal",
-      "text-overflow": "clip"
-    }
-  },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(2)": {
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)": {
     "tag": "div",
     "cls": "head-actions",
     "props": {
@@ -265,7 +189,159 @@
       "text-overflow": "clip"
     }
   },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(2)>button.icon-btn.on:nth-child(1)": {
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn:nth-child(1)": {
+    "tag": "button",
+    "cls": "icon-btn",
+    "props": {
+      "display": "grid",
+      "position": "static",
+      "flex-direction": "row",
+      "align-items": "center",
+      "justify-content": "normal",
+      "gap": "normal",
+      "row-gap": "normal",
+      "column-gap": "normal",
+      "padding-top": "0px",
+      "padding-right": "0px",
+      "padding-bottom": "0px",
+      "padding-left": "0px",
+      "margin-top": "0px",
+      "margin-right": "0px",
+      "margin-bottom": "0px",
+      "margin-left": "0px",
+      "grid-template-columns": "20.77px",
+      "grid-template-rows": "20.77px",
+      "overflow-x": "visible",
+      "overflow-y": "visible",
+      "background-color": "rgba(255, 255, 255, 0.5)",
+      "color": "rgb(61, 74, 92)",
+      "border-top-width": "0.61px",
+      "border-top-style": "solid",
+      "border-top-color": "rgba(26, 35, 50, 0.12)",
+      "border-top-left-radius": "6px",
+      "font-size": "13.33px",
+      "font-weight": "400",
+      "line-height": "normal",
+      "letter-spacing": "normal",
+      "white-space": "normal",
+      "text-overflow": "clip"
+    }
+  },
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn:nth-child(1)>svg:nth-child(1)": {
+    "tag": "svg",
+    "cls": "",
+    "props": {
+      "display": "block",
+      "position": "static",
+      "flex-direction": "row",
+      "align-items": "normal",
+      "justify-content": "normal",
+      "gap": "normal",
+      "row-gap": "normal",
+      "column-gap": "normal",
+      "padding-top": "0px",
+      "padding-right": "0px",
+      "padding-bottom": "0px",
+      "padding-left": "0px",
+      "margin-top": "0px",
+      "margin-right": "0px",
+      "margin-bottom": "0px",
+      "margin-left": "0px",
+      "grid-template-columns": "none",
+      "grid-template-rows": "none",
+      "overflow-x": "hidden",
+      "overflow-y": "hidden",
+      "background-color": "rgba(0, 0, 0, 0)",
+      "color": "rgb(61, 74, 92)",
+      "border-top-width": "0px",
+      "border-top-style": "none",
+      "border-top-color": "rgb(61, 74, 92)",
+      "border-top-left-radius": "0px",
+      "font-size": "13.33px",
+      "font-weight": "400",
+      "line-height": "normal",
+      "letter-spacing": "normal",
+      "white-space": "normal",
+      "text-overflow": "clip"
+    }
+  },
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn:nth-child(1)>svg:nth-child(1)>circle:nth-child(1)": {
+    "tag": "circle",
+    "cls": "",
+    "props": {
+      "display": "inline",
+      "position": "static",
+      "flex-direction": "row",
+      "align-items": "normal",
+      "justify-content": "normal",
+      "gap": "normal",
+      "row-gap": "normal",
+      "column-gap": "normal",
+      "padding-top": "0px",
+      "padding-right": "0px",
+      "padding-bottom": "0px",
+      "padding-left": "0px",
+      "margin-top": "0px",
+      "margin-right": "0px",
+      "margin-bottom": "0px",
+      "margin-left": "0px",
+      "grid-template-columns": "none",
+      "grid-template-rows": "none",
+      "overflow-x": "visible",
+      "overflow-y": "visible",
+      "background-color": "rgba(0, 0, 0, 0)",
+      "color": "rgb(61, 74, 92)",
+      "border-top-width": "0px",
+      "border-top-style": "none",
+      "border-top-color": "rgb(61, 74, 92)",
+      "border-top-left-radius": "0px",
+      "font-size": "13.33px",
+      "font-weight": "400",
+      "line-height": "normal",
+      "letter-spacing": "normal",
+      "white-space": "normal",
+      "text-overflow": "clip"
+    }
+  },
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn:nth-child(1)>svg:nth-child(1)>path:nth-child(2)": {
+    "tag": "path",
+    "cls": "",
+    "props": {
+      "display": "inline",
+      "position": "static",
+      "flex-direction": "row",
+      "align-items": "normal",
+      "justify-content": "normal",
+      "gap": "normal",
+      "row-gap": "normal",
+      "column-gap": "normal",
+      "padding-top": "0px",
+      "padding-right": "0px",
+      "padding-bottom": "0px",
+      "padding-left": "0px",
+      "margin-top": "0px",
+      "margin-right": "0px",
+      "margin-bottom": "0px",
+      "margin-left": "0px",
+      "grid-template-columns": "none",
+      "grid-template-rows": "none",
+      "overflow-x": "visible",
+      "overflow-y": "visible",
+      "background-color": "rgba(0, 0, 0, 0)",
+      "color": "rgb(61, 74, 92)",
+      "border-top-width": "0px",
+      "border-top-style": "none",
+      "border-top-color": "rgb(61, 74, 92)",
+      "border-top-left-radius": "0px",
+      "font-size": "13.33px",
+      "font-weight": "400",
+      "line-height": "normal",
+      "letter-spacing": "normal",
+      "white-space": "normal",
+      "text-overflow": "clip"
+    }
+  },
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn.on:nth-child(2)": {
     "tag": "button",
     "cls": "icon-btn on",
     "props": {
@@ -303,7 +379,7 @@
       "text-overflow": "clip"
     }
   },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(2)>button.icon-btn.on:nth-child(1)>svg:nth-child(1)": {
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn.on:nth-child(2)>svg:nth-child(1)": {
     "tag": "svg",
     "cls": "",
     "props": {
@@ -341,7 +417,7 @@
       "text-overflow": "clip"
     }
   },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(2)>button.icon-btn.on:nth-child(1)>svg:nth-child(1)>path:nth-child(1)": {
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn.on:nth-child(2)>svg:nth-child(1)>path:nth-child(1)": {
     "tag": "path",
     "cls": "",
     "props": {
@@ -379,7 +455,7 @@
       "text-overflow": "clip"
     }
   },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(2)>button.icon-btn.on:nth-child(1)>svg:nth-child(1)>path:nth-child(2)": {
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn.on:nth-child(2)>svg:nth-child(1)>path:nth-child(2)": {
     "tag": "path",
     "cls": "",
     "props": {
@@ -417,7 +493,7 @@
       "text-overflow": "clip"
     }
   },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(2)>button.icon-btn:nth-child(2)": {
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn:nth-child(3)": {
     "tag": "button",
     "cls": "icon-btn",
     "props": {
@@ -455,7 +531,7 @@
       "text-overflow": "clip"
     }
   },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(2)>button.icon-btn:nth-child(2)>svg:nth-child(1)": {
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn:nth-child(3)>svg:nth-child(1)": {
     "tag": "svg",
     "cls": "",
     "props": {
@@ -493,7 +569,7 @@
       "text-overflow": "clip"
     }
   },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(2)>button.icon-btn:nth-child(2)>svg:nth-child(1)>path:nth-child(1)": {
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn:nth-child(3)>svg:nth-child(1)>path:nth-child(1)": {
     "tag": "path",
     "cls": "",
     "props": {
@@ -531,7 +607,7 @@
       "text-overflow": "clip"
     }
   },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(2)>button.icon-btn:nth-child(2)>svg:nth-child(1)>path:nth-child(2)": {
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn:nth-child(3)>svg:nth-child(1)>path:nth-child(2)": {
     "tag": "path",
     "cls": "",
     "props": {
@@ -569,7 +645,7 @@
       "text-overflow": "clip"
     }
   },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(2)>button.icon-btn:nth-child(3)": {
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn:nth-child(4)": {
     "tag": "button",
     "cls": "icon-btn",
     "props": {
@@ -607,7 +683,7 @@
       "text-overflow": "clip"
     }
   },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(2)>button.icon-btn:nth-child(3)>svg:nth-child(1)": {
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn:nth-child(4)>svg:nth-child(1)": {
     "tag": "svg",
     "cls": "",
     "props": {
@@ -645,7 +721,7 @@
       "text-overflow": "clip"
     }
   },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(2)>button.icon-btn:nth-child(3)>svg:nth-child(1)>path:nth-child(1)": {
+  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>div.fences-head:nth-child(1)>div.head-actions:nth-child(1)>button.icon-btn:nth-child(4)>svg:nth-child(1)>path:nth-child(1)": {
     "tag": "path",
     "cls": "",
     "props": {
@@ -678,44 +754,6 @@
       "font-size": "13.33px",
       "font-weight": "400",
       "line-height": "normal",
-      "letter-spacing": "normal",
-      "white-space": "normal",
-      "text-overflow": "clip"
-    }
-  },
-  ":root>div.fence-panel-root:nth-child(1)>div.fences-toolbar:nth-child(1)>input.fence-search:nth-child(2)": {
-    "tag": "input",
-    "cls": "fence-search",
-    "props": {
-      "display": "block",
-      "position": "static",
-      "flex-direction": "row",
-      "align-items": "normal",
-      "justify-content": "normal",
-      "gap": "normal",
-      "row-gap": "normal",
-      "column-gap": "normal",
-      "padding-top": "6px",
-      "padding-right": "9px",
-      "padding-bottom": "6px",
-      "padding-left": "9px",
-      "margin-top": "0px",
-      "margin-right": "0px",
-      "margin-bottom": "0px",
-      "margin-left": "0px",
-      "grid-template-columns": "none",
-      "grid-template-rows": "none",
-      "overflow-x": "clip",
-      "overflow-y": "clip",
-      "background-color": "rgba(255, 255, 255, 0.55)",
-      "color": "rgb(26, 35, 50)",
-      "border-top-width": "0.61px",
-      "border-top-style": "solid",
-      "border-top-color": "rgba(26, 35, 50, 0.12)",
-      "border-top-left-radius": "6px",
-      "font-size": "10px",
-      "font-weight": "400",
-      "line-height": "13px",
       "letter-spacing": "normal",
       "white-space": "normal",
       "text-overflow": "clip"
@@ -796,7 +834,7 @@
       "white-space": "normal",
       "text-overflow": "clip",
       "rect-w": "532.2px",
-      "rect-h": "638.48px"
+      "rect-h": "690.91px"
     }
   },
   ":root>div.fence-panel-root:nth-child(1)>div#fences:nth-child(3)>div#fenceRecent.fence:nth-child(1)": {

@@ -45,6 +45,18 @@ async function openBoard(page: Page) {
   await page.waitForSelector("#fences .fence-app", { timeout: 20_000 });
 }
 
+/** 搜索框默认收起；点顶栏「搜索图标」再等 input。 */
+async function openFenceSearch(page: Page) {
+  await page.evaluate(() => {
+    const btn = document.querySelector<HTMLButtonElement>(
+      '.head-actions button[aria-label="搜索图标"]'
+    );
+    if (!btn) throw new Error('找不到搜索图标按钮');
+    btn.click();
+  });
+  await page.waitForSelector(".fence-search", { state: "visible", timeout: 5_000 });
+}
+
 const MENU = '[data-testid="fence-menu"]';
 const SUB = '[data-testid="fence-menu-sub"]';
 /** 看板自己的弹窗（2026-09-13 取代原生 alert/confirm/prompt）。 */
@@ -200,6 +212,7 @@ test("点菜单外 / Escape 都能关；Escape 不会顺手清空搜索框", asy
   await closeMenu(page);
 
   // ② 搜索框上的右键不该出菜单（那几项在输入框上没有意义，还会顶掉原生的剪切/粘贴）
+  await openFenceSearch(page);
   await page.evaluate(() => {
     const input = document.querySelector(".fence-search");
     if (!input) throw new Error(".fence-search not found");
@@ -474,13 +487,16 @@ test("键盘租约：开菜单借、关菜单还；对话框全程握着租约",
   //    定时器后跑就会把租约还掉 —— 菜单开着，Esc 与原生对话框又都失效。
   //    FencePanel 的 `onBlur` 里那道 `menuOpenRef` 闸就是为这个存在的。
   //
-  //    ⚠️ 三步必须在**同一个任务**里做完：中间一旦 `await` 回一趟 Node，
+  //    ⚠️ 失焦 + 开菜单必须在**同一个任务**里做完：中间一旦 `await` 回一趟 Node，
   //    那个 0ms 定时器就先跑了，释放排在借之前 —— 那时没有 bug 可测，
   //    这条会变成一条永远绿的假护栏（第一版就是这么写错的）。
+  //
+  //    搜索框默认收起：先点图标展开（此时已聚焦）。空词失焦会卸掉 input，
+  //    所以这里不再重复 focus，只测「已聚焦的搜索框 blur → 立刻开菜单」。
+  await openFenceSearch(page);
   const before = (await keyboard()).length;
   await page.evaluate(() => {
     const input = document.querySelector<HTMLInputElement>(".fence-search")!;
-    input.focus(); // 聚焦本身借一次键盘
     input.blur(); // 释放排进 0ms 定时器，此刻还没跑
     const el = document.querySelector(
       '#fences .fence:not(#fenceRecent) .fence-app[data-id="d-cursor-0"]'
@@ -500,8 +516,8 @@ test("键盘租约：开菜单借、关菜单还；对话框全程握着租约",
   // 等那个定时器**真的跑过**再断言，否则这条会在定时器之前通过，同样等于没测
   await page.waitForTimeout(80);
   const seq = (await keyboard()).slice(before).map((a) => (a as { active: boolean }).active);
-  // 没有那道闸的话这里会是 [true, false, true]：「失焦的释放」把菜单的租约还掉了
-  expect(seq, "失焦的释放把菜单的租约还掉了").toEqual([true, true]);
+  // 闸住失焦释放后，只剩菜单那一次借。没闸的话会是 [false, true]。
+  expect(seq, "失焦的释放把菜单的租约还掉了").toEqual([true]);
 });
 
 test("推来新的一帧会关掉菜单（不让它拿一个已经失效的 path 去发命令）", async ({ page }) => {

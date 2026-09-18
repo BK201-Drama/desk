@@ -280,6 +280,15 @@ test.describe("样式审查（fence 重构护栏）", () => {
 
   test("搜索态", async ({ page }) => {
     await openBoard(page);
+    // 搜索框默认收起；先点顶栏搜索图标再填词。
+    await page.evaluate(() => {
+      const btn = document.querySelector<HTMLButtonElement>(
+        '.head-actions button[aria-label="搜索图标"]'
+      );
+      if (!btn) throw new Error('找不到搜索图标按钮');
+      btn.click();
+    });
+    await page.waitForSelector(".fence-search", { state: "visible", timeout: 5_000 });
     // 不要用 locator.fill / keyboard.type —— 这个环境的键盘通道会被宿主吞掉，
     // Playwright 的输入动作会一直挂到超时（`smoke.spec.ts` 的 `openCmdk` 对 Ctrl+K 有同样的注释）。
     // 直接派发 DOM 事件：先走原生 setter 再派 input，React 的 onChange 才会认。
