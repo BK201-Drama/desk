@@ -5,6 +5,7 @@ import type { PluginComponentProps } from "../../host/types";
 import { listCommands } from "../../host/api";
 import { toggleEditing } from "../../host/edit";
 import { useDeskShellOptional } from "../../app/providers/DeskShellProvider";
+import { getTheme, toggleTheme } from "../../lib/theme";
 import { useLayoutConfig } from "./useLayoutConfig";
 import { clampSelected, collectCommands, collectNav } from "./navLogic";
 import type { HostCommand } from "../../host/types";
@@ -20,6 +21,7 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState(0);
   const [optimisticDisabled, setOptimisticDisabled] = useState<Set<string> | null>(null);
+  const [nightOn, setNightOn] = useState(() => getTheme() === "night");
   const togglingRef = useRef(false);
   const movingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -57,6 +59,7 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
         if (value) {
           setFilter("");
           setSelected(0);
+          setNightOn(getTheme() === "night");
           void setKeyboard(true);
           void refresh();
           window.setTimeout(() => inputRef.current?.focus(), 30);
@@ -121,9 +124,21 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
     return collectCommands(searching, staticExtras, listCommands());
   }, [filter, staticExtras]);
 
+  const appearanceToggles = useMemo(
+    () => [
+      {
+        id: "night",
+        title: "夜间模式",
+        group: "外观",
+        on: nightOn,
+      },
+    ],
+    [nightOn]
+  );
+
   const navItems = useMemo(
-    () => collectNav(filter, disabledIds, commands),
-    [filter, disabledIds, commands]
+    () => collectNav(filter, disabledIds, commands, appearanceToggles),
+    [filter, disabledIds, commands, appearanceToggles]
   );
 
   const safeSelected = clampSelected(selected, navItems.length);
@@ -182,6 +197,13 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
       if (!item) return;
       if (item.kind === "plugin") {
         await togglePlugin(item.id, !item.on);
+        return;
+      }
+      if (item.kind === "toggle") {
+        if (item.id === "night") {
+          const next = toggleTheme();
+          setNightOn(next === "night");
+        }
         return;
       }
       setOpen(false);

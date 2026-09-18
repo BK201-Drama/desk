@@ -770,59 +770,111 @@ body {
   color: var(--accent);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ink: #e8edf4;
-    --ink-soft: #a8b4c4;
-    --mist-border: rgba(255, 255, 255, 0.12);
-    --glass: rgba(22, 28, 38, 0.82);
-    --accent: #52b788;
-    --contrib-0: rgba(255, 255, 255, 0.06);
-    --contrib-1: #2d6a4f;
-    --contrib-2: #40916c;
-    --contrib-3: #52b788;
-    --contrib-4: #95d5b2;
-  }
+html[data-desk-theme="night"] {
+  --ink: #e8edf4;
+  --ink-soft: #a8b4c4;
+  --mist-border: rgba(255, 255, 255, 0.16);
+  /* 更透：让壁纸青/紫自己渗进玻璃，而不是一块死灰 */
+  --glass: rgba(8, 12, 20, 0.38);
+  --accent: #52b788;
+  --contrib-0: rgba(255, 255, 255, 0.06);
+  --contrib-1: #2d6a4f;
+  --contrib-2: #40916c;
+  --contrib-3: #52b788;
+  --contrib-4: #95d5b2;
+}
 
-  .board {
-    border-color: transparent;
-    box-shadow:
-      inset 0 0 0 1px rgba(255, 255, 255, 0.1),
-      0 8px 32px rgba(0, 0, 0, 0.35);
-  }
+html[data-desk-theme="night"] .board {
+  border-color: transparent;
+  backdrop-filter: blur(28px) saturate(1.55);
+  -webkit-backdrop-filter: blur(28px) saturate(1.55);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 8px 32px rgba(0, 0, 0, 0.28);
+}
 
-  .pane-left {
-    background: rgba(16, 20, 28, 0.55);
-  }
+html[data-desk-theme="night"] #slot-right {
+  /* 去掉死灰铺底，只留一点压暗，好透壁纸 */
+  background: rgba(0, 0, 0, 0.08);
+}
 
-  .pin,
-  .mc,
-  .todo-item,
-  .gh-card {
-    background: rgba(255, 255, 255, 0.04);
-    border-color: rgba(255, 255, 255, 0.08);
-  }
-  .mc-open-icon {
-    border-color: rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.06);
-    color: var(--accent);
-  }
-  .mc-open-icon:hover {
-    background: rgba(82, 183, 136, 0.16);
-    border-color: rgba(82, 183, 136, 0.4);
-  }
+html[data-desk-theme="night"] .pane-info {
+  border-right-color: rgba(255, 255, 255, 0.12);
+}
 
-  .pin .desc,
-  .lang-legend,
-  .mc-foot {
-    color: var(--ink-soft);
-  }
+html[data-desk-theme="night"] .profile-text .bio,
+html[data-desk-theme="night"] .stats span,
+html[data-desk-theme="night"] .pin .desc,
+html[data-desk-theme="night"] .pin .meta,
+html[data-desk-theme="night"] .lang-legend {
+  color: var(--ink-soft);
+}
 
-  .grid .cell.has-day:hover {
-    box-shadow: 0 0 0 1px rgba(82, 183, 136, 0.5);
-  }
+html[data-desk-theme="night"] .pin,
+html[data-desk-theme="night"] .mc,
+html[data-desk-theme="night"] .todo-item,
+html[data-desk-theme="night"] .gh-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
 
-  .mc-row.mc-link:hover {
-    background: rgba(82, 183, 136, 0.12);
-  }
+html[data-desk-theme="night"] .lang-bar {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+html[data-desk-theme="night"] .mc-open-icon {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--accent);
+}
+
+html[data-desk-theme="night"] .mc-open-icon:hover {
+  background: rgba(82, 183, 136, 0.16);
+  border-color: rgba(82, 183, 136, 0.4);
+}
+
+html[data-desk-theme="night"] .mc-pill {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+html[data-desk-theme="night"] .mc-pill.warn {
+  background: rgba(180, 83, 9, 0.22);
+  color: #fbbf24;
+}
+
+html[data-desk-theme="night"] .mc-pill.warn strong {
+  color: #fbbf24;
+}
+
+html[data-desk-theme="night"] .st.review {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+html[data-desk-theme="night"] .st.inbox {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+html[data-desk-theme="night"] .grid .cell.has-day:hover {
+  box-shadow: 0 0 0 1px rgba(82, 183, 136, 0.5);
+}
+
+html[data-desk-theme="night"] .mc-row.mc-link:hover {
+  background: rgba(82, 183, 136, 0.12);
+}
+
+html[data-desk-theme="night"] .sys-res {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+html[data-desk-theme="night"] .qqm-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+html[data-desk-theme="night"] .tc-card {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
 }

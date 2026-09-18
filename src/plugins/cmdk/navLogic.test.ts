@@ -18,6 +18,27 @@ describe("collectNav", () => {
     expect(items).toHaveLength(1);
     expect(items[0].kind).toBe("cmd");
   });
+
+  it("prepends appearance toggles", () => {
+    const items = collectNav(
+      "",
+      new Set(),
+      [],
+      [{ id: "night", title: "夜间模式", group: "外观", on: true }]
+    );
+    expect(items[0]).toMatchObject({ kind: "toggle", id: "night", on: true });
+  });
+
+  it("filters toggles by query", () => {
+    const items = collectNav(
+      "夜间",
+      new Set(),
+      [{ id: "x", title: "Alpha", group: "Desk", run: async () => {} }],
+      [{ id: "night", title: "夜间模式", group: "外观", on: false }]
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0].kind).toBe("toggle");
+  });
 });
 
 describe("buildRows", () => {

@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./app/App";
 import { bootstrapDesk, createDeskHostBridge } from "./app/bootstrap";
 import { DeskShellProvider } from "./app/providers/DeskShellProvider";
+import { bootTheme } from "./lib/theme";
 import { preloadGithubBoot } from "./plugins/github/boot";
 import { preloadStockBoot } from "./plugins/stock/boot";
 import { preloadCursorBoot } from "./plugins/token-capsule/boot";
@@ -10,6 +11,8 @@ import "./styles.css";
 
 const el = document.getElementById("root");
 if (!el) throw new Error("#root missing");
+
+bootTheme();
 
 const bridge = createDeskHostBridge();
 

@@ -3,7 +3,8 @@ import { EXTENDED_PLUGINS, MAIN_PLUGINS, PLUGIN_LABEL } from "./constants";
 
 export type NavItem =
   | { kind: "cmd"; group: string; cmd: HostCommand }
-  | { kind: "plugin"; group: "插件"; id: string; title: string; on: boolean };
+  | { kind: "plugin"; group: "插件"; id: string; title: string; on: boolean }
+  | { kind: "toggle"; group: string; id: string; title: string; on: boolean };
 
 export type ListRow =
   | { kind: "head"; label: string }
@@ -28,14 +29,40 @@ export function collectCommands(
   return out;
 }
 
+export type AppearanceToggle = {
+  id: string;
+  title: string;
+  group: string;
+  on: boolean;
+};
+
 export function collectNav(
   filter: string,
   disabledIds: Set<string>,
-  commands: HostCommand[]
+  commands: HostCommand[],
+  toggles: AppearanceToggle[] = []
 ): NavItem[] {
   const q = filter.trim().toLowerCase();
   const searching = q.length > 0;
   const items: NavItem[] = [];
+
+  for (const t of toggles) {
+    if (
+      searching &&
+      !t.title.toLowerCase().includes(q) &&
+      !t.id.toLowerCase().includes(q) &&
+      !t.group.toLowerCase().includes(q)
+    ) {
+      continue;
+    }
+    items.push({
+      kind: "toggle",
+      group: t.group,
+      id: t.id,
+      title: t.title,
+      on: t.on,
+    });
+  }
 
   for (const cmd of commands) {
     if (

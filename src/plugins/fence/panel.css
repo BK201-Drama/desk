@@ -474,13 +474,14 @@
   --fence-rows: 1;
 }
 
-@media (prefers-color-scheme: dark) {
+html[data-desk-theme="night"] {
   .pane-fences {
-    background: rgba(16, 20, 28, 0.55);
+    /* 与左栏同透，别铺死灰盖住壁纸色 */
+    background: transparent;
   }
 
   .icon-btn {
-    border-color: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.14);
     background: rgba(255, 255, 255, 0.06);
     color: var(--ink-soft);
   }
@@ -490,12 +491,12 @@
   }
 
   .fence-search {
-    border-color: rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.07);
     color: var(--ink);
   }
   .fence-search::placeholder {
-    color: #6b7a8c;
+    color: #8a9aab;
   }
   .fence-search:focus {
     border-color: rgba(82, 183, 136, 0.5);
@@ -509,7 +510,7 @@
   }
 
   .fence-search-panel {
-    background: rgba(28, 34, 44, 0.92);
+    background: rgba(18, 22, 30, 0.88);
     border-color: rgba(82, 183, 136, 0.25);
     box-shadow: none;
   }
@@ -533,20 +534,20 @@
   }
 
   .fence {
-    background: rgba(255, 255, 255, 0.05);
-    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.12);
   }
   .fence-title {
-    color: #8a9aab;
+    color: #a8b4c4;
     background: transparent;
     box-shadow: none;
   }
   .fence-title em {
-    color: #6b7a8c;
+    color: #8a9aab;
   }
   #fenceRecent {
-    border-color: rgba(82, 183, 136, 0.25);
-    background: rgba(82, 183, 136, 0.08);
+    border-color: rgba(82, 183, 136, 0.28);
+    background: rgba(82, 183, 136, 0.1);
   }
 
   .fence-app:hover {
@@ -603,7 +604,7 @@
   line-height: 1.5;
 }
 
-@media (prefers-color-scheme: dark) {
+html[data-desk-theme="night"] {
   .pane-fences .fence-menu {
     --menu-bg: rgba(24, 30, 40, 0.985);
     --menu-line: rgba(255, 255, 255, 0.14);
@@ -724,7 +725,7 @@
   background-color: var(--dlg-dim);
 }
 
-@media (prefers-color-scheme: dark) {
+html[data-desk-theme="night"] {
   .pane-fences .fence-dialog-overlay {
     --dlg-bg: rgba(24, 30, 40, 0.99);
     --dlg-line: rgba(255, 255, 255, 0.14);

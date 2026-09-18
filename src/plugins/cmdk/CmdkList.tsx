@@ -95,6 +95,7 @@ export function CmdkList({ items, selected, onSelect, onActivate, onMovePlugin }
               type="button"
               className={`cmdk-item cmdk-item-row${sel}`}
               data-idx={row.index}
+              onMouseEnter={() => onSelect(row.index)}
               onClick={(e) => {
                 if ((e.target as HTMLElement).closest(".cmdk-order-btn")) return;
                 onActivate(row.index);
@@ -106,6 +107,22 @@ export function CmdkList({ items, selected, onSelect, onActivate, onMovePlugin }
                 on={item.on}
                 onMove={(dir) => onMovePlugin(item.id, dir)}
               />
+              <Switch on={item.on} />
+            </button>
+          );
+        }
+        if (item.kind === "toggle") {
+          return (
+            <button
+              key={`t-${item.id}`}
+              type="button"
+              className={`cmdk-item cmdk-item-row${sel}`}
+              data-idx={row.index}
+              data-testid={`cmdk-toggle-${item.id}`}
+              onMouseEnter={() => onSelect(row.index)}
+              onClick={() => onActivate(row.index)}
+            >
+              <span className="cmdk-title">{item.title}</span>
               <Switch on={item.on} />
             </button>
           );
