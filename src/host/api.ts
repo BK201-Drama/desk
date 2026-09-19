@@ -74,6 +74,9 @@ const PERM_COMMANDS: Record<PluginPermission, CommandName[]> = {
   "stock.read": ["stock_quotes", "stock_cached"],
   "cursor.read": ["cursor_usage", "cursor_cached"],
   "sys-res.read": ["sys_res_snapshot"],
+  "wallpaper.read": ["wallpaper_sample"],
+  "desk-tidy.read": ["desk_tidy_status"],
+  "desk-tidy.run": ["desk_tidy_run"],
 };
 
 const commandOwners = new Map<string, HostCommand>();

@@ -4,6 +4,7 @@ import { App } from "./app/App";
 import { bootstrapDesk, createDeskHostBridge } from "./app/bootstrap";
 import { DeskShellProvider } from "./app/providers/DeskShellProvider";
 import { bootTheme } from "./lib/theme";
+import { bootWallpaperTint } from "./lib/wallpaperTint";
 import { preloadGithubBoot } from "./plugins/github/boot";
 import { preloadStockBoot } from "./plugins/stock/boot";
 import { preloadCursorBoot } from "./plugins/token-capsule/boot";
@@ -13,6 +14,7 @@ const el = document.getElementById("root");
 if (!el) throw new Error("#root missing");
 
 bootTheme();
+void bootWallpaperTint();
 
 const bridge = createDeskHostBridge();
 

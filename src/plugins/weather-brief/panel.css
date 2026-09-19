@@ -1,0 +1,89 @@
+[data-plugin="weather-brief"],
+.plugin-weather-brief {
+  align-self: stretch;
+  width: 100%;
+  flex: 0 0 auto !important;
+  height: auto !important;
+}
+
+.wb-card {
+  padding: 5px 6px;
+  border-radius: 7px;
+  background: rgba(26, 35, 50, 0.05);
+  border: 1px solid rgba(26, 35, 50, 0.08);
+}
+
+.wb-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.wb-main {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.wb-edit {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.wb-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(26, 35, 50, 0.14);
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--ink);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.wb-input:focus {
+  outline: none;
+  border-color: rgba(45, 106, 79, 0.4);
+}
+
+.wb-btn {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(26, 35, 50, 0.14);
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+html[data-desk-theme="night"] .wb-card {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-desk-theme="night"] .wb-input {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+}
+
+html[data-desk-theme="night"] .wb-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}

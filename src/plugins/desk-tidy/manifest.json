@@ -1,0 +1,7 @@
+{
+  "id": "desk-tidy",
+  "slot": "left",
+  "entry": "./panel.tsx",
+  "permissions": ["desk-tidy.read", "desk-tidy.run", "host.log"],
+  "order": 20
+}

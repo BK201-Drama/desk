@@ -18,12 +18,12 @@
 }
 
 .tc-card.tone-warn {
-  border-color: rgba(180, 83, 9, 0.28);
+  border-color: rgba(107, 140, 174, 0.35);
 }
 
 .tc-card.tone-crit,
 .tc-card.is-limit {
-  border-color: rgba(193, 18, 31, 0.32);
+  border-color: rgba(26, 35, 50, 0.28);
 }
 
 .tc-row {
@@ -67,21 +67,57 @@
 .tc-bar-fill {
   height: 100%;
   border-radius: 999px;
+  /* 全程冷灰蓝，用量高只加深，不用红/橙抢视线 */
   background: #6b8cae;
-  transition: width 0.3s ease;
+  transition: width 0.3s ease, background 0.3s ease;
 }
 
 .tc-card.tone-warn .tc-bar-fill {
-  background: #c47a2c;
+  background: #4f6f8f;
 }
 
 .tc-card.tone-crit .tc-bar-fill,
 .tc-card.is-limit .tc-bar-fill {
-  background: #b4232c;
+  background: #3a556e;
 }
 
 .tc-error {
   font-size: 10px;
-  color: #9b2226;
+  color: var(--ink-soft);
   padding: 2px 0;
+}
+
+html[data-desk-theme="night"] .tc-card {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-desk-theme="night"] .tc-card:hover {
+  border-color: rgba(140, 170, 200, 0.28);
+}
+
+html[data-desk-theme="night"] .tc-card.tone-warn {
+  border-color: rgba(140, 170, 200, 0.32);
+}
+
+html[data-desk-theme="night"] .tc-card.tone-crit,
+html[data-desk-theme="night"] .tc-card.is-limit {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+html[data-desk-theme="night"] .tc-bar {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+html[data-desk-theme="night"] .tc-bar-fill {
+  background: #8aa4bd;
+}
+
+html[data-desk-theme="night"] .tc-card.tone-warn .tc-bar-fill {
+  background: #a8bfd4;
+}
+
+html[data-desk-theme="night"] .tc-card.tone-crit .tc-bar-fill,
+html[data-desk-theme="night"] .tc-card.is-limit .tc-bar-fill {
+  background: #c5d4e3;
 }

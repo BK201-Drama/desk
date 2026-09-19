@@ -65,6 +65,16 @@ body {
   isolation: isolate;
 }
 
+/* wallpaper-tint 插件写入 --desk-tint-rgb + data-desk-tint；与日/夜间正交 */
+html[data-desk-tint="on"] .board {
+  background:
+    linear-gradient(
+      rgba(var(--desk-tint-rgb), 0.2),
+      rgba(var(--desk-tint-rgb), 0.2)
+    ),
+    var(--glass);
+}
+
 #slot-left {
   display: flex;
   flex-direction: column;
@@ -791,6 +801,15 @@ html[data-desk-theme="night"] .board {
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.14),
     0 8px 32px rgba(0, 0, 0, 0.28);
+}
+
+html[data-desk-theme="night"][data-desk-tint="on"] .board {
+  background:
+    linear-gradient(
+      rgba(var(--desk-tint-rgb), 0.12),
+      rgba(var(--desk-tint-rgb), 0.12)
+    ),
+    var(--glass);
 }
 
 html[data-desk-theme="night"] #slot-right {

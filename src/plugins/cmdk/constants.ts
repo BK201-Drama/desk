@@ -13,6 +13,8 @@ export const MAIN_PLUGINS = [
   // `navLogic` 里 MAIN 是无条件全列的，EXTENDED 会被 `disabledIds` 过滤掉。
   // 放进 EXTENDED 的后果不是「默认收起」，是**面板做完了却没有任何入口打开它**。
   "sys-res",
+  "weather-brief",
+  "desk-tidy",
 ] as const;
 
 export const EXTENDED_PLUGINS = ["ops-hud", "event-tape", "hello"] as const;
@@ -27,6 +29,8 @@ export const PLUGIN_LABEL: Record<string, string> = {
   "qq-music": "QQ 音乐",
   clock: "时钟",
   "sys-res": "系统资源",
+  "weather-brief": "天气",
+  "desk-tidy": "桌面整理",
   "ops-hud": "运维 HUD",
   "event-tape": "事件磁带",
   hello: "Hello",

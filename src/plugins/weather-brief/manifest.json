@@ -1,0 +1,7 @@
+{
+  "id": "weather-brief",
+  "slot": "left",
+  "entry": "./panel.tsx",
+  "permissions": ["host.plugins", "host.log"],
+  "order": 19
+}

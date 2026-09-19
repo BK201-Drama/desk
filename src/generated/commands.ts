@@ -68,6 +68,9 @@ export const COMMANDS = [
   "cursor_cached",
   "cursor_usage",
   "sys_res_snapshot",
+  "wallpaper_sample",
+  "desk_tidy_status",
+  "desk_tidy_run",
 ] as const;
 
 export type CommandName = (typeof COMMANDS)[number];

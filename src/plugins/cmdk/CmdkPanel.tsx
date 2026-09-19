@@ -6,6 +6,10 @@ import { listCommands } from "../../host/api";
 import { toggleEditing } from "../../host/edit";
 import { useDeskShellOptional } from "../../app/providers/DeskShellProvider";
 import { getTheme, toggleTheme } from "../../lib/theme";
+import {
+  isTintEnabled,
+  toggleWallpaperTint,
+} from "../../lib/wallpaperTint";
 import { useLayoutConfig } from "./useLayoutConfig";
 import { clampSelected, collectCommands, collectNav } from "./navLogic";
 import type { HostCommand } from "../../host/types";
@@ -22,6 +26,7 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
   const [selected, setSelected] = useState(0);
   const [optimisticDisabled, setOptimisticDisabled] = useState<Set<string> | null>(null);
   const [nightOn, setNightOn] = useState(() => getTheme() === "night");
+  const [tintOn, setTintOn] = useState(() => isTintEnabled());
   const togglingRef = useRef(false);
   const movingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -132,8 +137,14 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
         group: "外观",
         on: nightOn,
       },
+      {
+        id: "wallpaper-tint",
+        title: "壁纸着色",
+        group: "外观",
+        on: tintOn,
+      },
     ],
-    [nightOn]
+    [nightOn, tintOn]
   );
 
   const navItems = useMemo(
@@ -203,6 +214,9 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
         if (item.id === "night") {
           const next = toggleTheme();
           setNightOn(next === "night");
+        } else if (item.id === "wallpaper-tint") {
+          const next = await toggleWallpaperTint();
+          setTintOn(next);
         }
         return;
       }

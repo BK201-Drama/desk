@@ -82,6 +82,8 @@ fn coder_disabled() -> Vec<String> {
         "qq-music".into(),
         "stock".into(),
         "sys-res".into(),
+        "weather-brief".into(),
+        "desk-tidy".into(),
     ]
 }
 
@@ -97,6 +99,8 @@ fn minimal_disabled() -> Vec<String> {
         "qq-music".into(),
         "stock".into(),
         "sys-res".into(),
+        "weather-brief".into(),
+        "desk-tidy".into(),
     ]
 }
 
@@ -113,6 +117,8 @@ fn fence_only_disabled() -> Vec<String> {
         "qq-music".into(),
         "stock".into(),
         "sys-res".into(),
+        "weather-brief".into(),
+        "desk-tidy".into(),
     ]
 }
 

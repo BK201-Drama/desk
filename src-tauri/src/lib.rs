@@ -1,4 +1,5 @@
 mod cursor;
+mod desk_tidy;
 mod fence;
 mod github;
 mod multica;
@@ -10,6 +11,7 @@ mod recent;
 mod remind;
 mod stock;
 mod sys_res;
+mod wallpaper;
 #[cfg(windows)]
 mod win_zorder;
 // 命令清单解析器的测试；解析器本身在 `src-tauri/cmd_manifest.rs`，与 `build.rs` `include!` 共享。
@@ -103,6 +105,71 @@ fn boot_mark(ms: u32) -> Result<(), String> {
     std::fs::write(dir.join("boot-last.json"), body).map_err(|e| e.to_string())
 }
 
+/// `tauri dev` 用 `--no-default-features` 编出来的 exe 走 `devUrl`（localhost:1420）。
+/// 把它写进开机启动，下次登录就是黑窗 + ERR_CONNECTION_REFUSED。
+fn uses_embedded_frontend() -> bool {
+    cfg!(feature = "custom-protocol")
+}
+
+const DEV_AUTOSTART_ERR: &str =
+    "开发版没有内嵌页面，开机启动会去连 localhost:1420 然后失败。请用安装版（npm run tauri build）再开开机自启。";
+
+/// HKCU Run 里的 desk 项是不是指向当前这个开发版 exe。
+#[cfg(windows)]
+fn run_entry_points_at_current_exe() -> bool {
+    use windows::Win32::Foundation::ERROR_SUCCESS;
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY_CURRENT_USER, KEY_READ, REG_SZ,
+        REG_VALUE_TYPE,
+    };
+
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    let exe_l = exe.display().to_string().to_ascii_lowercase();
+
+    unsafe {
+        let mut hkey = Default::default();
+        let sub = windows::core::w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+        if RegOpenKeyExW(HKEY_CURRENT_USER, sub, 0, KEY_READ, &mut hkey).is_err() {
+            return false;
+        }
+        let name = windows::core::w!("desk");
+        let mut ty = REG_VALUE_TYPE::default();
+        let mut size = 0u32;
+        let _ = RegQueryValueExW(hkey, name, None, Some(&mut ty), None, Some(&mut size));
+        if size == 0 || ty != REG_SZ {
+            let _ = RegCloseKey(hkey);
+            return false;
+        }
+        let mut buf = vec![0u8; size as usize];
+        let q = RegQueryValueExW(
+            hkey,
+            name,
+            None,
+            Some(&mut ty),
+            Some(buf.as_mut_ptr()),
+            Some(&mut size),
+        );
+        let _ = RegCloseKey(hkey);
+        if q != ERROR_SUCCESS {
+            return false;
+        }
+        let u16s: Vec<u16> = buf
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .take_while(|&c| c != 0)
+            .collect();
+        let val = String::from_utf16_lossy(&u16s).to_ascii_lowercase();
+        val.contains(&exe_l) || val.contains("target\\debug\\desk.exe")
+    }
+}
+
+#[cfg(not(windows))]
+fn run_entry_points_at_current_exe() -> bool {
+    false
+}
+
 #[tauri::command]
 fn autostart_get(app: tauri::AppHandle) -> Result<bool, String> {
     app.autolaunch().is_enabled().map_err(|e| e.to_string())
@@ -110,6 +177,9 @@ fn autostart_get(app: tauri::AppHandle) -> Result<bool, String> {
 
 #[tauri::command]
 fn autostart_set(app: tauri::AppHandle, enabled: bool) -> Result<bool, String> {
+    if enabled && !uses_embedded_frontend() {
+        return Err(DEV_AUTOSTART_ERR.into());
+    }
     let mgr = app.autolaunch();
     if enabled {
         if let Ok(flag) = autostart_off_flag() {
@@ -225,6 +295,9 @@ pub fn run() {
             cursor::cursor_cached,
             cursor::cursor_usage,
             sys_res::sys_res_snapshot,
+            wallpaper::wallpaper_sample,
+            desk_tidy::desk_tidy_status,
+            desk_tidy::desk_tidy_run,
         ])
         .setup(|app| {
             let locked: Arc<Mutex<Option<(i32, i32)>>> = Arc::new(Mutex::new(None));
@@ -280,11 +353,20 @@ pub fn run() {
                 });
             }
 
-            // 自启注册延后：不挡首帧 / setup 临界路径
+            // 自启注册延后：不挡首帧 / setup 临界路径。
+            // 开发版（无 custom-protocol）禁止写 HKCU\Run：那个 exe 只认 localhost。
+            // 若上次已经被写成 target\debug\desk.exe，启动时把这条删掉。
             let app_handle = app.handle().clone();
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_secs(3));
                 let mgr = app_handle.autolaunch();
+                if !uses_embedded_frontend() {
+                    if run_entry_points_at_current_exe() {
+                        let _ = mgr.disable();
+                        eprintln!("autostart: removed debug exe from HKCU\\Run");
+                    }
+                    return;
+                }
                 let opted_out = autostart_off_flag().map(|p| p.exists()).unwrap_or(false);
                 if !opted_out {
                     // Re-register so HKCU\Run tracks current_exe().
@@ -334,9 +416,10 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
-                // INV-3：desk 不运行时，HideIcons 必须是 0
-                if let Err(e) = fence::hide::disable() {
-                    eprintln!("hide::disable on exit: {e}");
+                // INV-3：desk 不运行时，HideIcons 必须是 0。
+                // 关机/注销时会话正在拆，绝不能再 CreateProcess(reg/powershell) → 0xc0000142。
+                if let Err(e) = fence::hide::disable_for_exit() {
+                    eprintln!("hide::disable_for_exit: {e}");
                 }
             }
         });

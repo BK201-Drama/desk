@@ -21,7 +21,10 @@ export type PluginPermission =
   | "qqmusic.launch"
   | "stock.read"
   | "cursor.read"
-  | "sys-res.read";
+  | "sys-res.read"
+  | "wallpaper.read"
+  | "desk-tidy.read"
+  | "desk-tidy.run";
 
 /**
  * 没有 `name` / `version`：两者从插件宿主第一天起就**没有任何读取者**（面板标题走

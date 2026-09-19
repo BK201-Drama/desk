@@ -222,6 +222,23 @@
             ],
             fetched_at: 1759000000000,
           };
+        case "wallpaper_sample":
+          return {
+            ok: true,
+            path: "C:\\\\Users\\\\mock\\\\wallpaper.jpg",
+            r: 72,
+            g: 96,
+            b: 128,
+            hint: "",
+          };
+        case "desk_tidy_status":
+          return { clutter: 3, items: ["notes.txt", "截图.png", "临时文件夹"] };
+        case "desk_tidy_run":
+          return { moved: 3, dest: "C:\\\\Users\\\\mock\\\\Desktop\\\\整理\\\\2026-09-18" };
+        case "plugin_storage_get":
+          return null;
+        case "plugin_storage_set":
+          return null;
         case "plugin_get_config":
           return config;
         case "plugin_list_user":

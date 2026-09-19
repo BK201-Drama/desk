@@ -31,6 +31,8 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 sysinfo = "0.33"
 # 桌面目录监听（Task 13）。计划写的是 "6"，实测可得 8.2.0 —— 不为对齐计划锁旧版。
 notify = "8"
+# wallpaper-tint：解码当前墙纸缩略图后算平均色
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp", "webp"] }
 
 [dev-dependencies]
 # 只给 index::tests 用：在临时目录里造一个假桌面，避免测试碰真桌面。
@@ -48,6 +50,8 @@ windows = { version = "0.58", features = [
   "Win32_Foundation",
   "Win32_System_Com",
   "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Registry",
+  "Win32_Security",
   # Task 14（ops.rs）：删除走 SHFileOperationW、剪贴板走裸 CF_HDROP。
   # 三个都是为了**绕开 COM** —— 见 ops.rs 顶部那段「为什么不用 IFileOperation / OLE」。
   # DataExchange = 剪贴板 API；Memory = GlobalAlloc 那块 CF_HDROP 内存；
@@ -55,6 +59,7 @@ windows = { version = "0.58", features = [
   "Win32_System_DataExchange",
   "Win32_System_Memory",
   "Win32_System_Ole",
+  "Win32_System_SystemInformation",
 ] }
 
 # 生产包必须启用；否则会走 devUrl (localhost:1420) 导致 ERR_CONNECTION_REFUSED

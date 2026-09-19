@@ -47,8 +47,6 @@ const KNOWN_UNMOCKED: Record<string, string> = {
   qqmusic_toggle: "useQqMusic.ts 播放/暂停",
   qqmusic_next: "useQqMusic.ts 下一首",
   qqmusic_prev: "useQqMusic.ts 上一首",
-  plugin_storage_get: "只有 api.ts 的 ctx.storage.get 会调；全仓无插件用 ctx.storage",
-  plugin_storage_set: "只有 api.ts 的 ctx.storage.set 会调；同上",
   set_click_through: "只在 api.ts 的白名单里；全仓无调用点（Rust 侧自己 set_ignore_cursor_events）",
   github_set_token: "只在 api.ts 的白名单里；全仓无调用点（token 不由前端写入）",
   fence_status: "只在 api.ts 的白名单里；全仓无调用点",
