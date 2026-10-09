@@ -86,8 +86,15 @@ function Slot({
 
 /** 看板：唯一 React 树内按槽位渲染已挂载插件 */
 export function BoardLayout() {
+  const editing = useEditing();
   return (
     <div className="board" id="board" data-testid="desk-board">
+      {editing ? (
+        <div className="edit-banner" role="status">
+          编辑中 · 可拖左栏插件 · 围栏点击不启动 ·{" "}
+          <kbd>Win+Shift+D</kbd> 退出
+        </div>
+      ) : null}
       <Slot id="slot-left" testId="slot-left" className="pane-info" slot="left" />
       <Slot
         id="slot-right"

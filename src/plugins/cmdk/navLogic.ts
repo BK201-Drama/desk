@@ -10,13 +10,27 @@ export type ListRow =
   | { kind: "head"; label: string }
   | { kind: "item"; item: NavItem; index: number };
 
+/** 命令面板未输入时也露出的日用动作（其余命令仍需搜索）。 */
+export const PINNED_COMMAND_IDS: readonly string[] = [
+  "remind:add",
+  "github:sync",
+  "multica:open",
+  "fence:toggle-desktop-icons",
+];
+
 export function collectCommands(
   searching: boolean,
   extras: HostCommand[],
-  allCommands: HostCommand[]
+  allCommands: HostCommand[],
+  pinnedIds: readonly string[] = PINNED_COMMAND_IDS
 ): HostCommand[] {
   const cmds = allCommands.filter((c) => c.id !== "cmdk:open" && c.id !== "open");
-  const merged: HostCommand[] = [...extras, ...(searching ? cmds : [])];
+  const byId = new Map(cmds.map((c) => [c.id, c]));
+  const pinned = searching
+    ? []
+    : pinnedIds.map((id) => byId.get(id)).filter((c): c is HostCommand => c != null);
+  const rest = searching ? cmds : [];
+  const merged: HostCommand[] = [...extras, ...pinned, ...rest];
 
   const seen = new Set<string>();
   const out: HostCommand[] = [];

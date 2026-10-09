@@ -77,6 +77,10 @@ export function bootstrapDesk(_bridge: DeskHostBridge): void {
     emit("fence:changed", e.payload, "host");
   });
 
+  void listen<unknown>("remind:changed", (e) => {
+    emit("remind:changed", e.payload, "host");
+  });
+
   // GitHub cache 已在 main.tsx 预读；这里只挂插件
   const t0 = performance.now();
   void loadAll(bundledPlugins)

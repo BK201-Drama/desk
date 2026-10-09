@@ -21,7 +21,7 @@ const CX = 39;
 const CY = 39;
 
 /** 与双环同高的单图 */
-const CHART_W = 80;
+const CHART_W = 72;
 const CHART_H = 36;
 
 function segmentStroke(seg: RingSegment, appIndex: number): string {

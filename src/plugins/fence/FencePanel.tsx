@@ -581,8 +581,10 @@ export function FencePanel({ ctx }: PluginComponentProps) {
           <div className="fence-search-panel">
             {!hits.length ? (
               <div className="fence-search-empty-wrap">
-                <p className="fence-search-empty">无「{filter.trim()}」</p>
-                <p className="fence-search-hint">试试英文名、拼音缩写或路径片段</p>
+                <p className="fence-search-empty">无匹配「{filter.trim()}」</p>
+                <p className="fence-search-hint">
+                  按 <kbd>Esc</kbd> 清空 · 也可点下方按钮
+                </p>
                 <button
                   type="button"
                   className="fence-search-clear"
@@ -653,7 +655,7 @@ export function FencePanel({ ctx }: PluginComponentProps) {
           <div className="fence">
             <div className="fence-title">围栏</div>
             <p style={{ fontSize: 11, color: "#6b7a8c", padding: 4 }}>
-              无法接管桌面：{loadError}
+              读桌面失败：{loadError}
             </p>
           </div>
         ) : (

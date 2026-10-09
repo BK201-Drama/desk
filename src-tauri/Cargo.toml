@@ -27,6 +27,8 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-notification = "2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 sysinfo = "0.33"
 # 桌面目录监听（Task 13）。计划写的是 "6"，实测可得 8.2.0 —— 不为对齐计划锁旧版。

@@ -20,6 +20,7 @@ export type PluginPermission =
   | "host.open"
   | "qqmusic.launch"
   | "stock.read"
+  | "leetcode.read"
   | "cursor.read"
   | "sys-res.read"
   | "wallpaper.read"

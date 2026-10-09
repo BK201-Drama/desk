@@ -7,6 +7,8 @@ export type Reminder = {
   rule_label: string;
   done: boolean;
   created_at: number;
+  /** unix secs；0 = 不响 */
+  next_fire_at: number;
 };
 
 export function normalizeReminders(raw: unknown): Reminder[] {
@@ -23,6 +25,7 @@ export function normalizeReminders(raw: unknown): Reminder[] {
         rule_label: asString(o.rule_label, o.rule as string) || "once",
         done: Boolean(o.done),
         created_at: asNumber(o.created_at, 0),
+        next_fire_at: asNumber(o.next_fire_at, 0),
       };
     })
     .filter((x): x is Reminder => x != null);

@@ -81,6 +81,15 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
     const searching = filter.trim().length > 0;
     const extras: HostCommand[] = [
       {
+        id: "host:focus-fence-search",
+        title: "搜索桌面图标",
+        hint: "/",
+        group: "Desk",
+        run: () => {
+          shell?.focusFenceSearch();
+        },
+      },
+      {
         id: "host:toggle-edit",
         title: "切换编辑模式",
         hint: "Win+Shift+D",
@@ -96,15 +105,6 @@ export function CmdkPanel({ ctx }: PluginComponentProps) {
         run: async () => {
           await bridge?.reloadPlugins?.();
           await refresh();
-        },
-      });
-      extras.push({
-        id: "host:focus-fence-search",
-        title: "搜索桌面图标",
-        hint: "/",
-        group: "Desk",
-        run: () => {
-          shell?.focusFenceSearch();
         },
       });
       for (const p of presets) {

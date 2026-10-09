@@ -408,6 +408,15 @@
         case "stock_quotes":
         case "stock_cached":
           return [];
+        case "leetcode_daily":
+        case "leetcode_daily_cached":
+          return {
+            date: "2026-09-20",
+            frontend_id: "1",
+            title_cn: "两数之和",
+            title_slug: "two-sum",
+            difficulty: "EASY",
+          };
         case "cursor_usage":
         case "cursor_cached":
           return {

@@ -1,0 +1,7 @@
+{
+  "id": "leetcode-daily",
+  "slot": "left",
+  "entry": "./panel.tsx",
+  "permissions": ["leetcode.read", "host.open", "host.log"],
+  "order": 32
+}

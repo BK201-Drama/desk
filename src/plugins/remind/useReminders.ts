@@ -23,5 +23,11 @@ export function useReminders(ctx: HostContext) {
     return () => window.clearTimeout(t);
   }, [refresh]);
 
+  useEffect(() => {
+    return ctx.on("remind:changed", () => {
+      void refresh();
+    });
+  }, [ctx, refresh]);
+
   return { items, refresh, applyList, setItems };
 }

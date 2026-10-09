@@ -16,7 +16,8 @@
   width: 100%;
   max-width: 100%;
   height: auto;
-  padding: 2px 6px;
+  /* 左右内边距一致：环贴左边 = 速率贴右边 */
+  padding: 3px 6px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.38);
   border: 1px solid rgba(26, 35, 50, 0.12);
@@ -116,27 +117,23 @@
   font-weight: 600;
 }
 
-/* 单图：可收缩；右侧速率固定，卡片边框不被撑破 */
+/* 网络块贴右：多余宽度留在环与图之间，左右到边框等距 */
 .sys-res-net {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
+  margin-left: auto;
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 6px;
-  margin-left: 2px;
   padding-left: 8px;
   border-left: 1px solid rgba(26, 35, 50, 0.1);
-  align-self: stretch;
 }
 
 .sys-res-chart {
-  width: 100%;
-  max-width: 80px;
-  min-width: 48px;
+  width: 72px;
   height: 36px;
   display: block;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   overflow: visible;
 }
 
@@ -171,8 +168,7 @@
   flex-direction: column;
   justify-content: center;
   gap: 4px;
-  min-width: 3.4em;
-  padding-right: 1px;
+  min-width: 3.2em;
 }
 
 .sys-res-rate {

@@ -1,90 +1,59 @@
 //! Windows「显示桌面图标」全局开关（HKCU\...\Explorer\Advanced\HideIcons）的生命周期管理。
 //! 这是新版围栏唯一还碰系统的地方 —— 所有写入都收敛在本文件内。
+//!
+//! **不写 `reg.exe`。** 关机/注销时会话正在拆掉，再 CreateProcess 控制台子进程会
+//! `0xc0000142`（DllMain 失败）弹系统框；2026-09-16 真机就是 Exit → `disable()` → reg。
+//! 读写一律走 Win32 Registry API；刷新 Explorer 也尽量进程内完成。
+//! Exit / 关机路径用 [`disable_for_exit`]：只写注册表，**不起任何子进程、不刷壳**。
 
 use std::path::{Path, PathBuf};
 
-const REG_PATH: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
+const ADVANCED_SUBKEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
+const VALUE_HIDE_ICONS: &str = "HideIcons";
 
-/// 从 `reg query` 输出取 HideIcons。只认行首第一个 token 恰好是 `HideIcons` 的行 —— 同 key 下还有别的 DWORD。
-fn parse_hide_icons(stdout: &str) -> Option<bool> {
-    for line in stdout.lines() {
-        let mut it = line.split_whitespace();
-        if it.next() != Some("HideIcons") {
-            continue;
-        }
-        let Some(_ty) = it.next() else { continue }; // REG_DWORD
-        let Some(raw) = it.next() else { continue };
-        let n = match raw.strip_prefix("0x").or_else(|| raw.strip_prefix("0X")) {
-            Some(hex) => i64::from_str_radix(hex, 16).ok(),
-            None => raw.parse::<i64>().ok(),
-        };
-        let Some(n) = n else { continue };
-        return Some(n != 0);
-    }
-    None
+/// 写完 HideIcons 之后要不要通知壳层。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RefreshMode {
+    /// 正常运行：进程内通知 Explorer 重读（无子进程）。
+    Full,
+    /// 退出 / 关机：会话可能已在拆，只落盘，绝不 CreateProcess。
+    None,
+}
+
+/// Exit 钩子是否该刷壳 —— 单测钉死，防止以后又把 fan-out 加回去。
+pub(crate) fn exit_skips_shell_refresh(mode: RefreshMode) -> bool {
+    matches!(mode, RefreshMode::None)
+}
+
+fn hide_icons_from_dword(v: u32) -> bool {
+    v != 0
 }
 
 /// Hide all desktop icons (including Recycle Bin / This PC shell icons).
 pub(crate) fn set_desktop_icons_hidden(hidden: bool) -> Result<(), String> {
+    set_desktop_icons_hidden_with(hidden, RefreshMode::Full)
+}
+
+fn set_desktop_icons_hidden_with(hidden: bool, refresh: RefreshMode) -> Result<(), String> {
     #[cfg(windows)]
     {
-        let value = if hidden { "1" } else { "0" };
-        let status = crate::proc::command("reg")
-            .args([
-                "add",
-                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
-                "/v",
-                "HideIcons",
-                "/t",
-                "REG_DWORD",
-                "/d",
-                value,
-                "/f",
-            ])
-            .status()
-            .map_err(|e| e.to_string())?;
-        if !status.success() {
-            return Err("reg HideIcons failed".into());
+        write_hide_icons(hidden)?;
+        if !exit_skips_shell_refresh(refresh) {
+            refresh_desktop_icons();
         }
-        // refresh desktop icons
-        let _ = crate::proc::command("ie4uinit.exe")
-            .arg("-show")
-            .status();
-        let _ = crate::proc::command("Rundll32.exe")
-            .args(["user32.dll,UpdatePerUserSystemParameters"])
-            .status();
-        // Force explorer to re-read Advanced\HideIcons
-        let _ = crate::proc::command("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                "(New-Object -ComObject Shell.Application).ToggleDesktop(); Start-Sleep -Milliseconds 200; (New-Object -ComObject Shell.Application).ToggleDesktop()",
-            ])
-            .status();
         Ok(())
     }
     #[cfg(not(windows))]
     {
-        let _ = hidden;
+        let _ = (hidden, refresh);
         Err("Windows only".into())
     }
 }
 
 /// 当前 HideIcons 的值。`None` = 注册表里没这个值（等价于未隐藏）。
-///
-/// ⚠️ 这条命令必须走 `crate::proc`（由它统一带 `CREATE_NO_WINDOW`）：desk 是 **GUI 子系统**，
-/// 自己没有控制台可继承，而 `reg.exe` 是控制台程序 —— 不设这个 flag 时 Windows 会给它
-/// 新分配一个控制台窗口，界面上就是「黑窗一闪而过」。
 #[cfg(windows)]
 pub(crate) fn is_enabled() -> Result<Option<bool>, String> {
-    let out = crate::proc::command("reg")
-        .args(["query", REG_PATH, "/v", "HideIcons"])
-        .output()
-        .map_err(|e| format!("reg query 启动失败：{e}"))?;
-    if !out.status.success() {
-        return Ok(None);
-    }
-    Ok(parse_hide_icons(&String::from_utf8_lossy(&out.stdout)))
+    read_hide_icons()
 }
 
 /// 非 Windows 上没有 `HideIcons` 这个值 —— 语义上等价于「从没隐藏过」。
@@ -99,6 +68,145 @@ pub(crate) fn enable() -> Result<(), String> {
 
 pub(crate) fn disable() -> Result<(), String> {
     set_desktop_icons_hidden(false)
+}
+
+/// 进程退出 / 关机专用：只把 HideIcons 置 0，不刷壳、不起子进程。
+pub(crate) fn disable_for_exit() -> Result<(), String> {
+    set_desktop_icons_hidden_with(false, RefreshMode::None)
+}
+
+#[cfg(windows)]
+fn write_hide_icons(hidden: bool) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::ERROR_SUCCESS;
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegCreateKeyExW, RegSetValueExW, HKEY_CURRENT_USER, KEY_SET_VALUE,
+        REG_CREATE_KEY_DISPOSITION, REG_DWORD, REG_OPTION_NON_VOLATILE, HKEY,
+    };
+
+    let subkey: Vec<u16> = std::ffi::OsStr::new(ADVANCED_SUBKEY)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let value_name: Vec<u16> = std::ffi::OsStr::new(VALUE_HIDE_ICONS)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut hkey = HKEY::default();
+    let mut disposition = REG_CREATE_KEY_DISPOSITION::default();
+    let status = unsafe {
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            PCWSTR(subkey.as_ptr()),
+            0,
+            None,
+            REG_OPTION_NON_VOLATILE,
+            KEY_SET_VALUE,
+            None,
+            &mut hkey,
+            Some(&mut disposition as *mut _),
+        )
+    };
+    if status != ERROR_SUCCESS {
+        return Err(format!("RegCreateKeyEx HideIcons failed: {status:?}"));
+    }
+
+    let dword: u32 = if hidden { 1 } else { 0 };
+    let bytes = dword.to_le_bytes();
+    let set = unsafe {
+        RegSetValueExW(
+            hkey,
+            PCWSTR(value_name.as_ptr()),
+            0,
+            REG_DWORD,
+            Some(&bytes),
+        )
+    };
+    let _ = unsafe { RegCloseKey(hkey) };
+    if set != ERROR_SUCCESS {
+        return Err(format!("RegSetValueEx HideIcons failed: {set:?}"));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn read_hide_icons() -> Result<Option<bool>, String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY_CURRENT_USER, KEY_READ, REG_DWORD,
+        REG_VALUE_TYPE, HKEY,
+    };
+
+    let subkey: Vec<u16> = std::ffi::OsStr::new(ADVANCED_SUBKEY)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let value_name: Vec<u16> = std::ffi::OsStr::new(VALUE_HIDE_ICONS)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut hkey = HKEY::default();
+    let open = unsafe {
+        RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            PCWSTR(subkey.as_ptr()),
+            0,
+            KEY_READ,
+            &mut hkey,
+        )
+    };
+    if open == ERROR_FILE_NOT_FOUND {
+        return Ok(None);
+    }
+    if open != ERROR_SUCCESS {
+        return Err(format!("RegOpenKeyEx Advanced failed: {open:?}"));
+    }
+
+    let mut ty = REG_VALUE_TYPE::default();
+    let mut data = [0u8; 4];
+    let mut data_size = data.len() as u32;
+    let query = unsafe {
+        RegQueryValueExW(
+            hkey,
+            PCWSTR(value_name.as_ptr()),
+            None,
+            Some(&mut ty),
+            Some(data.as_mut_ptr()),
+            Some(&mut data_size),
+        )
+    };
+    let _ = unsafe { RegCloseKey(hkey) };
+
+    if query == ERROR_FILE_NOT_FOUND {
+        return Ok(None);
+    }
+    if query != ERROR_SUCCESS {
+        return Err(format!("RegQueryValueEx HideIcons failed: {query:?}"));
+    }
+    if ty != REG_DWORD || data_size < 4 {
+        return Ok(None);
+    }
+    let dword = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+    Ok(Some(hide_icons_from_dword(dword)))
+}
+
+/// 进程内通知壳层；失败只吞掉 —— 注册表已经写上了，刷不刷不影响 INV-3。
+#[cfg(windows)]
+fn refresh_desktop_icons() {
+    use windows::Win32::UI::Shell::{SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_IDLIST};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SendNotifyMessageW, HWND_BROADCAST, WM_SETTINGCHANGE,
+    };
+
+    unsafe {
+        let _ = SendNotifyMessageW(HWND_BROADCAST, WM_SETTINGCHANGE, None, None);
+        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None);
+    }
 }
 
 // ── 逃生口的持久化标志 ──────────────────────────────────────────────────────
@@ -166,7 +274,7 @@ impl HideIntent {
 /// 标志文件 `%LOCALAPPDATA%\desk\icons-visible`（`flag`）**恒赢**（spec §6.2 第 3 条）——
 /// `owned` 哪怕是过期的 true 也压不过它，压得过的话用户按了开关图标仍被收着，逃生口就失效了。
 /// `fence.json` 的 `hide.owned` 次之。注册表值**不是参数**：它是「现在隐藏着没有」这个**事实**，
-/// 做成参数会把一次 `reg` 子进程塞回归结路径。
+/// 做成参数会把一次注册表 IO 塞回归结路径。
 /// 输入空间就是 `flag × owned` 这 4 种，`classify_covers_all_inputs` 逐条钉着。
 pub(crate) fn classify(flag: bool, owned: bool) -> HideIntent {
     if flag {
@@ -235,12 +343,29 @@ pub(crate) fn recover_orphan_hidden_state() -> Result<bool, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{flag_exists_at, parse_hide_icons, set_flag_at};
+    use super::{
+        exit_skips_shell_refresh, flag_exists_at, hide_icons_from_dword, set_flag_at, RefreshMode,
+    };
+
+    // ── 关机路径契约 ──────────────────────────────────────────────────────
+
+    #[test]
+    fn exit_path_must_skip_shell_refresh() {
+        assert!(exit_skips_shell_refresh(RefreshMode::None));
+        assert!(!exit_skips_shell_refresh(RefreshMode::Full));
+    }
+
+    #[test]
+    fn dword_zero_means_visible() {
+        assert!(!hide_icons_from_dword(0));
+        assert!(hide_icons_from_dword(1));
+        assert!(hide_icons_from_dword(2));
+    }
 
     // ── 优先级（#4）────────────────────────────────────────────────────────
     // 把两个 `if` 调个位置 → 这里必红。
 
-    /// 输入空间就是 `flag × owned` 这 4 种（`reg` 不是参数，见 `classify` 的注释）。
+    /// 输入空间就是 `flag × owned` 这 4 种（注册表不是参数，见 `classify` 的注释）。
     #[test]
     fn classify_covers_all_inputs() {
         use super::{classify, HideIntent::*};
@@ -292,32 +417,6 @@ mod tests {
             );
             assert_eq!(after.allows_hiding(), !visible);
         }
-    }
-
-    // ── 注册表输出的解析 ───────────────────────────────────────────────────
-
-    #[test]
-    fn parse_empty_is_none() {
-        assert_eq!(parse_hide_icons(""), None);
-    }
-
-    #[test]
-    fn parse_enabled() {
-        let out = "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\r\n    HideIcons    REG_DWORD    0x1\r\n";
-        assert_eq!(parse_hide_icons(out), Some(true));
-    }
-
-    #[test]
-    fn parse_disabled() {
-        let out = "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\r\n    HideIcons    REG_DWORD    0x0\r\n";
-        assert_eq!(parse_hide_icons(out), Some(false));
-    }
-
-    #[test]
-    fn parse_ignores_other_dword() {
-        // 同一个 key 下还有别的 DWORD；必须只认 HideIcons 这一行
-        let out = "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced\r\n    HideFileExt    REG_DWORD    0x1\r\n";
-        assert_eq!(parse_hide_icons(out), None);
     }
 
     /// 逃生口标志的读写契约。全程只碰临时目录，不碰真实的 icons-visible。

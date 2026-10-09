@@ -2,6 +2,7 @@ mod cursor;
 mod desk_tidy;
 mod fence;
 mod github;
+mod leetcode;
 mod multica;
 mod paths;
 mod plugins;
@@ -208,6 +209,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             Some(vec![]),
@@ -292,6 +294,8 @@ pub fn run() {
             qqmusic::qqmusic_prev,
             stock::stock_cached,
             stock::stock_quotes,
+            leetcode::leetcode_daily_cached,
+            leetcode::leetcode_daily,
             cursor::cursor_cached,
             cursor::cursor_usage,
             sys_res::sys_res_snapshot,
@@ -392,6 +396,8 @@ pub fn run() {
             if let Err(e) = fence::watch::start(app.handle().clone()) {
                 eprintln!("fence::watch::start: {e}");
             }
+
+            remind::start_scheduler(app.handle().clone());
 
             let edit_sc =
                 Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyD);

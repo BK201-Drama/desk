@@ -383,6 +383,10 @@
 .board.editing .fence-app {
   cursor: grab;
   touch-action: none;
+  opacity: 0.72;
+}
+.board.editing .fence-app:hover {
+  opacity: 0.9;
 }
 .board.editing .fence-app.dragging {
   opacity: 0.35;
@@ -433,6 +437,15 @@
   color: #8b9cb3;
   text-align: center;
   line-height: 1.35;
+}
+.fence-search-hint kbd {
+  font: inherit;
+  font-size: 8px;
+  padding: 0 4px;
+  border-radius: 3px;
+  border: 1px solid rgba(26, 35, 50, 0.18);
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--ink-soft, #6b7a8c);
 }
 .fence-search-clear {
   margin-top: 4px;

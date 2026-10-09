@@ -72,6 +72,7 @@ const PERM_COMMANDS: Record<PluginPermission, CommandName[]> = {
     "qqmusic_prev"
   ],
   "stock.read": ["stock_quotes", "stock_cached"],
+  "leetcode.read": ["leetcode_daily", "leetcode_daily_cached"],
   "cursor.read": ["cursor_usage", "cursor_cached"],
   "sys-res.read": ["sys_res_snapshot"],
   "wallpaper.read": ["wallpaper_sample"],

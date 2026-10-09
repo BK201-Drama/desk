@@ -74,6 +74,7 @@ fn default_disabled() -> Vec<String> {
 
 fn coder_disabled() -> Vec<String> {
     // Standalone clock stays off: GitHub panel already has the tuned clock+wall row.
+    // `leetcode-daily` 默认开着（程序员预设要提醒刷题）。
     vec![
         "clock".into(),
         "hello".into(),
@@ -101,6 +102,7 @@ fn minimal_disabled() -> Vec<String> {
         "sys-res".into(),
         "weather-brief".into(),
         "desk-tidy".into(),
+        "leetcode-daily".into(),
     ]
 }
 
@@ -119,6 +121,7 @@ fn fence_only_disabled() -> Vec<String> {
         "sys-res".into(),
         "weather-brief".into(),
         "desk-tidy".into(),
+        "leetcode-daily".into(),
     ]
 }
 

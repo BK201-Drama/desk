@@ -65,6 +65,8 @@ export const COMMANDS = [
   "qqmusic_prev",
   "stock_cached",
   "stock_quotes",
+  "leetcode_daily_cached",
+  "leetcode_daily",
   "cursor_cached",
   "cursor_usage",
   "sys_res_snapshot",

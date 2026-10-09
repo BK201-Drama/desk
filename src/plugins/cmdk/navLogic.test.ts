@@ -1,6 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { buildRows, collectNav, clampSelected } from "./navLogic";
+import {
+  buildRows,
+  collectCommands,
+  collectNav,
+  clampSelected,
+  PINNED_COMMAND_IDS,
+} from "./navLogic";
 import type { HostCommand } from "../../host/types";
+
+describe("collectCommands", () => {
+  const mk = (id: string, title = id): HostCommand => ({
+    id,
+    title,
+    group: "G",
+    run: () => {},
+  });
+
+  it("pins daily commands when not searching", () => {
+    const all = [
+      mk("remind:add", "添加待办"),
+      mk("github:sync", "同步 GitHub"),
+      mk("multica:open", "打开 Multica 看板"),
+      mk("fence:toggle-desktop-icons", "显示 / 隐藏桌面图标"),
+      mk("github:open-profile", "打开 GitHub 主页"),
+    ];
+    const out = collectCommands(false, [], all);
+    expect(out.map((c) => c.id)).toEqual([...PINNED_COMMAND_IDS]);
+  });
+
+  it("lists all commands when searching", () => {
+    const all = [mk("remind:add"), mk("github:open-profile")];
+    const out = collectCommands(true, [], all);
+    expect(out.map((c) => c.id)).toEqual(["remind:add", "github:open-profile"]);
+  });
+});
 
 describe("collectNav", () => {
   it("lists main plugins when not searching", () => {
