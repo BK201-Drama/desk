@@ -221,10 +221,7 @@ pub async fn cursor_usage() -> Result<CursorUsage, String> {
     let status = res.status();
     let text = res.text().await.map_err(|e| e.to_string())?;
     if status.as_u16() == 401 || status.as_u16() == 403 {
-        if let Some(c) = load_cache().filter(|c| c.ok) {
-            return Ok(c);
-        }
-        return Ok(empty("Cursor 登录已过期，请在 IDE 重新登录"));
+        return Ok(empty("Cursor 登录已过期，请在 IDE 重新登录后再看用量"));
     }
     if !status.is_success() {
         if let Some(c) = load_cache().filter(|c| c.ok) {

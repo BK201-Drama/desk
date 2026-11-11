@@ -3,7 +3,7 @@ import type { HostContext } from "../../host/types";
 import { acceptRefresh, afterRefreshAttempt, emptyUsage, normalizeUsage, type CursorUsage, type RefreshSlot } from "./model";
 import { onCursorBoot, peekCursorBoot } from "./boot";
 
-const POLL_MS = 60_000;
+const POLL_MS = 5 * 60 * 1000;
 
 export function useCursorUsage(ctx: HostContext) {
   const [usage, setUsage] = useState<CursorUsage>(

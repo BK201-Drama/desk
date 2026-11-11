@@ -10,25 +10,8 @@
   border: 1px solid rgba(26, 35, 50, 0.08);
   font: inherit;
   color: inherit;
-}
-
-.tc-open,
-.tc-refresh {
-  font: inherit;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  padding: 0;
-  text-align: left;
   cursor: pointer;
 }
-
-.tc-refresh {
-  align-self: flex-end;
-  font-size: 11px;
-}
-
-.tc-card:hover {
   border-color: rgba(45, 106, 79, 0.28);
 }
 
