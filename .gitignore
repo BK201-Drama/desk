@@ -36,3 +36,5 @@ playwright/.cache/
 gate-report.json
 GATE.report.json
 .gate/
+scripts/kill-repro.ps1
+scripts/repro-reg-*.ps1

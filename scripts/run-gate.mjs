@@ -7,6 +7,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const harnessFlag = process.argv.indexOf("--harness");
 const harness = harnessFlag >= 0 ? process.argv[harnessFlag + 1] : "";
 
+if (process.env.GATE_CHECKED === "1") process.exit(0);
+
 function emit(followup, exitCode = 0) {
   if (!harness) {
     const stream = exitCode === 0 ? process.stdout : process.stderr;
@@ -88,6 +90,66 @@ function writeStamp(stamp) {
   fs.writeFileSync(stampPath(), `${JSON.stringify(stamp)}\n`);
 }
 
+function git(args, env = process.env) {
+  return spawnSync("git", args, { cwd: root, encoding: "utf8", env });
+}
+
+function pathFromStatus(line) {
+  const body = line.slice(3).trim();
+  const renamed = body.split(" -> ").pop() ?? body;
+  return renamed.replaceAll('"', "");
+}
+
+function isSecret(file) {
+  const base = path.basename(file);
+  return (
+    base === ".env" ||
+    base.startsWith(".env.") ||
+    base === "credentials.json" ||
+    base === "id_rsa" ||
+    base.endsWith(".pem")
+  );
+}
+
+function publish() {
+  const lines = (porcelain() ?? "").split("\n").filter(Boolean);
+  if (lines.length === 0) return "没有需要提交的改动";
+  const skipped = [];
+  const files = [];
+  for (const line of lines) {
+    const file = pathFromStatus(line);
+    if (isSecret(file)) skipped.push(file);
+    else files.push(file);
+  }
+  if (files.length === 0) {
+    return `未提交：${skipped.join(", ")} 看起来是凭证`;
+  }
+  const add = git(["add", "--", ...files]);
+  if ((add.status ?? 1) !== 0) {
+    return `git add 失败\n${add.stderr || add.stdout || ""}`.slice(-1500);
+  }
+  const commit = git(
+    ["commit", "-m", "gate: keep the changes that passed arch and e2e"],
+    { ...process.env, GATE_CHECKED: "1" },
+  );
+  if ((commit.status ?? 1) !== 0) {
+    return `git commit 失败\n${commit.stderr || commit.stdout || ""}`.slice(-1500);
+  }
+  const hash = (git(["rev-parse", "--short", "HEAD"]).stdout ?? "").trim();
+  const branch = (git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout ?? "").trim();
+  const remotes = (git(["remote"]).stdout ?? "").split(/\r?\n/);
+  let pushNote = "没有远程，未推送";
+  if (remotes.includes("origin") && branch && branch !== "HEAD") {
+    const push = git(["push", "origin", branch]);
+    pushNote =
+      (push.status ?? 1) === 0
+        ? `已推送 origin/${branch}`
+        : `提交已在本地，推送失败\n${(push.stderr || push.stdout || "").slice(-1500)}`;
+  }
+  const skipNote = skipped.length ? `\n未纳入提交：${skipped.join(", ")}` : "";
+  return `已提交 ${hash}\n${pushNote}${skipNote}`;
+}
+
 function run(command) {
   const result = spawnSync(command, {
     cwd: root,
@@ -129,6 +191,7 @@ const passed = [...architecture, ...acceptance].every((step) => step.exitCode ==
 const strikes = passed ? 0 : (stamp?.strikes ?? 0) + 1;
 const report = { passed, attempts: strikes, architecture, acceptance };
 fs.writeFileSync(path.join(root, "GATE.report.json"), `${JSON.stringify(report, null, 2)}\n`);
+const publishNote = passed && harness ? publish() : "";
 const after = porcelain();
 writeStamp({ fingerprint: after ?? before, strikes, passed });
 
@@ -141,7 +204,15 @@ const summary = [
 ].join("\n");
 
 if (passed) {
-  emit(`gate 已通过。用中文把下面的报告告诉用户。不要改代码。\n${summary}`, 0);
+  const needsAttention =
+    publishNote.startsWith("git ") ||
+    publishNote.includes("推送失败") ||
+    publishNote.includes("未纳入提交");
+  if (!needsAttention) emit("");
+  emit(
+    `gate 已通过，但提交或推送没有完成。用中文把下面的报告告诉用户。不要改代码。\n${summary}\n${publishNote}`,
+    0,
+  );
 }
 if (strikes >= 3) {
   emit(
