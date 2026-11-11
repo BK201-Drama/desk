@@ -12,6 +12,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:style": "playwright test e2e/style-audit.spec.ts",
+    "arch": "depcruise --config .dependency-cruiser.cjs src",
+    "gate": "node scripts/gate.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
@@ -29,6 +31,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "dependency-cruiser": "^16.10.4",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
     "vitest": "^4.1.11"

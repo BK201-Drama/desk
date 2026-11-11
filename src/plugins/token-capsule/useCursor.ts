@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HostContext } from "../../host/types";
-import { emptyUsage, normalizeUsage, type CursorUsage } from "./model";
+import { acceptRefresh, afterRefreshAttempt, emptyUsage, normalizeUsage, type CursorUsage, type RefreshSlot } from "./model";
 import { onCursorBoot, peekCursorBoot } from "./boot";
 
 const POLL_MS = 60_000;
@@ -9,18 +9,23 @@ export function useCursorUsage(ctx: HostContext) {
   const [usage, setUsage] = useState<CursorUsage>(
     () => peekCursorBoot() ?? emptyUsage()
   );
-  const busy = useRef(false);
+  const slot = useRef<RefreshSlot>({ busy: false, pending: false });
 
   const refresh = useCallback(async () => {
-    if (busy.current) return;
-    busy.current = true;
-    try {
-      const raw = await ctx.invoke("cursor_usage");
-      setUsage(normalizeUsage(raw));
-    } catch (e) {
-      setUsage(emptyUsage(String(e)));
-    } finally {
-      busy.current = false;
+    const accepted = acceptRefresh(slot.current);
+    slot.current = accepted;
+    if (accepted.pending) return;
+    let again = true;
+    while (again) {
+      try {
+        const raw = await ctx.invoke("cursor_usage");
+        setUsage(normalizeUsage(raw));
+      } catch (e) {
+        setUsage(emptyUsage(String(e)));
+      }
+      const settled = afterRefreshAttempt(slot.current);
+      slot.current = settled.slot;
+      again = settled.again;
     }
   }, [ctx]);
 

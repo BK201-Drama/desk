@@ -33,3 +33,4 @@ docs/screenshots/*-desktop-full.png
 test-results/
 playwright-report/
 playwright/.cache/
+gate-report.json

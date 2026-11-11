@@ -20,7 +20,7 @@ function UsageRow({ title, used }: { title: string; used: number }) {
 }
 
 export function TokenCapsulePanel({ ctx }: PluginComponentProps) {
-  const { usage } = useCursorUsage(ctx);
+  const { usage, refresh } = useCursorUsage(ctx);
   const tone = toneFor(usage);
 
   useEffect(() => {
@@ -33,25 +33,37 @@ export function TokenCapsulePanel({ ctx }: PluginComponentProps) {
   }, [ctx]);
 
   return (
-    <button
-      type="button"
+    <div
       className={`tc-card tone-${tone}${usage.hitLimit ? " is-limit" : ""}`}
       data-testid="token-capsule-panel"
-      title="打开 Cursor Usage"
-      onClick={() => void ctx.openUrl("https://cursor.com/dashboard?tab=usage")}
     >
-      {!usage.ok ? (
-        <div className="tc-error">{usage.hint || "无法读取用量"}</div>
-      ) : (
-        <>
-          <UsageRow
-            title="Cursor Models"
-            used={usage.autoPctUsed || usage.usedPct}
-          />
-          <UsageRow title="Other Models" used={usage.apiPctUsed} />
-        </>
-      )}
-    </button>
+      <button
+        type="button"
+        className="tc-refresh"
+        data-testid="token-capsule-refresh"
+        onClick={() => void refresh()}
+      >
+        刷新
+      </button>
+      <button
+        type="button"
+        className="tc-open"
+        title="打开 Cursor Usage"
+        onClick={() => void ctx.openUrl("https://cursor.com/dashboard?tab=usage")}
+      >
+        {!usage.ok ? (
+          <div className="tc-error">{usage.hint || "无法读取用量"}</div>
+        ) : (
+          <>
+            <UsageRow
+              title="Cursor Models"
+              used={usage.autoPctUsed || usage.usedPct}
+            />
+            <UsageRow title="Other Models" used={usage.apiPctUsed} />
+          </>
+        )}
+      </button>
+    </div>
   );
 }
 

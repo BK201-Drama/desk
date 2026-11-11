@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatUsedPct, normalizeUsage, toneFor } from "./model";
+import { acceptRefresh, afterRefreshAttempt, formatUsedPct, normalizeUsage, toneFor, type RefreshSlot } from "./model";
 
 describe("normalizeUsage", () => {
   it("maps snake_case buckets", () => {
@@ -28,5 +28,18 @@ describe("normalizeUsage", () => {
 describe("formatUsedPct", () => {
   it("matches Cursor wording", () => {
     expect(formatUsedPct(82.4)).toBe("82% used");
+  });
+});
+
+describe("refresh queue", () => {
+  it("keeps a request that arrives while a refresh is in flight", () => {
+    let slot: RefreshSlot = { busy: false, pending: false };
+    slot = acceptRefresh(slot);
+    expect(slot).toEqual({ busy: true, pending: false });
+    slot = acceptRefresh(slot);
+    expect(slot.pending).toBe(true);
+    const settled = afterRefreshAttempt(slot);
+    expect(settled.again).toBe(true);
+    expect(settled.slot.pending).toBe(false);
   });
 });

@@ -80,3 +80,16 @@ export function barWidth(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.max(0, Math.min(100, n));
 }
+
+export type RefreshSlot = { busy: boolean; pending: boolean };
+
+/** 已有一次刷新在飞时，再来的请求不能丢掉，结束后要再拉一次。 */
+export function acceptRefresh(slot: RefreshSlot): RefreshSlot {
+  if (slot.busy) return { busy: true, pending: true };
+  return { busy: true, pending: false };
+}
+
+export function afterRefreshAttempt(slot: RefreshSlot): { slot: RefreshSlot; again: boolean } {
+  if (slot.pending) return { slot: { busy: true, pending: false }, again: true };
+  return { slot: { busy: false, pending: false }, again: false };
+}
