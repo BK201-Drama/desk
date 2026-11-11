@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/run-gate.mjs --harness codex",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
+}

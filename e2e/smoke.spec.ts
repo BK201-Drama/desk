@@ -48,8 +48,8 @@ test("cmdk lists default plugins when not searching", async ({ page }) => {
   await openCmdk(page);
 
   const list = page.getByTestId("cmdk-list");
-  await expect(list.getByText("GitHub")).toBeVisible();
-  await expect(list.getByText("待办")).toBeVisible();
+  await expect(list.locator("button").filter({ hasText: /^GitHub/ })).toBeVisible();
+  await expect(list.locator("button").filter({ hasText: /^待办/ })).toBeVisible();
 });
 
 test("cmdk keyboard shortcut toggles panel", async ({ page }) => {

@@ -13,7 +13,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:style": "playwright test e2e/style-audit.spec.ts",
     "arch": "depcruise --config .dependency-cruiser.cjs src",
-    "gate": "node scripts/gate.mjs",
+    "gate": "node scripts/run-gate.mjs",
+    "prepare": "node scripts/install-git-hook.mjs",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"

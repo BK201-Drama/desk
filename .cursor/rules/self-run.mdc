@@ -5,6 +5,6 @@ alwaysApply: true
 
 遵守仓库根目录的 `AGENTS.md` 和 `CLAUDE.md`。
 
-人在对话里提出改动后，自己实现，然后运行 `npm run test:e2e`。失败就阅读输出并修改，最多 3 轮，不要询问人。第 3 轮仍失败才把最后一次输出留在回复里。
+人在对话里提出改动后，自己实现，然后停。Cursor、Claude Code、Codex 的停止钩子和 git 提交钩子都会跑 `scripts/run-gate.mjs`。失败报告回到这个会话时按原文改，最多 3 轮，不要询问人。第 3 轮仍失败才把最后一次报告留在回复里。
 
-不要只跑 `npm test` 就当作完成。不要改弱已有 e2e。
+不要只跑 `npm test` 就当作完成。不要改弱 `GATE.md` 里的命令，也不要改弱已有 e2e。
