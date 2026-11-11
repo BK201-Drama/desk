@@ -12,6 +12,8 @@
   color: inherit;
   cursor: pointer;
 }
+
+.tc-card:hover {
   border-color: rgba(45, 106, 79, 0.28);
 }
 
