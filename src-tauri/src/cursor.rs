@@ -46,6 +46,41 @@ fn empty(hint: impl Into<String>) -> CursorUsage {
     }
 }
 
+fn roaming_cli_auth() -> Option<PathBuf> {
+    std::env::var_os("APPDATA").map(|p| PathBuf::from(p).join("cursor").join("auth.json"))
+}
+
+fn load_cli_api_key() -> Option<String> {
+    let text = fs::read_to_string(roaming_cli_auth()?).ok()?;
+    let v: Value = serde_json::from_str(&text).ok()?;
+    let key = v.get("apiKey")?.as_str()?.trim();
+    if key.starts_with("crsr_") {
+        Some(key.to_string())
+    } else {
+        None
+    }
+}
+
+async fn exchange_cli_token(client: &reqwest::Client, api_key: &str) -> Result<String, String> {
+    let res = client
+        .post("https://api2.cursor.sh/auth/exchange_user_api_key")
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Content-Type", "application/json")
+        .body("{}")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        return Err(format!("exchange {}", res.status()));
+    }
+    let v: Value = res.json().await.map_err(|e| e.to_string())?;
+    v.get("accessToken")
+        .and_then(|x| x.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "exchange missing accessToken".into())
+}
+
 fn state_db_path() -> Option<PathBuf> {
     dirs::config_dir().map(|d| {
         d.join("Cursor")
@@ -192,21 +227,38 @@ pub async fn cursor_usage() -> Result<CursorUsage, String> {
         }
         return Ok(empty("未检测到 Cursor（缺 state.vscdb）"));
     }
-    let token = match read_access_token(&db) {
-        Ok(t) => t,
-        Err(e) => {
-            if let Some(c) = load_cache().filter(|c| c.ok) {
-                return Ok(c);
-            }
-            return Ok(empty(e));
-        }
-    };
-
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(12))
         .user_agent("desk-cursor-capsule/0.1")
         .build()
         .map_err(|e| e.to_string())?;
+
+    // state.vscdb 里的 accessToken 不是网页会话 JWT，用量接口会 401。
+    // CLI 的 crsr_ key 能换成短期 JWT，和仪表盘同一条 GetCurrentPeriodUsage。
+    let token = if let Some(api_key) = load_cli_api_key() {
+        match exchange_cli_token(&client, &api_key).await {
+            Ok(token) => token,
+            Err(e) => match read_access_token(&db) {
+                Ok(token) => token,
+                Err(_) => {
+                    if let Some(c) = load_cache().filter(|c| c.ok) {
+                        return Ok(c);
+                    }
+                    return Ok(empty(e));
+                }
+            },
+        }
+    } else {
+        match read_access_token(&db) {
+            Ok(token) => token,
+            Err(e) => {
+                if let Some(c) = load_cache().filter(|c| c.ok) {
+                    return Ok(c);
+                }
+                return Ok(empty(e));
+            }
+        }
+    };
 
     let res = client
         .post("https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage")

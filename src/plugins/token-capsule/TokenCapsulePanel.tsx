@@ -44,10 +44,10 @@ export function TokenCapsulePanel({ ctx }: PluginComponentProps) {
         <div className="tc-error">{usage.hint || "无法读取用量"}</div>
       ) : (
         <>
-          <UsageRow
-            title="Cursor Models"
-            used={usage.autoPctUsed || usage.usedPct}
-          />
+            <UsageRow
+              title="Cursor Models"
+              used={usage.usedPct || usage.autoPctUsed}
+            />
           <UsageRow title="Other Models" used={usage.apiPctUsed} />
         </>
       )}
