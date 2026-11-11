@@ -1,53 +1,23 @@
-import { spawn, execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { freeE2EPort } from "./free-e2e-port.mjs";
 
 const port = 4173;
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-function listeningPid() {
-  if (process.platform === "win32") {
-    const out = execFileSync("netstat", ["-ano"], { encoding: "utf8" });
-    for (const line of out.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed.includes(`:${port}`) || !trimmed.includes("LISTENING")) continue;
-      const pid = Number(trimmed.split(/\s+/).pop());
-      if (pid > 0) return pid;
-    }
-    return 0;
-  }
-  try {
-    const out = execFileSync("lsof", ["-ti", `tcp:${port}`], { encoding: "utf8" });
-    return Number(out.trim().split(/\s+/)[0]) || 0;
-  } catch {
-    return 0;
-  }
+function run(command, args) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, { cwd: root, stdio: "inherit", shell: true });
+    child.on("exit", (code) => resolve(code ?? 1));
+  });
 }
 
-function commandLine(pid) {
-  try {
-    if (process.platform === "win32") {
-      return execFileSync(
-        "powershell.exe",
-        [
-          "-NoProfile",
-          "-Command",
-          `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`,
-        ],
-        { encoding: "utf8" },
-      );
-    }
-    return execFileSync("ps", ["-p", String(pid), "-o", "args="], { encoding: "utf8" });
-  } catch {
-    return "";
-  }
-}
-
-function freePort() {
-  const pid = listeningPid();
+function killTree(pid) {
   if (!pid) return;
-  const line = commandLine(pid);
-  if (!/vite|preview/i.test(line)) return;
   try {
     if (process.platform === "win32") {
-      execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"]);
+      spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
     } else {
       process.kill(pid, "SIGTERM");
     }
@@ -56,23 +26,25 @@ function freePort() {
   }
 }
 
-function run(command, args) {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: "inherit", shell: true });
-    child.on("exit", (code) => resolve(code ?? 1));
-  });
-}
-
-freePort();
+await freeE2EPort();
 const buildCode = await run("npm", ["run", "build"]);
 if (buildCode !== 0) process.exit(buildCode);
-freePort();
+await freeE2EPort();
+
+const viteBin = path.join(root, "node_modules", "vite", "bin", "vite.js");
 const preview = spawn(
-  "npm",
-  ["run", "preview", "--", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
-  { stdio: "inherit", shell: true },
+  process.execPath,
+  [viteBin, "preview", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
+  { cwd: root, stdio: "inherit" },
 );
-const stop = () => preview.kill();
-process.on("SIGINT", stop);
-process.on("SIGTERM", stop);
+
+const stop = () => killTree(preview.pid);
+process.on("SIGINT", () => {
+  stop();
+  process.exit(0);
+});
+process.on("SIGTERM", () => {
+  stop();
+  process.exit(0);
+});
 preview.on("exit", (code) => process.exit(code ?? 0));

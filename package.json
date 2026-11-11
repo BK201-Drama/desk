@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
+    "test:e2e": "node scripts/free-e2e-port.mjs && playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:style": "playwright test e2e/style-audit.spec.ts",
     "arch": "depcruise --config .dependency-cruiser.cjs src",
